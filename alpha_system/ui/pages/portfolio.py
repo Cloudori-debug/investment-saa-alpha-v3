@@ -34,7 +34,6 @@ def render_portfolio(ctx: DashboardContext) -> None:
         st.session_state["holdings_input_open"] = True
     if "holdings_input_open" not in st.session_state:
         st.session_state["holdings_input_open"] = True
-    open_input = bool(st.session_state.get("holdings_input_open", True))
     _render_holdings_input(ctx)
     _render_ops_holdings_guide(ctx)
 
