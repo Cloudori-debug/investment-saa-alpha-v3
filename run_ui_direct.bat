@@ -33,7 +33,8 @@ if errorlevel 1 (
 echo [SAA] UI starting - http://localhost:8501
 echo [SAA] Keep this window open. Close it to stop the app.
 echo.
-%PY% -m streamlit run "%~dp0alpha_dashboard.py" --server.address 0.0.0.0 --server.headless false --browser.gatherUsageStats false
+REM headless true: browser is opened once by Start-Ops-Assistant.vbs (avoid double tabs)
+%PY% -m streamlit run "%~dp0alpha_dashboard.py" --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 set "EC=%ERRORLEVEL%"
 if not "%EC%"=="0" (
   echo.

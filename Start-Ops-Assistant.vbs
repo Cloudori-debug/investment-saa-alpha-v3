@@ -18,6 +18,6 @@ End If
 sh.CurrentDirectory = root
 sh.Run """" & bat & """", 7, False
 
-' Give Streamlit a moment, then open browser (Streamlit may also open one)
-WScript.Sleep 3500
+' Single browser open (run_ui_direct uses --server.headless true)
+WScript.Sleep 4500
 sh.Run url, 1, False
