@@ -3,7 +3,7 @@
 **규칙 기반 실투자 보조 · Review-only.** 자동매매·증권사 API 없음.
 
 > 코드 루트: `C:\Cursor\investment-saa-alpha-v3` · 공식 채팅: **SAA 알파 투자**  
-> 배포·실행: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
+> 배포·실행: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · Go-Live: [`docs/V3_GO_LIVE.md`](docs/V3_GO_LIVE.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
 
 ## 빠른 시작
 

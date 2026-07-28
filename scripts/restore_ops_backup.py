@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from alpha_system.ui.services.ops_assistant_pack import restore_ops_backup_zip
 
@@ -14,7 +19,7 @@ def main() -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path(__file__).resolve().parents[1],
+        default=_ROOT,
         help="Repo root (default: parent of scripts/)",
     )
     parser.add_argument(

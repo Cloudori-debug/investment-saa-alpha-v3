@@ -35,7 +35,14 @@ cd C:\Cursor\investment-saa-alpha-v3
 | `data/kr_alpha_exit_targets.yaml` | 익절 목표가 SoT |
 | `data/alpha_dashboard_runtime.json` | 런타임 플래그 |
 
-이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)
+이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
+**개인 상용(Go-Live):** [`V3_GO_LIVE.md`](V3_GO_LIVE.md)
+
+```powershell
+python scripts/go_live_check.py
+python scripts/go_live_check.py --pytest
+.\go_live_backup.bat
+```
 
 ## 원격
 
