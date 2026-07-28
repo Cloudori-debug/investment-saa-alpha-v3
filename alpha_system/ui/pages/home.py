@@ -200,7 +200,7 @@ def _render_today_line(ctx: DashboardContext, overview: HomeOverview, mom_n: int
     """Wireframe: one-line today cue (merged 후보·모멘텀 first)."""
     action = overview.next_action
     n = overview.proposal_count or mom_n
-    bits = [f"후보·모멘텀 {n}종", "보유에서 교체 안내"]
+    bits = [f"후보·모멘텀 {n}종", "포트폴리오에서 교체 안내"]
     if action is not None:
         bits.append(action.title)
     st.markdown(f"**오늘 할 일** — {' · '.join(bits)}")

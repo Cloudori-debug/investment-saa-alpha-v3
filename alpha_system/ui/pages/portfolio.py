@@ -36,7 +36,7 @@ def render_portfolio(ctx: DashboardContext) -> None:
     _render_ops_holdings_guide(ctx)
 
     with st.container(border=True):
-        st.subheader("보유 리뷰")
+        st.subheader("포트폴리오 리뷰")
         st.caption(
             "제안 북(스크린) · 익절: 유지/줄이기/환금(절반)/전량 · "
             "행 펼침 상세 · target 자동 변경 없음 · Review-only"

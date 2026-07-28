@@ -30,7 +30,7 @@ def render_primary_nav(
     key: str = "alpha_page",
     approval_badge: int | None = None,
 ) -> str:
-    """Sidebar: 오늘/확인/보유 + 더보기 (저널·레짐·설정)."""
+    """Sidebar: 오늘 / 확인 / 포트폴리오 + 더보기."""
     options = list(pages)
     if st.session_state.get(key) not in options:
         st.session_state[key] = options[0]
@@ -54,6 +54,16 @@ def render_primary_nav(
         if page not in main_pages and page not in more_pages:
             more_pages.append(page)
 
+    # Stable ASCII keys so label renames (보유→포트폴리오) do not stick on old widgets.
+    _btn_ids = {
+        "홈": "home",
+        "결재함": "approval",
+        "포트폴리오": "portfolio",
+        "저널": "journal",
+        "레짐": "regime",
+        "설정": "settings",
+    }
+
     def _nav_button(page: str) -> None:
         is_active = current == page
         title = page_display_name(
@@ -61,9 +71,10 @@ def render_primary_nav(
             badge=approval_badge if page == PAGE_APPROVAL else None,
         )
         hint = PAGE_HINTS.get(page, "")
+        btn_id = _btn_ids.get(page, "page")
         if st.button(
             title,
-            key=f"_v2_nav_btn_{page}",
+            key=f"_saa_nav_{btn_id}_v3",
             type="primary" if is_active else "secondary",
             use_container_width=True,
         ):
