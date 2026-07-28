@@ -37,7 +37,8 @@ def test_primary_pages_sellable_ia_order() -> None:
     assert PRIMARY_PAGES[2] == "포트폴리오"
     assert "레짐" in PRIMARY_PAGES
     assert PAGE_HINTS["홈"]
-    assert "숫자" in PAGE_HINTS["결재함"]
+    assert "점수" in PAGE_HINTS["결재함"] or "주간" in PAGE_HINTS["결재함"]
+    assert "실보유" in PAGE_HINTS["포트폴리오"]
     assert PAGE_DISPLAY_NAMES["홈"] == "오늘"
     assert PAGE_DISPLAY_NAMES["결재함"] == "확인"
     assert PAGE_DISPLAY_NAMES["포트폴리오"] == "포트폴리오"
