@@ -37,6 +37,26 @@ def _normalize_ticker(ticker: str) -> str:
     return t.zfill(6) if t.isdigit() else t
 
 
+def _kr_alpha_tickers_from_positions_csv(path: Path) -> set[str]:
+    """All kr_alpha tickers in positions.csv, including qty/value placeholders."""
+    if not path.exists():
+        return set()
+    try:
+        df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    except Exception:
+        return set()
+    if df.empty or "ticker" not in df.columns:
+        return set()
+    if "asset_group" in df.columns:
+        df = df[df["asset_group"].astype(str) == "kr_alpha"]
+    out: set[str] = set()
+    for raw in df["ticker"].tolist():
+        t = _normalize_ticker(str(raw))
+        if t and t != "CASH":
+            out.add(t)
+    return out
+
+
 def _bool_str(val: bool) -> str:
     return "true" if val else "false"
 
@@ -338,6 +358,8 @@ def select_tickers_for_prices(
 
     if scope == "holdings":
         wanted: set[str] = set()
+        # Include zero-value placeholders (candidate pick without qty).
+        wanted |= _kr_alpha_tickers_from_positions_csv(data_dir / "positions.csv")
         for row in load_positions(data_dir / "positions.csv"):
             if row.asset_group == "kr_alpha":
                 wanted.add(_normalize_ticker(row.ticker))

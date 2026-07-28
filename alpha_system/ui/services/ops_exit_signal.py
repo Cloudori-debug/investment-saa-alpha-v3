@@ -135,15 +135,19 @@ def _time_cap_fired(
     as_of: date | None,
     weeks: int,
 ) -> bool:
-    """True if target metadata is stale past N weeks (proxy for 'at target too long')."""
+    """True only after recorded target-hit date is older than N weeks.
+
+    Uses ``target_hit_as_of`` only — never ``approved_as_of``. Approving a
+    target weeks ago must not skip S1 (half cash) on the first hit day.
+    Until hit date is recorded, S2c stays inactive (S1 applies at hit).
+    """
     if weeks <= 0:
         return False
     as_of = as_of or date.today()
-    for key in ("approved_as_of", "target_hit_as_of", "as_of"):
-        d = _parse_date(ticker_targets.get(key))
-        if d is not None:
-            return as_of >= d + timedelta(weeks=int(weeks))
-    return False
+    d = _parse_date(ticker_targets.get("target_hit_as_of"))
+    if d is None:
+        return False
+    return as_of >= d + timedelta(weeks=int(weeks))
 
 
 def classify_ops_exit_signal(

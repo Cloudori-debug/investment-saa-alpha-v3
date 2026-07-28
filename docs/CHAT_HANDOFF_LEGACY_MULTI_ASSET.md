@@ -24,7 +24,9 @@
 
 | 영역 | RESULT / 요지 |
 |------|----------------|
-| **모멘텀 Review-only** | 홈 위계: 오늘(한 줄)→모멘텀 4열(+숫자 토글)→월리밸·후보 접힘. `MOMENTUM_REVIEW_ONLY_SPEC` (2026-07-28) |
+| **종목별 교체 안내** | 보유「실투자 포트 · 종목별 안내」글 표시. 전체 나침반 제거 (2026-07-28) |
+| **실보유 붙여넣기** | 보유「실보유 입력」· HTS `코드 수량 평단` → positions.kr_alpha만 upsert · 홈「실보유 입력」딥링크 (2026-07-28) |
+| **모멘텀 Review-only** | 홈 위계: 오늘→교체나침반→후보·모멘텀→월리밸. `MOMENTUM_REVIEW_ONLY_SPEC` (2026-07-28) |
 | **v3 분기** | C:\\Cursor\\investment-saa-alpha-v3 활성. 홈「월 리밸 · 오늘 할 일」보드(밴드/신호/CRISIS/SCALE_IN). (2026-07-28) |
 | **월 리밸 홈 보드** | ①밴드±25% ②익절·게이트 ③CRISIS 예외 ④SCALE_IN 제외 — Review-only · target 자동변경 없음 (2026-07-28) |
 | **정량 잠금 영구 off** | \data/proposal_freeze_policy.json\ enabled=false · 활성 freeze 해제. 설정「정량 잠금 정책」토글. (2026-07-28) |

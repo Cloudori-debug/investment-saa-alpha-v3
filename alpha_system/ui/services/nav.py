@@ -34,7 +34,7 @@ PRIMARY_PAGES = (
 PAGE_HINTS: dict[str, str] = {
     PAGE_HOME: "할 일 1건 · 후보",
     PAGE_APPROVAL: "숫자 · 이번 주 확인",
-    PAGE_PORTFOLIO: "보유 리뷰 · 승인만",
+    PAGE_PORTFOLIO: "실보유 입력 · 리뷰",
     PAGE_JOURNAL: "판정·승인 기록",
     PAGE_REGIME: "시장 참고",
     PAGE_SETTINGS: "API · 이식·백업",
@@ -86,6 +86,7 @@ FOCUS_SCORES = "scores_review"
 FOCUS_SETTINGS_API = "settings_api"
 FOCUS_SETTINGS_DATA = "settings_data"
 FOCUS_REGIME = "regime"
+FOCUS_HOLDINGS_INPUT = "holdings_input"
 
 
 def navigate(

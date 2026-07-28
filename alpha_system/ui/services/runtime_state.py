@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -10,6 +12,65 @@ from typing import Any, Optional
 
 from alpha_system.entry.models import TrancheState
 from alpha_system.schema import TrancheId
+
+_IO_RETRIES = 8
+_IO_BACKOFF_SEC = 0.05
+
+
+def _is_transient_io(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    if isinstance(exc, OSError):
+        # Windows: 22 EINVAL (lock/replace race), 13 EACCES, 32 sharing violation
+        errno = getattr(exc, "errno", None)
+        winerror = getattr(exc, "winerror", None)
+        return errno in {13, 22, 32} or winerror in {5, 32, 33}
+    return False
+
+
+def _write_text_atomic(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Write via temp + replace; retry on Windows lock/EINVAL races."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    last: BaseException | None = None
+    for attempt in range(_IO_RETRIES):
+        try:
+            with open(tmp, "w", encoding=encoding, newline="\n") as handle:
+                handle.write(text)
+                handle.flush()
+                try:
+                    os.fsync(handle.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp, path)
+            return
+        except OSError as exc:
+            last = exc
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+            if attempt + 1 >= _IO_RETRIES or not _is_transient_io(exc):
+                break
+            time.sleep(_IO_BACKOFF_SEC * (attempt + 1))
+    assert last is not None
+    raise last
+
+
+def _read_text_retry(path: Path, *, encoding: str = "utf-8") -> str:
+    last: BaseException | None = None
+    for attempt in range(_IO_RETRIES):
+        try:
+            return path.read_text(encoding=encoding)
+        except OSError as exc:
+            last = exc
+            if attempt + 1 >= _IO_RETRIES or not _is_transient_io(exc):
+                break
+            time.sleep(_IO_BACKOFF_SEC * (attempt + 1))
+    assert last is not None
+    raise last
 
 
 @dataclass
@@ -29,7 +90,6 @@ class RuntimeState:
     journaled_block_keys: list[str] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "events_fired": sorted(self.events_fired),
             "cancelled_events": sorted(self.cancelled_events),
@@ -45,13 +105,25 @@ class RuntimeState:
             "journaled_cap_tone": self.journaled_cap_tone,
             "journaled_block_keys": self.journaled_block_keys,
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_text_atomic(
+            Path(path),
+            json.dumps(payload, ensure_ascii=False, indent=2),
+        )
+
+    def save_best_effort(self, path: Path) -> bool:
+        """Persist runtime; return False on lock/EINVAL instead of raising."""
+        try:
+            self.save(path)
+            return True
+        except OSError:
+            return False
 
     @classmethod
     def load(cls, path: Path) -> "RuntimeState":
+        path = Path(path)
         if not path.exists():
             return cls()
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(_read_text_retry(path))
         return cls(
             events_fired=set(data.get("events_fired") or []),
             cancelled_events=set(data.get("cancelled_events") or []),

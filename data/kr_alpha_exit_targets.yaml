@@ -42,18 +42,25 @@ tickers:
   005830:
     thesis_id: db_insurance_shareholder_return
     valuation:
-      pbr_max: 1.4
-    target_price: 220000.0
-    rationale: 2026.7 증권사 목표가 컨센서스 약 21.9만원대. 기존 승인안 22만원 부합(초안·재검증).
-    fundamental_reason: 위험손해율 개선·보험손익 회복·ROE 업종 평균 상회 논지.
+      pbr_max: 1.2
+    target_price: 210000.0
+    rationale: '2026-07-28 재검증. 최근 90일 리포트 컨센서스 중앙값·평균 약 21.0만원(StockHub
+      9건; LS 19만·KB 19.5만·미래에셋 21만·iM 22만·대신 20만). 기존 22만은 상단 편향이라
+      중앙값 21만으로 SoT 조정. 시스템 종가 15.9만 대비 +32%, 52주고가 20.55만 상회폭은 제한적.
+      PBR_max 1.20은 role×1.3 제안(0.89→1.16)을 반올림·KB 배수 서술과 정합.'
+    fundamental_reason: '1Q 순이익 -39.9% 쇼크는 인정하되, 2Q 순이익 컨센서스 상회·위험손해율
+      개선·주주환원/밸류업 기대가 7월 리포트 다수에 반영. ROE 16.5% 유지 전제.'
     sources:
     - https://www.newspim.com/news/view/20260710001001
-    - https://www.kfenews.co.kr/news/articleView.html?idxno=660618
+    - https://www.news2day.co.kr/article/20260722500043
+    - https://stockhub.kr/stock/005830
     approved_by: operator
-    approved_as_of: '2026-07-24'
-    source: weekly_qual_ai_approved
-    revalidate_required: true
-    revalidate_reason: 1Q 순이익 -39.9% 등 실적 쇼크 이후 목표가·전제 재승인 필요 (사람 확인)
+    approved_as_of: '2026-07-28'
+    source: revalidate_20260728
+    revalidate_required: false
+    revalidate_reason: ''
+    revalidate_cleared_as_of: '2026-07-28'
+    revalidate_note: 1Q 쇼크 후 컨센서스 중앙값(21만)·PBR 1.20으로 재승인
   '006040':
     thesis_id: dongwon_dividend_value
     fundamental:
@@ -154,23 +161,25 @@ tickers:
     approved_as_of: '2026-07-25'
     source: weekly_qual_ai_approved
   '000660':
-    target_price: 3170000.0
+    target_price: 2900000.0
     valuation: {}
-    rationale: 2026.7.5 기준 증권사 12개월 평균 목표주가 317만124원(전일 종가 242만5,000원 대비). 다만 개별 리포트
-      간 편차 매우 큼(흥국증권 140만원 ~ 신한투자·미래에셋·KB증권 380만~420만원) — AI 투자 지속성·업황 해석 차이가 원인.
-      컨센서스 평균치를 잠정 채택했으며 반드시 최신 리포트 원문 확인 필요
-    fundamental_reason: HBM/AI 메모리 수퍼사이클 지속, 2Q26 영업이익률 76%대(사상 최고 전망)로 컨센서스 상회 다수
-      전망, 나스닥 ADR 상장 추진
+    rationale: '2026-07-28 재검증. KB 420만·일부 380~420만은 bull 상단으로 익절 SoT 부적합
+      (시스템 종가 155만·52주고가 약 292만 대비 미도달·과대). Investing.com 12M 평균
+      ~317만도 고점 대비 +8%·현재가 대비 +105%로 신호용으로는 공격적. SoT는 거래 이력상
+      도달한 52주 고가 밴드(약 292만)에 맞춘 290만으로 보수 설정. bull 컨센서스는 참고만.'
+    fundamental_reason: HBM/AI 사이클·고마진 전망은 유지하되, 사이클 종목은 PBR 배수 자동제안
+      제외(현재 PBR~9). 익절 사다리는 가격 목표(290만)만 사용.
     sources:
-    - https://www.investchosun.com/site/data/html_dir/2026/07/09/2026070980118.html
-    - https://bullstory.io/blog/sk%ED%95%98%EC%9D%B4%EB%8B%89%EC%8A%A4-%EC%A3%BC%EA%B0%80-%EC%A0%84%EB%A7%9D-%EB%82%98%EC%8A%A4%EB%8B%A5-adr-%EC%83%81%EC%9E%A5%EA%B3%BC-2026%EB%85%84-%ED%95%98%EB%B0%98%EA%B8%B0-%EB%AA%A9%ED%91%9C%EC%A3%BC%EA%B0%80-%EC%B4%9D%EC%A0%95%EB%A6%AC
+    - https://kr.investing.com/equities/sk-hynix-inc-consensus-estimates
+    - https://kbthink.com/securities-view.html?docId=20260721173652703K
+    - https://raki-research.com/stock/000660
     approved_by: operator
-    approved_as_of: '2026-07-25'
-    source: weekly_qual_ai_approved
-    revalidate_required: true
-    revalidate_reason: 단일 증권사(KB) 목표가 420만원 인용. 시스템 as_of 2026-07-16 종가 약 184만원·52주고가
-      약 292만원 대비 +128% / 고점×1.44 — 거래 이력상 미도달 구간. 익절·진행률 SoT로 쓰기엔 허황 위험. 다수 증권사 교차확인
-      또는 보수 목표가 재승인 전까지 신호 신뢰 보류.
+    approved_as_of: '2026-07-28'
+    source: revalidate_20260728
+    revalidate_required: false
+    revalidate_reason: ''
+    revalidate_cleared_as_of: '2026-07-28'
+    revalidate_note: KB 420만 배제·52주고가 밴드 290만으로 재승인
   '000270':
     target_price: 214000.0
     valuation: {}

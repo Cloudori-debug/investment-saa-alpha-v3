@@ -101,7 +101,7 @@ def test_time_cap_full_exit() -> None:
         ticker_targets={
             "target_price": 240000.0,
             "valuation": {},
-            "approved_as_of": old,
+            "target_hit_as_of": old,
         },
         in_proposal=True,
         as_of=date.today(),
@@ -109,6 +109,26 @@ def test_time_cap_full_exit() -> None:
     )
     assert sig.kind == "exit_full"
     assert sig.step_id == "S2c"
+
+
+def test_time_cap_ignores_approved_as_of_alone() -> None:
+    """Approving a target weeks ago must not skip S1 on first hit."""
+    old = (date.today() - timedelta(weeks=8)).isoformat()
+    sig = classify_ops_exit_signal(
+        "000270",
+        fundamentals={},
+        prices={"current_price": 250000},
+        ticker_targets={
+            "target_price": 240000.0,
+            "valuation": {},
+            "approved_as_of": old,
+        },
+        in_proposal=True,
+        as_of=date.today(),
+        time_cap_weeks=4,
+    )
+    assert sig.kind == "cash_half"
+    assert sig.step_id == "S1"
 
 
 def test_apply_and_actionable() -> None:

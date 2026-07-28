@@ -292,7 +292,17 @@ def load_positions(path: Path) -> list[PositionRow]:
     for record in df.to_dict(orient="records"):
         record["ticker"] = _normalize_ticker(record["ticker"])
         record["quantity"] = _parse_optional_float(record.get("quantity"))
-        record["current_value"] = float(record["current_value"])
+        raw_value = record.get("current_value")
+        try:
+            current_value = float(raw_value) if str(raw_value).strip() != "" else 0.0
+        except (TypeError, ValueError):
+            # Draft / corrupt row — skip rather than fail the whole book
+            continue
+        if current_value <= 0:
+            # qty unset placeholders (candidate pick) are kept in CSV for UI
+            # but are not operational holdings.
+            continue
+        record["current_value"] = current_value
         for key in ("avg_price", "current_price"):
             record[key] = _parse_optional_float(record.get(key))
         row = PositionRow.model_validate(record)

@@ -990,7 +990,6 @@
 196300,HLB펩,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 403870,HPSP,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 036640,HRS,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
-467930,IBKS제23호스팩,KOSDAQ,spac,,,2010-01-01,false,false,false,true,false,false,clean,false
 469480,IBKS제24호스팩,KOSDAQ,spac,,,2010-01-01,false,false,false,true,false,false,clean,false
 0099X0,IBKS제25호스팩,KOSDAQ,spac,,,2010-01-01,false,false,false,true,false,false,clean,false
 095340,ISC,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
@@ -1632,7 +1631,6 @@
 068760,셀트리온제약,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 068940,셀피글로벌,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 007720,소노스퀘어,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
-290690,아리바이오홀딩스,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 950200,소마젠,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 032680,소프트센,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 032685,소프트센우,KOSDAQ,preferred_stock,,,2010-01-01,true,false,false,false,false,false,clean,false
@@ -1745,6 +1743,7 @@
 025980,아난티,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 0015N0,아로마티카,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 261780,아리바이오랩,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
+290690,아리바이오홀딩스,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 125210,아모그린텍,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 357580,아모센스,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false
 052710,아모텍,KOSDAQ,common_stock,,,2010-01-01,false,false,false,false,false,false,clean,false

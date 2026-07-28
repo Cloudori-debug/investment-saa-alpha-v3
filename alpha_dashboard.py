@@ -1,11 +1,13 @@
 """
-SAA 알파 v2 대시보드 — Streamlit 단일 앱 (모바일 우선).
+SAA 알파 v3 대시보드 — Streamlit 단일 앱 (모바일 우선).
 
-실행 (반드시 v2 폴더에서):
-  cd C:\\Cursor\\investment-saa-alpha-v2
-  streamlit run alpha_dashboard.py --server.address 0.0.0.0
+실행 (반드시 v3 폴더에서):
+  cd C:\\Cursor\\investment-saa-alpha-v3
+  streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 
-v1 유지판과 분리: C:\\Cursor\\investment-saa-alpha
+일상 진입: 투자나침반.bat  /  Start-Ops-Assistant.vbs
+v2 보관: C:\\Cursor\\investment-saa-alpha-v2
+v1 동결: C:\\Cursor\\investment-saa-alpha
 """
 
 from __future__ import annotations

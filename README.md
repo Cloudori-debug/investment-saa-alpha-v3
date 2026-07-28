@@ -1,53 +1,49 @@
-# Multi-Asset Trigger Portfolio v2.0
+# SAA 알파 투자 — v3 (활성)
 
-**규칙 기반 자산군 나침반 + SAA/TAA + 종목 분해 + 실행 보조 + 백테스트**
+**규칙 기반 실투자 보조 · Review-only.** 자동매매·증권사 API 없음.
 
-> 자동매매·증권사 API 없음. 일관된 배분 의사결정 자동화가 목표입니다.
+> 코드 루트: `C:\Cursor\investment-saa-alpha-v3` · 공식 채팅: **SAA 알파 투자**  
+> 배포·실행: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
 
-## 기능
-
-| 모듈 | 설명 |
-|------|------|
-| **나침반** | Tier1 시장지표 + Tier2 매크로 → 레짐·시장국면·4축 점수 |
-| **SAA/TAA** | 프로필별 자산군 목표비중 (`target_asset_allocation.csv`) |
-| **종목 분해** | 자산군 비중 → `generated_target_portfolio.csv` |
-| **자산군 Gap** | `portfolio_gap.csv` — Buy/Hold/Trim/Park/NoTrade |
-| **종목 실행** | 트리거 기반 Buy/Wait/Trim (`trade_actions.csv`) |
-| **백테스트** | 히스토리 CSV로 레짐·배분 전환 검증 |
-| **Streamlit UI** | SAA 운용 콘솔 (`app.py`) · **알파 시스템 대시보드** (`alpha_dashboard.py`) |
-
-## 빠른 시작 (일상)
+## 빠른 시작
 
 ```
-1. Start-Ops-Assistant.vbs   ← 더블클릭 (CMD 최소화 · 브라우저 전면)
-2. 또는 투자나침반.bat       ← 동일 (VBS 호출)
+1. 투자나침반.bat          ← 더블클릭
+2. 또는 Start-Ops-Assistant.vbs
+→ http://localhost:8501
+```
+
+```powershell
+cd C:\Cursor\investment-saa-alpha-v3
+streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 ```
 
 설치·백업·분석 메뉴: `START_OPS_ASSISTANT.bat`  
-이식 가이드: [`docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md`](docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md)
-
-### (레거시) 메뉴형 진입
-
-```
-투자나침반.bat → Start-Ops-Assistant.vbs
-```
+이식: [`docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md`](docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md)
 
 | bat / vbs | 용도 |
 |-----------|------|
-| **`Start-Ops-Assistant.vbs`** | **일상 진입 (권장)** — UI 바로 |
-| `START_OPS_ASSISTANT.bat` | 설치 / 분석 / 백업 / UI |
-| `run_ui_direct.bat` | VBS가 호출하는 직접 UI |
-| `투자나침반.bat` | VBS 래퍼 (ASCII) |
+| **`Start-Ops-Assistant.vbs`** | **일상 진입 (권장)** |
+| `투자나침반.bat` | VBS 래퍼 |
+| `run_ui_direct.bat` | Streamlit 직접 |
+| `START_OPS_ASSISTANT.bat` | 설치 / 분석 / 백업 |
 
-상세: **[사용설명서](docs/USER_GUIDE.md)** · 채팅 승계: **[레거시 핸드오프](docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md)** · **[AGENTS.md](AGENTS.md)**
+상세: **[사용설명서](docs/USER_GUIDE.md)** · **[레거시 핸드오프](docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md)** · **[AGENTS.md](AGENTS.md)**
 
-### 알파 시스템 대시보드 (모바일 우선)
+### 알파 시스템 대시보드
 
-```powershell
-streamlit run alpha_dashboard.py --server.address 0.0.0.0
-```
+- ETF Executable / kr_alpha Review-only
+- `target_portfolio.csv` 자동 변경 없음
+- 같은 Wi-Fi 폰: `run_ui_direct.bat`는 `0.0.0.0:8501` (LAN)
 
-- 같은 Wi-Fi 폰: `http://<PC-IP>:8501`
+## 기능 (요약)
+
+| 모듈 | 설명 |
+|------|------|
+| **홈** | 오늘 할 일 · 후보·모멘텀 · 월 리밸(Review-only) |
+| **보유** | 실보유 입력 · 종목별 익절 안내 |
+| **승인** | CECS·목표가·주간 정성 |
+| **나침반/레짐** | 레거시 멀티에셋 보조 |
 - **외부 인터넷 포트 노출 금지** (LAN 전용)
 - 가이드: **[ALPHA_DASHBOARD_UI_GUIDE.md](docs/ALPHA_DASHBOARD_UI_GUIDE.md)**
 

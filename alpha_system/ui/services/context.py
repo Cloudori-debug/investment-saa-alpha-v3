@@ -185,7 +185,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         runtime.tranche_states[st.tranche_id] = st.state.value
         if st.meta:
             runtime.tranche_meta[st.tranche_id] = dict(st.meta)
-    runtime.save(paths["runtime"])
+    runtime.save_best_effort(paths["runtime"])
 
     positions_df = _read_csv(paths["positions"])
     targets_df = _read_csv(paths["targets"])
@@ -197,7 +197,11 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
     kr_positions = positions_df[positions_df["asset_group"] == "kr_alpha"] if not positions_df.empty else positions_df
     kr_targets = targets_df[targets_df["asset_group"] == "kr_alpha"] if not targets_df.empty else targets_df
 
-    total_value = float(positions_df["current_value"].sum()) if "current_value" in positions_df.columns else 0.0
+    # positions are read as dtype=str — never use Series.sum() (string concat).
+    total_value = _sum_numeric(
+        positions_df["current_value"] if "current_value" in positions_df.columns else None
+    )
+
     scoreboard_rows, fallback_count = _build_scoreboard(
         cfg, cecs_df, scores_df, fundamentals_df, kr_positions, data_dir=root / "data"
     )
@@ -205,7 +209,8 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
     pos_views: list[PositionView] = []
     for _, row in kr_positions.iterrows():
         ticker = str(row.get("ticker", "")).zfill(6) if str(row.get("ticker", "")).isdigit() else str(row.get("ticker", ""))
-        w = float(row.get("current_value", 0)) / total_value * 100 if total_value else 0.0
+        cur_val = _f(row.get("current_value")) or 0.0
+        w = cur_val / total_value * 100 if total_value else 0.0
         sc = next((s for s in scoreboard_rows if s.ticker == ticker), None)
         pos_views.append(
             PositionView(
@@ -307,7 +312,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         portfolio_rows=ops_rows,
         pre_launch=pre_launch,
     )
-    runtime.save(paths["runtime"])
+    runtime.save_best_effort(paths["runtime"])
 
     cecs_final = 0
     cecs_total = 0
@@ -590,6 +595,18 @@ def _f(val) -> Optional[float]:
         return None
 
 
+def _sum_numeric(series) -> float:
+    """Sum a CSV column read as dtype=str without string-concatenation."""
+    if series is None:
+        return 0.0
+    try:
+        if getattr(series, "empty", False):
+            return 0.0
+    except Exception:
+        return 0.0
+    return float(pd.to_numeric(series, errors="coerce").fillna(0).sum())
+
+
 def _build_ops_portfolio(
     cfg: AlphaSystemConfig,
     kr_positions: pd.DataFrame,
@@ -861,7 +878,7 @@ def _build_portfolio(
     """Legacy positions-based book (kept for tests; UI uses _build_screen_portfolio)."""
     if kr_positions.empty:
         return []
-    total = float(kr_positions["current_value"].astype(float).sum())
+    total = _sum_numeric(kr_positions["current_value"]) if "current_value" in kr_positions.columns else 0.0
     price_idx = (
         prices_df.set_index("ticker")
         if not prices_df.empty and "ticker" in prices_df.columns
@@ -888,7 +905,7 @@ def _build_portfolio(
     for _, pos in kr_positions.iterrows():
         ticker = str(pos.get("ticker", "")).zfill(6)
         name = str(pos.get("name", ""))
-        cur_val = float(pos.get("current_value", 0) or 0)
+        cur_val = _f(pos.get("current_value")) or 0.0
         weight = cur_val / total * 100 if total else 0.0
         init_w = None
         if ticker in target_idx.index:
