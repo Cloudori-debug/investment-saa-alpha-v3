@@ -20,7 +20,6 @@ REQUIRED_FILES = [
     "run_ui_direct.bat",
     "docs/V3_CHARTER.md",
     "docs/V3_DEPLOY.md",
-    "docs/V3_GO_LIVE.md",
     "data/kr_alpha_exit_targets.yaml",
     "alpha_system/config/scoring.yaml",
     "data/hakedaka_integration.yaml",

@@ -34,31 +34,67 @@ from alpha_system.ui.styles import status_card_class
 
 
 def _render_first_run_card(ctx: DashboardContext) -> None:
-    """First-run card — uses ops assistant pack when available."""
-    from alpha_system.ui.services.nav import PAGE_SETTINGS
+    """First screen: use the app now. Setup/backup is optional later."""
+    from alpha_system.ui.services.nav import (
+        FOCUS_HOLDINGS_INPUT,
+        PAGE_PORTFOLIO,
+        PAGE_SETTINGS,
+    )
     from alpha_system.ui.services.ops_assistant_pack import (
         PRODUCT_NAME,
         needs_first_run_banner,
         setup_status,
     )
 
-    if not needs_first_run_banner(ctx.root) or st.session_state.get("home_setup_dismissed"):
+    dismissed_holdings = bool(st.session_state.get("home_holdings_cta_dismissed"))
+    dismissed_setup = bool(st.session_state.get("home_setup_dismissed"))
+    has_alpha = int(getattr(ctx, "held_kr_alpha", 0) or 0) > 0 or bool(
+        ctx.ops_portfolio_rows
+    )
+
+    # Primary product path: no alpha book yet → go register holdings.
+    if not has_alpha and not dismissed_holdings:
+        with st.container(border=True):
+            st.markdown("#### 바로 시작")
+            st.caption(
+                f"{PRODUCT_NAME} · 자동매매 없음 · "
+                "후보에서 고르거나 붙여넣기만 하면 종목별 안내가 켜집니다"
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button(
+                    "실보유 입력",
+                    key="home_to_holdings",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    navigate(PAGE_PORTFOLIO, focus=FOCUS_HOLDINGS_INPUT)
+            with c2:
+                if st.button(
+                    "나중에",
+                    key="home_holdings_skip",
+                    use_container_width=True,
+                ):
+                    st.session_state["home_holdings_cta_dismissed"] = True
+                    st.rerun()
+        return
+
+    # Optional: DART / target transplant — not a gate to using the app.
+    if not needs_first_run_banner(ctx.root) or dismissed_setup:
         return
     status = setup_status(ctx.root)
     with st.container(border=True):
-        st.markdown("#### 시작하기 — 3분")
-        st.caption(f"{PRODUCT_NAME} · 자동매매 아님 · 사람 승인만 target 반영")
-        st.markdown(
-            f"1. DART API: **{'준비됨' if status['dart_ok'] else '설정에서 키 입력'}**  \n"
-            f"2. target_portfolio: **{'있음' if status['target_exists'] else '이식 zip으로 복원'}**  \n"
-            "3. 설정 › 이식·백업에서 「첫 설정 완료」"
+        st.markdown("#### 선택 — 데이터·키 (나중에 해도 됨)")
+        st.caption(
+            f"DART: {'준비됨' if status['dart_ok'] else '설정에서 입력'} · "
+            f"target: {'있음' if status['target_exists'] else '이식 zip 또는 직접 유지'}"
         )
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("설정 · 이식·백업으로", key="home_to_settings", type="primary"):
+            if st.button("설정 열기", key="home_to_settings", use_container_width=True):
                 navigate(PAGE_SETTINGS)
         with c2:
-            if st.button("오늘은 건너뛰기", key="home_setup_skip"):
+            if st.button("닫기", key="home_setup_skip", use_container_width=True):
                 st.session_state["home_setup_dismissed"] = True
                 st.rerun()
 

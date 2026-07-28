@@ -3,15 +3,17 @@
 **규칙 기반 실투자 보조 · Review-only.** 자동매매·증권사 API 없음.
 
 > 코드 루트: `C:\Cursor\investment-saa-alpha-v3` · 공식 채팅: **SAA 알파 투자**  
-> 배포·실행: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · Go-Live: [`docs/V3_GO_LIVE.md`](docs/V3_GO_LIVE.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
+> 배포: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
 
-## 빠른 시작
+## 빠른 시작 (이것만)
 
 ```
-1. 투자나침반.bat          ← 더블클릭
-2. 또는 Start-Ops-Assistant.vbs
-→ http://localhost:8501
+투자나침반.bat 더블클릭 → http://localhost:8501
+→ 홈「실보유 입력」또는 사이드바「보유」
 ```
+
+Go-Live 체크리스트·점검 스크립트는 **선택**(백업·업데이트 전). 필수 아님.  
+선택 문서: [`docs/V3_GO_LIVE.md`](docs/V3_GO_LIVE.md)
 
 ```powershell
 cd C:\Cursor\investment-saa-alpha-v3
@@ -23,10 +25,10 @@ streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 
 | bat / vbs | 용도 |
 |-----------|------|
-| **`Start-Ops-Assistant.vbs`** | **일상 진입 (권장)** |
-| `투자나침반.bat` | VBS 래퍼 |
+| **`투자나침반.bat` / `Start-Ops-Assistant.vbs`** | **일상 진입** |
 | `run_ui_direct.bat` | Streamlit 직접 |
 | `START_OPS_ASSISTANT.bat` | 설치 / 분석 / 백업 |
+| `go_live_backup.bat` | (선택) 장부 zip |
 
 상세: **[사용설명서](docs/USER_GUIDE.md)** · **[레거시 핸드오프](docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md)** · **[AGENTS.md](AGENTS.md)**
 

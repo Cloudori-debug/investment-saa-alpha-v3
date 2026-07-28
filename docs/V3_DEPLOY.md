@@ -2,18 +2,21 @@
 
 **이 저장소 = 활성 v3.** 자동매매·증권사 API 없음. Review-only 실투자 보조.
 
-## 일상 실행 (권장)
+## 일상 실행 (제품 진입)
 
 | 진입 | 동작 |
 |------|------|
 | `투자나침반.bat` | `Start-Ops-Assistant.vbs` → UI |
-| `Start-Ops-Assistant.vbs` | Streamlit 직접 (CMD 최소화) |
-| `run_ui_direct.bat` | `streamlit run alpha_dashboard.py` → `http://localhost:8501` |
+| `Start-Ops-Assistant.vbs` | Streamlit 직접 |
+| `run_ui_direct.bat` | `http://localhost:8501` |
 
 ```powershell
 cd C:\Cursor\investment-saa-alpha-v3
 .\투자나침반.bat
 ```
+
+첫 화면에서 **실보유 입력**만 하면 바로 쓸 수 있습니다.  
+DART 키·이식 zip·Go-Live 점검은 **나중에도 됩니다.**
 
 첫 설치 시 `run_ui_direct.bat`가 `pip install -e ".[dev,ui,data]"`를 시도합니다.
 
@@ -26,7 +29,7 @@ cd C:\Cursor\investment-saa-alpha-v3
 - Core 스코어에서 `score_m` 제외
 - 홈「월 리밸」= Review-only
 
-## 장부 파일 (백업 필수)
+## 장부 파일 (백업 권장)
 
 | 파일 | 비고 |
 |------|------|
@@ -35,14 +38,14 @@ cd C:\Cursor\investment-saa-alpha-v3
 | `data/kr_alpha_exit_targets.yaml` | 익절 목표가 SoT |
 | `data/alpha_dashboard_runtime.json` | 런타임 플래그 |
 
-이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
-**개인 상용(Go-Live):** [`V3_GO_LIVE.md`](V3_GO_LIVE.md)
+이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)
 
-```powershell
-python scripts/go_live_check.py
-python scripts/go_live_check.py --pytest
-.\go_live_backup.bat
-```
+### (선택) 백업·업데이트 전 점검
+
+필수 기능이 아닙니다. 포맷/이사·버전 올리기 전에만 쓰면 됩니다.
+
+- [`V3_GO_LIVE.md`](V3_GO_LIVE.md)
+- `go_live_backup.bat` / `python scripts/go_live_check.py`
 
 ## 원격
 
