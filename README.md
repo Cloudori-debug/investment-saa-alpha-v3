@@ -30,7 +30,7 @@ streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 | `START_OPS_ASSISTANT.bat` | 설치 / 분석 / 백업 |
 | `go_live_backup.bat` | (선택) 장부 zip |
 
-상세: **[사용설명서](docs/USER_GUIDE.md)** · **[레거시 핸드오프](docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md)** · **[AGENTS.md](AGENTS.md)**
+상세: **[사용설명서](docs/USER_GUIDE.md)** · **[에이전트 시작](docs/V3_AGENT_START.md)** · **[정리(Hygiene)](docs/V3_HYGIENE.md)** · **[AGENTS.md](AGENTS.md)**
 
 ### 알파 시스템 대시보드
 
@@ -108,11 +108,13 @@ python -m src.main --kr-alpha-weight 31 --collect
 
 ## 문서
 
+- **[V3 차터](docs/V3_CHARTER.md)** · **[에이전트 시작](docs/V3_AGENT_START.md)** · **[Hygiene](docs/V3_HYGIENE.md)**
 - **[사용설명서](docs/USER_GUIDE.md)** — 설치·UI·일일 운용·FAQ
 - **[MVP 명세서 v1.0 FROZEN](docs/MVP_SPEC.md)** — 개발 스펙 (기능 동결)
 - **[운용 승인 기준](docs/ACCEPTANCE_CRITERIA.md)** — **실운용 최종 게이트**
-- **[Dry-run 스키마](docs/DRY_RUN_LOG_SCHEMA.md)** — paper-run 기록
+- Dry-run 스키마: `docs/archive/20260729_hygiene/DRY_RUN_LOG_SCHEMA.md`
 - `python -m src.validation.acceptance_main` — AC 검증
+- 조사·RESULT·주간리포트: `docs/archive/20260729_hygiene/`
 
 ## 테스트
 

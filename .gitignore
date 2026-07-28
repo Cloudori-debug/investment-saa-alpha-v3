@@ -75,5 +75,6 @@ outputs/_zip_*/
 data/positions.csv
 data/weekly_qual_proposal_freeze.json
 data/proposal_freeze_policy.json
+data/alpha_system_journal.jsonl
 alpha_portfolio/data/raw/positions.csv
 

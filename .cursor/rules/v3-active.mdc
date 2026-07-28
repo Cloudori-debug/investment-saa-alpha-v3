@@ -1,0 +1,15 @@
+﻿---
+description: SAA 알파 v3 — 활성 루트·불변
+alwaysApply: true
+---
+
+# SAA 알파 v3
+
+- 코드 루트: `C:\Cursor\investment-saa-alpha-v3` only
+- 공식 채팅: **SAA 알파 투자**
+- 작업 전 `docs/V3_CHARTER.md` + `docs/V3_AGENT_START.md` (archive 핸드오프 기본 금지)
+- 문서 정책: `docs/V3_HYGIENE.md`
+- v1/v2에 기능 추가 금지
+- `proposal_mode: pure_qvm` · `target_portfolio.csv` 사람만 · FASTJUSIK 금지
+- 홈「월 리밸」= Review-only (자동 주문·target 자동기입 없음)
+- 사이드바「포트폴리오」· 보유 선택은 상시 표시

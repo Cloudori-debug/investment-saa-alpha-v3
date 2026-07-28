@@ -10,7 +10,8 @@
 
 - **공식 채팅 제목:** `SAA 알파 투자`
 - 작업은 그 채팅 하나에서 이어간다.
-- 새 채팅 시: [`docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md`](docs/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md) + [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
+- 새 채팅 시: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md) + [`docs/V3_AGENT_START.md`](docs/V3_AGENT_START.md)
+- 문서 고스트 방지: [`docs/V3_HYGIENE.md`](docs/V3_HYGIENE.md) — `docs/archive/` 는 명시 요청 시에만
 
 ## 불변 요약
 

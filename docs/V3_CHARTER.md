@@ -2,7 +2,7 @@
 
 > **코드 루트:** `C:\Cursor\investment-saa-alpha-v3`  
 > **베이스:** v2 `investment-saa-alpha-v2` (2026-07-28 스냅샷 + 월 리밸 홈 보드)  
-> **작성일:** 2026-07-28  
+> **작성일:** 2026-07-28 · **Hygiene:** 2026-07-29  
 > **채팅:** 공식 제목 `SAA 알파 투자` — **이후 기능 작업은 v3에서만.**
 
 ---
@@ -35,7 +35,8 @@ v1/v2에 신규 기능을 넣지 말 것.
 1. **홈「월 리밸 · 오늘 할 일」** — 밴드 / 익절·게이트 / CRISIS 예외 / SCALE_IN 제외 (Review-only)
 2. 정량 freeze **기본 off** (`proposal_freeze_policy.json`)
 3. `positions.csv` git 비추적 · 고스트 보유 방지
-4. **모멘텀 Review-only 집행 판정** — [`MOMENTUM_REVIEW_ONLY_SPEC.md`](MOMENTUM_REVIEW_ONLY_SPEC.md) (2026-07-28)
+4. **모멘텀 Review-only 집행 판정** — [`MOMENTUM_REVIEW_ONLY_SPEC.md`](MOMENTUM_REVIEW_ONLY_SPEC.md)
+5. **Hygiene** — 문서 archive · 짧은 에이전트 핸드오프 · journal 축약 ([`V3_HYGIENE.md`](V3_HYGIENE.md))
 
 ---
 
@@ -49,6 +50,7 @@ v1/v2에 신규 기능을 넣지 말 것.
 
 ## 시작
 
-1. 이 파일 + [`CHAT_HANDOFF_LEGACY_MULTI_ASSET.md`](CHAT_HANDOFF_LEGACY_MULTI_ASSET.md)
-2. UI: `Start-Ops-Assistant.vbs` 또는 `run_ui_direct.bat`
+1. 이 파일 + [`V3_AGENT_START.md`](V3_AGENT_START.md)  
+   (레거시 장문 핸드오프는 archive — 기본 금지)
+2. UI: `Start-Ops-Assistant.vbs` 또는 `run_ui_direct.bat` / `투자나침반.bat`
 3. 작업 cwd = **이 폴더만**

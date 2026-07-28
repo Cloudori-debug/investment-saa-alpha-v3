@@ -1,7 +1,8 @@
 # archive/
 
 Isolated (not deleted) packages from cleanup phases.
-See `docs/CODEBASE_CLEANUP_PHASE_0_1_2_SPEC.md`.
+Spec (archived): `docs/archive/20260729_hygiene/CODEBASE_CLEANUP_PHASE_0_1_2_SPEC.md`.
+Docs hygiene (2026-07-29): `docs/archive/20260729_hygiene/` — see `docs/V3_HYGIENE.md`.
 
 - `20260715_alpha_v0_2/` — former `src/alpha_v0_2`
 - `20260715_value_list/` — former `src/value_list` (hakedaka); re-enable via `ENABLE_HAKEDAKA=1` after restoring under `src/value_list`

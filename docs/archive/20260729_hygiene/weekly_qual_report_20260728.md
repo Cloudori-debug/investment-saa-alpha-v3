@@ -1,9 +1,9 @@
 # 주간 통합 정성 AI 요청서
 
-- report_id: `WQR-20260728-093600`
+- report_id: `WQR-20260728-234925`
 - as_of: `2026-07-28`
-- generated_at: `2026-07-28T09:36:00`
-- input_snapshot_hash: `d1850413c2b530d7`
+- generated_at: `2026-07-28T23:49:25`
+- input_snapshot_hash: `36a75a3ce86ca36f`
 
 > 사실 조사 보조용입니다. 최종 점수·근거(rationale)는 출처 원문을 확인한 뒤 반드시 본인이 직접 작성하세요. AI 서술의 복사·붙여넣기는 채점 목적에 어긋납니다
 
@@ -748,8 +748,8 @@ shortlist 30종 CECS 3축 요약. 종목 블록은 `## [TICKER] 이름` 형식�
 - 출처:
   - 
 
-### DEEP [138930] BNK금융지주
-- 섹터: financial
+### DEEP [271560] 오리온
+- 섹터: consumer_staples
 - 공시/지배구조: _____
 - 자사주·배당·환원: _____
 - 연기금·수급: _____
@@ -758,8 +758,8 @@ shortlist 30종 CECS 3축 요약. 종목 블록은 `## [TICKER] 이름` 형식�
 - 출처:
   - 
 
-### DEEP [271560] 오리온
-- 섹터: consumer_staples
+### DEEP [005830] DB손해보험
+- 섹터: financial
 - 공시/지배구조: _____
 - 자사주·배당·환원: _____
 - 연기금·수급: _____
@@ -856,19 +856,54 @@ true는 1차 출처(관보·MSCI 공식·금융위/KASB 고시) URL이 있을 �
 
 ## E_TARGET_VALUATION
 
-제안 6종 목표가/PBR. target_portfolio 자동 변경 금지.
+제안 종목 목표가/PBR. **`kr_alpha_exit_targets.yaml`은 요청서 생성만으로 지워지지 않습니다.**
+이미 승인된 종목은 아래 「이미 승인」에 **참고 숫자만** 적습니다 — AI가 덮어 쓰지 마세요.
+채울 대상은 「대기(채움)」공란만입니다. 승인 시 YAML에 반영되는 것도 대기 종목 위주입니다.
 `pbr_max`는 배수 숫자만(예: `0.75`), `target_price`는 원 단위 숫자만(예: `48000`).
 둘 중 최소 1개는 숫자. `배`/`원`/쉼표/범위(~)/증권사 주석은 근거 칸에만.
-**`펀더멘털 사유`·`근거`·출처 URL≥1 필수.** `_____`면 해당 종목 파싱 실패.
-A만 채우고 E를 비우면 결재함에서 목표가 영역이 empty로 뜹니다 (E-only 보충 요청서 또는 `WEEKLY_QUAL_CDE_PROMPT` 사용).
+**대기 종목:** `펀더멘털 사유`·`근거`·출처 URL≥1 필수. `_____`면 해당 종목 파싱 실패.
 
-### TARGET [006040] 동원산업
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
+### 이미 승인 (참고 · 채우지 말 것 · YAML 유지)
+
+아래는 `kr_alpha_exit_targets.yaml`에 있는 값입니다. 재조사가 필요할 때만 운용자가 별도 보충/수정하세요. **이 블록을 AI가 다시 채워 업로드·승인하면 기존 PBR/목표가를 덮어쓸 수 있습니다.**
+
+### TARGET_REF [006040] 동원산업
+- pbr_max(승인): 0.65
+- target_price(승인): 60000.0
+- approved_as_of: 2026-07-25
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### TARGET_REF [271560] 오리온
+- pbr_max(승인): 1.6
+- target_price(승인): 200000.0
+- approved_as_of: 2026-07-25
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### TARGET_REF [005830] DB손해보험
+- pbr_max(승인): 1.2
+- target_price(승인): 210000.0
+- approved_as_of: 2026-07-28
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### TARGET_REF [005440] 현대지에프홀딩스
+- pbr_max(승인): 0.58
+- target_price(승인): 20000.0
+- approved_as_of: 2026-07-25
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### TARGET_REF [021240] 코웨이
+- pbr_max(승인): 2.27
+- target_price(승인): 69000.0
+- approved_as_of: 2026-07-25
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### TARGET_REF [000660] SK하이닉스
+- pbr_max(승인): —
+- target_price(승인): 2900000.0
+- approved_as_of: 2026-07-28
+- 상태: already_approved — **빈칸 채우기 금지**
+
+### 대기 (채움 대상)
 
 ### TARGET [024110] 기업은행
 - pbr_max: _____
@@ -878,47 +913,7 @@ A만 채우고 E를 비우면 결재함에서 목표가 영역이 empty로 뜹�
 - 출처:
   - 
 
-### TARGET [138930] BNK금융지주
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
-
-### TARGET [271560] 오리온
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
-
-### TARGET [005440] 현대지에프홀딩스
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
-
-### TARGET [021240] 코웨이
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
-
 ### TARGET [015760] 한국전력
-- pbr_max: _____
-- target_price: _____
-- 펀더멘털 사유: _____
-- 근거: _____
-- 출처:
-  - 
-
-### TARGET [000660] SK하이닉스
 - pbr_max: _____
 - target_price: _____
 - 펀더멘털 사유: _____
@@ -948,13 +943,13 @@ event_id 허용값: `earnings_surprise` | `rating_downgrade` | `target_gap_narro
 - 출처:
   - 
 
-### SIGNAL [138930] BNK금융지주
+### SIGNAL [271560] 오리온
 - event_id: _____
 - note: _____
 - 출처:
   - 
 
-### SIGNAL [271560] 오리온
+### SIGNAL [005830] DB손해보험
 - event_id: _____
 - note: _____
 - 출처:
