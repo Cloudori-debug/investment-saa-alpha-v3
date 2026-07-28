@@ -40,7 +40,7 @@ def test_primary_pages_sellable_ia_order() -> None:
     assert "숫자" in PAGE_HINTS["결재함"]
     assert PAGE_DISPLAY_NAMES["홈"] == "오늘"
     assert PAGE_DISPLAY_NAMES["결재함"] == "확인"
-    assert PAGE_DISPLAY_NAMES["포트폴리오"] == "보유"
+    assert PAGE_DISPLAY_NAMES["포트폴리오"] == "포트폴리오"
     assert page_display_name("결재함", badge=3) == "확인 · 3"
     assert NAV_MAIN_PAGES == ("홈", "결재함", "포트폴리오")
     assert "저널" in NAV_MORE_PAGES

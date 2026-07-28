@@ -547,7 +547,7 @@ def render_home(ctx: DashboardContext) -> None:
     _render_monthly_rebal(ctx)
 
     with st.expander("접힌 운용 · 레짐 · 익절 · 자동 준비 · 트랜치", expanded=False):
-        st.caption("첫 화면은 「오늘 → 후보·모멘텀 → 월 리밸」. 교체가이드는 보유 메뉴.")
+        st.caption("첫 화면은 「오늘 → 후보·모멘텀 → 월 리밸」. 교체가이드는 포트폴리오 메뉴.")
         _render_system_judgment(ctx)
         _render_holdings_cues(ctx)
         st.markdown("#### 자동 준비")

@@ -33,8 +33,8 @@ PRIMARY_PAGES = (
 # One-line hints under sidebar main menu (product UI).
 PAGE_HINTS: dict[str, str] = {
     PAGE_HOME: "할 일 1건 · 후보",
-    PAGE_APPROVAL: "숫자 · 이번 주 확인",
-    PAGE_PORTFOLIO: "실보유 입력 · 리뷰",
+    PAGE_APPROVAL: "점수·주간 확인",
+    PAGE_PORTFOLIO: "실보유 · 종목 안내",
     PAGE_JOURNAL: "판정·승인 기록",
     PAGE_REGIME: "시장 참고",
     PAGE_SETTINGS: "API · 이식·백업",
@@ -44,7 +44,7 @@ PAGE_HINTS: dict[str, str] = {
 PAGE_DISPLAY_NAMES: dict[str, str] = {
     PAGE_HOME: "오늘",
     PAGE_APPROVAL: "확인",
-    PAGE_PORTFOLIO: "보유",
+    PAGE_PORTFOLIO: "포트폴리오",
     PAGE_JOURNAL: "저널",
     PAGE_REGIME: "레짐",
     PAGE_SETTINGS: "설정",
