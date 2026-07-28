@@ -247,6 +247,74 @@ def _run_next_action_if_flagged(ctx: DashboardContext, overview: HomeOverview) -
     navigate(action.page, focus=action.focus, prefill=action.prefill)
 
 
+def _render_momentum_holding_monitor(ctx: DashboardContext, mom_board=None) -> None:
+    """MHM: objective UP/DOWN bearing for momentum holdings (Review-only)."""
+    import pandas as pd
+
+    from alpha_system.ui.services.momentum_holding_monitor import (
+        BEARING_KO,
+        build_momentum_holding_board,
+    )
+
+    with st.container(border=True):
+        h1, h2 = st.columns([4, 1])
+        with h1:
+            st.subheader("모멘텀 보유 모니터")
+        with h2:
+            all_ops = st.toggle(
+                "전체 실보유",
+                key="mhm_all_ops",
+                value=False,
+                help="끄면 momentum 역할·SCALE_IN만",
+            )
+        st.caption(
+            "상방=UP∧교차≥40 · 하방=DOWN∨교차<40 · "
+            "EXIT_REVIEW=약세 연속 N일 검토(자동매도 아님) · "
+            "목표가 remaining_upside와 별개"
+        )
+        board = build_momentum_holding_board(
+            ctx,
+            mom_board=mom_board,
+            include_all_ops=all_ops,
+            persist_log=True,
+        )
+        st.caption(board.summary)
+        if not board.rows:
+            st.info(
+                "대상 없음. SCALE_IN·momentum 역할 실보유가 있으면 여기에 표시됩니다. "
+                "또는 「전체 실보유」를 켜세요."
+            )
+            return
+        rows = []
+        for r in board.rows:
+            rows.append(
+                {
+                    "종목": f"{r.name} ({r.ticker})",
+                    "상방": "Y" if r.upside else "N",
+                    "추세": {"UP": "상승", "DOWN": "하락", "—": "—"}.get(
+                        r.ts_sign, r.ts_sign
+                    ),
+                    "교차": f"{r.xs_pct:.0f}" if r.xs_pct is not None else "—",
+                    "밴드": r.xs_bucket,
+                    "변동": "높음" if r.vol_flag else "정상",
+                    "등급": r.grade_ko,
+                    "바늘": r.bearing_ko,
+                    "연속약세": r.weak_streak,
+                    "전일대비": r.vs_prev,
+                    "출처": r.source,
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        with st.expander("바늘 의미", expanded=False):
+            for k, v in BEARING_KO.items():
+                st.markdown(f"- **{k}** — {v}")
+            st.caption(
+                f"가격 as_of={board.price_as_of} · "
+                f"EXIT_REVIEW 임계={board.exit_streak_n}거래일 로그 · "
+                "data/local/momentum_holding_log.jsonl"
+            )
+
+
 def _render_proposal_momentum_merged(ctx: DashboardContext, overview: HomeOverview, mom_board=None) -> None:
     """A안: 후보(정량순위) + 모멘텀 참고를 한 표로. 실행 버튼 없음."""
     import pandas as pd
@@ -543,6 +611,7 @@ def render_home(ctx: DashboardContext) -> None:
 
     _render_today_line(ctx, overview, len(mom_board.items))
     _run_next_action_if_flagged(ctx, overview)
+    _render_momentum_holding_monitor(ctx, mom_board=mom_board)
     _render_proposal_momentum_merged(ctx, overview, mom_board=mom_board)
     _render_monthly_rebal(ctx)
 

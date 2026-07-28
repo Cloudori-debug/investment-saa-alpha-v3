@@ -49,10 +49,11 @@
 
 ---
 
-## 3. 제안 측정 시스템 (Review-only · 스펙 초안)
+## 3. 측정 시스템 (Review-only) — **구현 2026-07-29**
 
 이름: **Momentum Holding Monitor (MHM)**  
-대상: `role`/`tier`가 momentum_satellite 이거나 운영자가 모멘텀 태그한 **실보유** (+ SCALE_IN 중 종목)
+코드: `alpha_system/ui/services/momentum_holding_monitor.py`  
+UI: 홈「모멘텀 보유 모니터」
 
 ### 3.1 매일(또는 정량 갱신 시) 기록하는 객관 필드
 
@@ -86,10 +87,11 @@ N일 연속은 “노이즈 한 방”을 줄이려는 문헌·실무 공통 감
 
 가격 목표가 `remaining_upside`와 **이름을 섞지 말 것** (익절 여력 ≠ 모멘텀 상방).
 
-### 3.4 UI
-- 포트폴리오 또는 홈: **모멘텀 보유 모니터** 표 (매일 갱신 값 + 어제 대비 화살표)
-- `data/local/momentum_holding_log.jsonl` 에 일자별 append (gitignore)
-- 저널: 사람이 EXIT_REVIEW 확인 시에만 기록
+### 3.4 UI · 로그 (**적용**)
+- 홈: **모멘텀 보유 모니터** 표 (상방 Y/N · 바늘 · 전일대비 · 연속약세)
+- 토글「전체 실보유」— 기본은 momentum 역할·SCALE_IN만
+- `data/local/momentum_holding_log.jsonl` 일자별 기록 (gitignore `data/local/`)
+- 자동매도·저널 강제 기록 없음
 
 ### 3.5 비범위
 - Core 순위에 `score_m` 재혼합  
