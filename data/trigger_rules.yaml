@@ -1,0 +1,112 @@
+market_triggers:
+  kospi:
+    pullback_buy_1: -5
+    pullback_buy_2: -10
+    pullback_buy_3: -15
+    crisis_zone: -20
+    recovery_confirm_days: 3
+
+  sp500:
+    pullback_buy_1: -5
+    pullback_buy_2: -10
+    pullback_buy_3: -15
+
+  vix:
+    normal_below: 20
+    caution_above: 20
+    risk_off_above: 25
+    panic_above: 30
+
+  usdkrw:
+    rapid_move_pct: 2.5
+    risk_level: 1550
+    stable_level: 1500
+
+  korea_10y:
+    significant_bp_move: 20
+
+  oil_shock_above: 90
+
+events:
+  fomc_dates:
+    - "2026-06-12"
+    - "2026-07-31"
+    - "2026-09-17"
+  fomc_pass_window_days: 14
+
+  foreign_flow:
+    heavy_selling_days: 3
+    recovery_buying_days: 3
+
+asset_triggers:
+  domestic_beta:
+    buy_when:
+      - kospi_pullback_triggered
+      - vix_below_25
+      - usdkrw_not_spiking
+    sell_when:
+      - target_overweight_5ppt
+      - vix_above_30
+
+  global_beta:
+    buy_when:
+      - sp500_pullback_triggered
+      - fomc_event_passed
+      - vix_below_25
+    sell_when:
+      - target_overweight_5ppt
+      - vix_above_30
+
+  sk_hynix:
+    ticker: "000660"
+    buy_when:
+      - stock_pullback_7pct
+      - semiconductor_thesis_intact
+      - total_weight_below_target
+    max_total_weight: 4
+    target_weight: 2
+
+  gold:
+    buy_when:
+      - oil_shock
+      - geopolitical_risk
+      - real_yield_falling
+    trim_when:
+      - target_overweight_3ppt
+      - geopolitical_risk_eases
+
+  dollar:
+    buy_when:
+      - usdkrw_stabilizing_after_drop
+      - fx_hedge_needed
+    trim_when:
+      - usdkrw_spike_and_overweight
+
+position_triggers:
+  trim_if_target_overweight_ppt: 5
+  trim_step_fraction: 0.333
+  trim_max_single_step_ppt: 2.0
+  stop_buy_if_above_target: true
+  replace_if_not_in_target: true
+
+# KOSPI 조정 시 분할매수 검토 알림 (자동매수 아님 — manual_review_only)
+kospi_drawdown_triggers:
+  require:
+    core_price_gate: pass
+    data_gate_not: RED
+    health_gate_not: RED
+    dry_run_days_min: 10
+    manual_regime_block: [CRISIS, RED]
+  levels:
+    - name: KOSPI_PULLBACK_5
+      threshold_pct: -5
+      action: REVIEW_ETF_BUY_LADDER
+      execution: manual_review_only
+    - name: KOSPI_PULLBACK_10
+      threshold_pct: -10
+      action: REVIEW_PARTIAL_RISK_ON
+      execution: manual_review_only
+    - name: KOSPI_PULLBACK_15
+      threshold_pct: -15
+      action: REVIEW_AGGRESSIVE_REBALANCE
+      execution: manual_review_only

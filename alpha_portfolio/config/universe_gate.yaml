@@ -1,0 +1,24 @@
+# Gate — 01_데이터_스키마.md, 02_스코어링_설계.md 와 동기화
+gate:
+  market_cap_min: 300000000000
+  avg_trading_value_20d_min: 1000000000
+  debt_ratio_max: 200
+  consecutive_loss_years: 2
+
+benchmark:
+  primary: KOSPI200
+  secondary: KOSPI
+
+satellite:
+  sleeve_max_pct: 25
+  single_name_max_pct: 5
+  single_name_exception_max_pct: 8
+
+park:
+  max_months: 3
+  review_days: [30, 60, 90]
+
+data:
+  p0_auto: [kospi_universe, price_snapshot]
+  p0_manual: [fundamentals, shareholder]
+  require_verified: true

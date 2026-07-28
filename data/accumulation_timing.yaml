@@ -1,0 +1,83 @@
+# Phase AR-2 — Asset-Specific Accumulation Timing (shadow only)
+schema_version: accumulation_timing.v1
+status: shadow_timing_only
+execution_authority: none
+affects_target_portfolio: false
+affects_trade_actions: false
+affects_execution_scope: false
+affects_final_execution: false
+
+disclaimer: >
+  AR-2 timing_score is shadow-only. It does not create buy permission.
+  Execution remains controlled by gate, dry-run, execution_scope, AR-1 throttle,
+  and final_execution_decision.
+
+timing_status_thresholds:
+  ready_min: 70
+  watch_min: 50
+  wait_min: 30
+
+representative_assets:
+  global_beta:
+    - "360750"
+    - "195930"
+    - "238720"
+    - "195980"
+  duration_bond:
+    - "148070"
+    - "308620"
+  hedge_alt:
+    - "411060"
+  income_alt:
+    - "458730"
+    - "161510"
+    - "357870"
+    - "352560"
+  cash_short_bond:
+    - "157450"
+    - "459580"
+    - "CASH"
+
+recommended_primary:
+  global_beta: "360750"
+  duration_bond: "148070"
+  hedge_alt: "411060"
+  income_alt: "458730"
+  cash_short_bond: "157450"
+  kr_alpha: null
+
+# Maps compass asset_group → timing sleeve for scoring
+timing_sleeves:
+  global_beta: global_beta
+  hedge_alt: hedge_alt
+  income_alt: income_alt
+  cash_short_bond: cash_short_bond
+  kr_alpha: kr_alpha
+  domestic_beta: global_beta
+  fx_dollar: global_beta
+
+score_groups:
+  - global_beta
+  - duration_bond
+  - hedge_alt
+  - income_alt
+  - cash_short_bond
+  - kr_alpha
+
+stale_field_map:
+  global_beta: [sp500, vix, usdkrw]
+  duration_bond: [korea_10y]
+  duration_kr: [korea_10y]
+  duration_us: [sp500, usdkrw]
+  hedge_alt: [gold, usdkrw, vix]
+  income_alt: [korea_10y, sp500]
+  cash_short_bond: [korea_10y]
+
+missing_proxy_fields:
+  duration_bond: [us_10y_yield]
+  duration_us: [us_10y_yield]
+  income_alt: [reit_price_history]
+
+readiness_notes:
+  watch_not_buy: "Timing Watch ≠ Buy. High score does not authorize purchase."
+  execution_blocked: "Execution blocked by gate, dry-run, scope, or throttle unless executable=true."

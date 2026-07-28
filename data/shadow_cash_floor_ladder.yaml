@@ -1,0 +1,40 @@
+# Shadow deployment ladder — superseded for absolute-return mode by absolute_return_policy.yaml
+# Kept for backward-compatible report fields; floor 55% legacy rule retired.
+status: shadow_reference_only
+execution_authority: none
+superseded_by: data/absolute_return_policy.yaml
+absolute_return_mode: true
+
+cash_floor_policy:
+  floor_pct: 28.5
+  note: >
+    Matches core_absolute_return cash_short_bond group target (~25.5% bond ETFs + 3% cash buffer).
+    Deploy excess cash above buffer into Core benchmark underweights.
+
+buy_ladder:
+  buy_1:
+    trigger: "Core ETF underweight >= 1.5%p + gate GREEN + dry-run 10/10"
+    preferred_assets:
+      - "360750"
+      - "195930"
+      - "148070"
+    max_from_cash_pct: 3.0
+    post_cash_floor_check_required: true
+
+  buy_2:
+    trigger: "Core underweight persists or KOSPI -10%"
+    funding_source:
+      - kr_alpha_trim
+      - new_cash
+
+  buy_3:
+    trigger: "KOSPI -15% or global sleeve underweight >= 5%p"
+    funding_source:
+      - kr_alpha_trim
+      - new_cash
+
+constraints:
+  kr_alpha_max_pct: 25.0
+  cash_buffer_max_pct: 3.0
+  hakedaka_buy_allowed: false
+  catalyst_watchlist_buy_allowed: false

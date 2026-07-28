@@ -1,0 +1,50 @@
+# Duration sleeve shadow 진단 — v1.0.2 asset_group(7칸) 변경 없음
+# cash_short_bond 내부를 개념 슬리브로만 분해 표시
+
+schema_version: "1.0"
+
+# v1.1b shadow SAA 참고치 (실행 target 아님)
+shadow_targets_pct:
+  cash_short: {min: 15, target: 17.5, max: 20}
+  kr_duration_bond: {min: 10, target: 12.5, max: 15}
+  global_duration_bond: {min: 5, target: 7.5, max: 10}
+
+# look_through asset_class → shadow sleeve
+sleeve_by_asset_class:
+  cash: cash_short
+  short_bond: cash_short
+  cash_short: cash_short
+  duration_bond: kr_duration_bond
+  kr_gov_bond: kr_duration_bond
+  global_duration_bond: global_duration_bond
+  us_treasury: global_duration_bond
+
+# style 힌트 (positions/target role) — asset_class 없을 때
+sleeve_by_style_keyword:
+  cash_short:
+    - cash
+    - cash_like
+    - short_duration
+    - short_bond
+    - mid_short
+  kr_duration_bond:
+    - duration
+    - gov_bond
+    - kr_gov
+    - treasury_kr
+  global_duration_bond:
+    - global_bond
+    - us_treasury
+    - global_duration
+
+# 종목별 override (look_through보다 우선)
+sleeve_by_ticker:
+  CASH: cash_short
+  "157450": cash_short
+  "459580": cash_short
+  "214980": cash_short
+  "148070": kr_duration_bond
+  "114460": kr_duration_bond
+  "292560": kr_duration_bond
+  "308620": kr_duration_bond
+  "453850": global_duration_bond

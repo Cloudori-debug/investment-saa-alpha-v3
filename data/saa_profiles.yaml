@@ -1,0 +1,152 @@
+# SAA(Strategic Asset Allocation) — 단일 프로필 운용
+# 합계 100%, TAA(taa_tilts)는 레짐별 ± 조정
+
+default_profile: core_absolute_return
+
+profile_aliases:
+  balanced: core_absolute_return
+  conservative: core_absolute_return
+  growth: core_absolute_return
+  qvm_sr: core_absolute_return
+  capital_preservation: core_absolute_return
+  active_growth: core_absolute_return
+  defensive_balanced: defensive_balanced
+
+profiles:
+  core_absolute_return:
+    description: "Core 14 ETF 75% + kr_alpha 25% — absolute return vs Core SAA benchmark"
+    groups:
+      cash_short_bond: 28.5
+      global_beta: 25.5
+      income_alt: 14.5
+      hedge_alt: 7.25
+      domestic_beta: 0
+      fx_dollar: 0
+      kr_alpha: 24.25
+    group_bounds:
+      cash_short_bond: {min: 18, max: 40}
+      global_beta: {min: 18, max: 35}
+      income_alt: {min: 8, max: 22}
+      hedge_alt: {min: 4, max: 12}
+      domestic_beta: {min: 0, max: 0}
+      fx_dollar: {min: 0, max: 3}
+      kr_alpha: {min: 15, max: 25}
+    locked_tilt_groups:
+      - domestic_beta
+      - fx_dollar
+
+  defensive_balanced:
+    description: "후회 방지형 — 현금·채권 40% + kr_alpha 31%"
+    groups:
+      cash_short_bond: 40
+      domestic_beta: 10
+      global_beta: 10
+      fx_dollar: 3
+      hedge_alt: 4
+      income_alt: 2
+      kr_alpha: 31
+    group_bounds:
+      cash_short_bond: {min: 25, max: 55}
+      domestic_beta: {min: 5, max: 15}
+      global_beta: {min: 5, max: 15}
+      fx_dollar: {min: 0, max: 6}
+      hedge_alt: {min: 2, max: 8}
+      income_alt: {min: 0, max: 5}
+      kr_alpha: {min: 20, max: 35}
+
+taa_tilts:
+  RISK_ON:
+    cash_short_bond: -8
+    domestic_beta: +3
+    global_beta: +2
+    fx_dollar: -1
+    hedge_alt: -1
+    income_alt: 0
+    kr_alpha: +5
+
+  YELLOW_STABLE:
+    cash_short_bond: 0
+    domestic_beta: 0
+    global_beta: 0
+    fx_dollar: 0
+    hedge_alt: 0
+    income_alt: 0
+    kr_alpha: 0
+
+  CAUTION:
+    cash_short_bond: +4
+    domestic_beta: -1
+    global_beta: -1
+    fx_dollar: +1
+    hedge_alt: +1
+    income_alt: +1
+    kr_alpha: -5
+
+  RISK_OFF:
+    cash_short_bond: +10
+    domestic_beta: -3
+    global_beta: -2
+    fx_dollar: +2
+    hedge_alt: +3
+    income_alt: +1
+    kr_alpha: -11
+
+  CRISIS:
+    cash_short_bond: +15
+    domestic_beta: -5
+    global_beta: -4
+    fx_dollar: +3
+    hedge_alt: +4
+    income_alt: +2
+    kr_alpha: -15
+
+phase_tilts:
+  MARKET_RECOVERY:
+    domestic_beta: +2
+    global_beta: +1
+    kr_alpha: +1
+    cash_short_bond: -4
+
+  MARKET_EXPANSION:
+    kr_alpha: +2
+    domestic_beta: +1
+    cash_short_bond: -3
+
+  MARKET_SLOWDOWN:
+    cash_short_bond: +3
+    hedge_alt: +1
+    kr_alpha: -2
+    domestic_beta: -1
+
+  MARKET_CONTRACTION:
+    cash_short_bond: +5
+    hedge_alt: +2
+    fx_dollar: +1
+    kr_alpha: -4
+    domestic_beta: -2
+    global_beta: -2
+
+  RECOVERY:
+    domestic_beta: +2
+    global_beta: +1
+    kr_alpha: +1
+    cash_short_bond: -4
+
+  EXPANSION:
+    kr_alpha: +2
+    domestic_beta: +1
+    cash_short_bond: -3
+
+  SLOWDOWN:
+    cash_short_bond: +3
+    hedge_alt: +1
+    kr_alpha: -2
+    domestic_beta: -1
+
+  CONTRACTION:
+    cash_short_bond: +5
+    hedge_alt: +2
+    fx_dollar: +1
+    kr_alpha: -4
+    domestic_beta: -2
+    global_beta: -2

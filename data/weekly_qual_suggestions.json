@@ -1,0 +1,341 @@
+{
+  "report_id": "WQR-E-20260728-092123",
+  "report_name": "weekly_qual_targets_supplement_20260728.md",
+  "as_of": "2026-07-28",
+  "input_snapshot_hash": "778390ba3824bd64",
+  "imported_at": "2026-07-28T09:36:38",
+  "domain_status": {
+    "cecs": "empty",
+    "t2": "approved",
+    "thesis": "approved",
+    "targets": "ai_suggested"
+  },
+  "domain_failures": {
+    "cecs": [],
+    "t2": [],
+    "thesis": [],
+    "targets": []
+  },
+  "cecs": [],
+  "deep_dives": [
+    {
+      "ticker": "000660",
+      "name": "SK하이닉스",
+      "disclosure": "확인 불가; 검색 키워드: \"SK하이닉스 지배구조 이사회 사외이사 2026\"",
+      "buyback_dividend": "2Q26 컨센서스(영업이익 약 62.6조원)를 상회하는 어닝서프라이즈 다수 전망(다올투자 66.4조원 등), 영업이익률 76%대로 사상 최고 전망. 신용등급 AA+(국내 3대 신평사, 2026년 1분기 중 상향), 최고등급 AAA 근접 평가. 구체적 배당·자사주 소각 계획 자체는 확인 안 됨",
+      "pension": "국민연금 2대주주(지분율 출처마다 7.5~8.1%로 상이), 지분평가액이 9.6조원→125.2조원으로 급증(주가 상승 효과 포함, 순매수 여부와는 별개). 국민연금이 5% 이상 보유한 상장사 중 삼성전자+SK하이닉스 비중이 전체의 55.5% 차지. 나스닥 ADR 상장 이슈로 외국인 수급 변수 존재",
+      "investment_purpose": "확인 불가; 검색 키워드: \"SK하이닉스 국민연금 대량보유보고서 투자목적\"",
+      "risks": "증권사간 목표주가 편차 극심(140만원~420만원, 3배 차이) — AI 투자 지속성·메모리 업황 해석 차이가 원인. MSCI DM 미편입으로 패시브 자금 유입 지연 가능",
+      "sources": [
+        "https://www.investchosun.com/site/data/html_dir/2026/07/09/2026070980118.html",
+        "https://biz.heraldcorp.com/article/10734039",
+        "https://www.fnnews.com/news/202607120938553400"
+      ]
+    },
+    {
+      "ticker": "086790",
+      "name": "하나금융지주",
+      "disclosure": "확인 불가; 검색 키워드: \"하나금융지주 지배구조 이사회 2026\"",
+      "buyback_dividend": "분기 최대실적 경신 지속, \"주주환원 확대 가능성\" 부각에 증권가 목표가 연쇄 상향(iM 15만원→키움 17.5만원→한화투자 16.8만원)",
+      "pension": "국민연금 지분 8.69%(2026.4.15)→8.80%(2026.6.4), 그러나 보유주식수는 24,195,963주→24,142,429주로 오히려 53,534주 감소 — 자사주 소각에 따른 분모효과로 순매수로 보기 어려움. 블랙록이 2026.3 기준 지분율 7.1%로 2대주주 부상",
+      "investment_purpose": "확인 불가; 검색 키워드: \"하나금융지주 국민연금 대량보유보고서 투자목적\"",
+      "risks": "외국계(블랙록) 지분 확대에 따른 지배구조 변수, 원화 약세(1,541원)에 따른 자본비율 압박",
+      "sources": [
+        "https://www.press9.kr/news/articleView.html?idxno=71788",
+        "https://m.ddaily.co.kr/page/view/2026060416420224509"
+      ]
+    },
+    {
+      "ticker": "006040",
+      "name": "동원산업",
+      "disclosure": "최대주주 김남정 동원그룹 회장 외 특수관계인 18인이 87.85% 보유, 외국인 지분 1.37%로 유통물량 약 10% 내외",
+      "buyback_dividend": "2025.8 발행주식 7%(350만주) 소각, 2026.5 잔여 자사주(1,046만770주) 전량 소각, 배당 2019년 400원→2024년 1,100원으로 인상",
+      "pension": "확인 불가(유통물량 자체가 작아 국민연금 대량보유 여부 불투명); 검색 키워드: \"동원산업 국민연금 대량보유 지분율\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"동원산업 국민연금 대량보유보고서 투자목적\"",
+      "risks": "HMM 인수 우려가 지속적으로 주가 발목(흥국·하나증권 등 목표가 연쇄 하향: 7.2만원→6만원, 6.7만원→4.8만원), 동원F&B 원가 부담",
+      "sources": [
+        "https://www.businesspost.co.kr/BP?command=article_view&num=442633",
+        "https://marketin.edaily.co.kr/News/ReadE?newsId=03250486645448264"
+      ]
+    },
+    {
+      "ticker": "105560",
+      "name": "KB금융",
+      "disclosure": "2026년 6월 회장 선임 이슈 진행 중, 국민연금이 보유목적을 \"단순투자\"로 하향 변경(회장 선임 이슈와 무관하다고 해명)",
+      "buyback_dividend": "2Q26 순이익 1.87조원 전망, 환율 1,541원 압박 속에서도 주주환원율 54% 사수, 자사주 소각 지속",
+      "pension": "지분율 8.94%→9.33% 상승, 다만 이는 KB금융 자사주 소각(발행주식 감소)에 따른 분모효과로 설명되어 실제 순매수는 아닌 것으로 판단",
+      "investment_purpose": "2026.6 \"단순투자\"로 변경 확인(경영참여적 목적 아님)",
+      "risks": "회장 선임을 둘러싼 지배구조 불확실성, 단기 변동성 확대 코멘트(유안타증권)",
+      "sources": [
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=361837",
+        "https://v.daum.net/v/7wIoROOcXP"
+      ]
+    },
+    {
+      "ticker": "271560",
+      "name": "오리온",
+      "disclosure": "오리온홀딩스-오리온 지주 구조, 2026.6 양사 자사주 전량소각(총 675억원)",
+      "buyback_dividend": "창사 이래 첫 중간배당 실시(2026.7), 2024~2026년 배당성향 오리온 26%→36%, 오리온홀딩스 30%→55%로 상향",
+      "pension": "확인 불가; 검색 키워드: \"오리온 국민연금 지분율 대량보유\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"오리온 국민연금 대량보유보고서 투자목적\"",
+      "risks": "증권사 간 목표가 편차 존재(15만~20만원, 최근 6개월 컨센서스 평균 16.7만원), 해외(중국·베트남 등) 판매 의존도",
+      "sources": [
+        "https://www.newspim.com/news/view/20260616000917",
+        "https://www.insight.co.kr/news/561742"
+      ]
+    },
+    {
+      "ticker": "005440",
+      "name": "현대지에프홀딩스",
+      "disclosure": "장호진 사장 체제, 우량 자회사 지배력 강화를 통한 배당수입 확대 전략. 흥국증권은 \"거버넌스 선진화, 재평가로 귀결\" 논리로 목표가 제시",
+      "buyback_dividend": "2026년 상반기 그룹 전체 약 3,500억원 자사주 소각 완료 예정, 내년부터 반기배당(100억원+) 신설, 2027년까지 연간 배당 500억원 확대 목표, 지분투자수익률 4%+ 목표",
+      "pension": "확인 불가(수치 상충으로 검증 필요, 13.49%/8.03% 두 수치가 혼재); 검색 키워드: \"현대지에프홀딩스 국민연금 지분율 대량보유 2026\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"현대지에프홀딩스 국민연금 대량보유보고서 투자목적\"",
+      "risks": "2024년 인적분할을 통한 지주사 전환이 국민연금 반대로 부결된 전례(현대백화점 관련) — 지배구조 개편 시도의 불확실성",
+      "sources": [
+        "https://www.mt.co.kr/living/2026/03/31/2026033113461239359",
+        "https://signalm.sedaily.com/article/13587777"
+      ]
+    },
+    {
+      "ticker": "005380",
+      "name": "현대차",
+      "disclosure": "현대모비스의 현대차 지분율이 2022년 말 21.43%→2025년 말 22.36%로 상승(자사주 소각의 지배력 강화 효과), 정의선 승계 이슈와 연계된 해석 존재",
+      "buyback_dividend": "2025년 배당 주당 1만원(순이익 24.6% 감소에도 최소배당 보장), 자사주 9,160억원 소각(TSR 35% 달성), 2026년 추가 약 4,000억원 자사주 매입 후 전량소각(3년 총 4조원 규모)",
+      "pension": "확인 불가; 검색 키워드: \"현대차 국민연금 지분율 대량보유 변동 2026\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"현대차 국민연금 대량보유보고서 투자목적\"",
+      "risks": "승계 이슈와 자사주 소각 정책의 연관성에 대한 시장 해석(지배력 강화 목적 논란 가능성)",
+      "sources": [
+        "https://magazine.hankyung.com/business/article/202601215036b",
+        "https://www.thevaluenews.co.kr/news/199148"
+      ]
+    },
+    {
+      "ticker": "021240",
+      "name": "코웨이",
+      "disclosure": "최대주주 넷마블, 방준혁 의장이 넷마블·코웨이 의장 겸직 — 얼라인파트너스자산운용이 겸직 문제로 연임 반대를 요구했으나 2026.3.31 주총에서 원안(방준혁 재선임 포함) 가결",
+      "buyback_dividend": "2025년 현금배당 1,373억원+자사주매입 1,100억원(총 2,473억원), 주주환원율 20%→40% 상향(2027년까지 유지 목표), 2026 밸류업 우수기업 선정(금융위원장상)",
+      "pension": "확인 불가; 검색 키워드: \"코웨이 국민연금 지분율 대량보유\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"코웨이 국민연금 대량보유보고서 투자목적\"",
+      "risks": "행동주의펀드(얼라인파트너스)와의 지배구조 갈등 지속 가능성, 넷마블 종속 논란",
+      "sources": [
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=355048",
+        "https://www.thebell.co.kr/front/newsview.asp?key=202602241721149240105331"
+      ]
+    }
+  ],
+  "t2": [
+    {
+      "event_id": "commercial_code_enforcement_decrees",
+      "fired": true,
+      "rationale": "전자주주총회 관련 상법 시행령 일부개정령이 2026.7.14 국무회의 통과, 2026.7.21 공포(대통령령 제36511호). 아울러 자기주식 의무소각을 골자로 한 상법 3차 개정법(제21448호)이 2026.2.25 국회 통과, 2026.3.6 공포·시행됨. 관보 게재(공포) 기준 충족",
+      "sources": [
+        "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=217547",
+        "https://www.lawtimes.co.kr/news/articleView.html?idxno=223811"
+      ]
+    },
+    {
+      "event_id": "msci_dm_index_inclusion_confirmed",
+      "fired": false,
+      "rationale": "MSCI가 2026년 연례 시장분류 결과(2026.6.24 발표)에서 한국을 선진시장 워치리스트에도 올리지 않고 신흥시장으로 유지함(원화 역외 결제 불가, 외환시장 접근성 부족 등을 이유로 제시). 공식 편입 발표 없음",
+      "sources": [
+        "https://ir.msci.com/news-releases/news-release-details/msci-announces-results-msci-2026-market-classification-review",
+        "https://www.cnbc.com/2026/06/24/msci-south-korea-emerging-market-indonesia-review-extended.html"
+      ]
+    },
+    {
+      "event_id": "ifrs18_domestic_adoption_schedule_confirmed",
+      "fired": true,
+      "rationale": "한국회계기준원 회계기준위원회가 심의·의결(2025.10.17, 11.21)을 거쳐 기업회계기준서 제1118호 '재무제표 표시와 공시'를 제정, 증권선물위원회(2025.12.10) 및 금융위원회(2025.12.17) 보고 후 2025.12.19자로 공표함. 2027.1.1 의무 시행 예정으로 도입 일정이 확정 고시됨",
+      "sources": [
+        "https://www.fsc.go.kr/no010101/85886",
+        "https://www.kcmi.re.kr/report/report_view?report_no=2089"
+      ]
+    }
+  ],
+  "thesis": {
+    "damage": false,
+    "rationale": "as_of(2026.7.25) 기준, 상법 3차 개정(자사주 소각 의무화, 이사 충실의무 확대, 2026.3.6 시행)과 후속 시행령(전자주주총회 의무화, 2026.7.21 공포)이 예정대로 공포·시행되고 있으며, 후퇴·유예를 시사하는 공식 발표는 확인되지 않음. IFRS18 국내 도입(K-IFRS 제1118호) 역시 2025.12.19 공표되어 2027.1.1 시행 일정대로 진행 중. 다만 MSCI 선진시장 편입은 2026년에도 불발(워치리스트 미등재)했는데, 이는 외환시장 접근성·공매도 규제 등 별도 트랙의 이슈로 상법·밸류업 제도 자체의 후퇴로 보기는 어려움",
+    "sources": [
+      "https://www.lawtimes.co.kr/news/articleView.html?idxno=223811",
+      "https://www.fnnews.com/news/202607221501452214",
+      "https://ir.msci.com/news-releases/news-release-details/msci-announces-results-msci-2026-market-classification-review"
+    ]
+  },
+  "targets": [
+    {
+      "ticker": "000660",
+      "name": "SK하이닉스",
+      "pbr_max": null,
+      "target_price": 3170000.0,
+      "rationale": "2026.7.5 기준 증권사 12개월 평균 목표주가 317만124원(전일 종가 242만5,000원 대비). 다만 개별 리포트 간 편차 매우 큼(흥국증권 140만원 ~ 신한투자·미래에셋·KB증권 380만~420만원) — AI 투자 지속성·업황 해석 차이가 원인. 컨센서스 평균치를 잠정 채택했으며 반드시 최신 리포트 원문 확인 필요",
+      "sources": [
+        "https://www.investchosun.com/site/data/html_dir/2026/07/09/2026070980118.html",
+        "https://bullstory.io/blog/sk%ED%95%98%EC%9D%B4%EB%8B%89%EC%8A%A4-%EC%A3%BC%EA%B0%80-%EC%A0%84%EB%A7%9D-%EB%82%98%EC%8A%A4%EB%8B%A5-adr-%EC%83%81%EC%9E%A5%EA%B3%BC-2026%EB%85%84-%ED%95%98%EB%B0%98%EA%B8%B0-%EB%AA%A9%ED%91%9C%EC%A3%BC%EA%B0%80-%EC%B4%9D%EC%A0%95%EB%A6%AC"
+      ],
+      "fundamental_reason": "HBM/AI 메모리 수퍼사이클 지속, 2Q26 영업이익률 76%대(사상 최고 전망)로 컨센서스 상회 다수 전망, 나스닥 ADR 상장 추진"
+    },
+    {
+      "ticker": "006040",
+      "name": "동원산업",
+      "pbr_max": null,
+      "target_price": 60000.0,
+      "rationale": "하나증권 2026.7.20 리포트(투자의견 매수 유지, 목표가 7.2만원→6만원 하향)를 최신치로 채택. 흥국증권도 2026.5.12 6.7만원→4.8만원으로 하향한 바 있어 목표가 하향 추세에 유의 필요",
+      "sources": [
+        "https://www.businesspost.co.kr/BP?command=article_view&num=442633",
+        "https://marketin.edaily.co.kr/News/ReadE?newsId=03250486645448264"
+      ],
+      "fundamental_reason": "식품·건설·패키징 등 자회사 실적 개선이나 HMM 인수 가능성에 대한 시장 우려가 주가 상단을 제한"
+    },
+    {
+      "ticker": "271560",
+      "name": "오리온",
+      "pbr_max": null,
+      "target_price": 200000.0,
+      "rationale": "하나증권 2026.4.22 리포트 목표가 200,000원(2025.7 140,000원에서 상향). 최근 6개월 컨센서스 평균은 167,059원으로 리포트 간 편차 있음(한국투자 15만원, NH투자 17만원, 교보 19만원)",
+      "sources": [
+        "https://news.nate.com/view/20260422n05383",
+        "https://news.nate.com/view/20260422n05519"
+      ],
+      "fundamental_reason": "창사 이래 첫 중간배당, 자사주 전량소각, 배당성향 대폭 상향(26%→36%, 30%→55%), 해외 판매 호조"
+    },
+    {
+      "ticker": "005440",
+      "name": "현대지에프홀딩스",
+      "pbr_max": null,
+      "target_price": 20000.0,
+      "rationale": "SK증권(2026.6.26) 및 흥국증권(2026.6.23) 모두 목표가 20,000원 제시(흥국증권은 기존 19,000원에서 5.3% 상향). 최근 6개월 평균 목표가 19,750원으로 직전 6개월(10,460원) 대비 88.8% 상승",
+      "sources": [
+        "https://www.newspim.com/news/view/20260626000129",
+        "https://www.newspim.com/news/view/20260623000153"
+      ],
+      "fundamental_reason": "반기배당 신설, 2026년 상반기 약 3,500억원 자사주 소각, 거버넌스 선진화에 따른 재평가 기대"
+    },
+    {
+      "ticker": "021240",
+      "name": "코웨이",
+      "pbr_max": null,
+      "target_price": 69000.0,
+      "rationale": "개별 리포트(littlebproject 정리 기준) 목표가 69,000원 확인. 다만 이는 다건 컨센서스 평균이 아닌 단일 리포트 기준으로, FnGuide 등에서 최신 컨센서스 재확인 필요; 검색 키워드: \"코웨이 목표주가 컨센서스 FnGuide 2026\"",
+      "sources": [
+        "https://littlebproject.com/stock/021240/160/37465",
+        "https://www.fnnews.com/news/202607120938553400",
+        "https://www.newsis.com/view/NISX20260707_0003698411",
+        "https://www.press9.kr/news/articleView.html?idxno=71788",
+        "https://www.businesspost.co.kr/BP?command=article_view&num=442633",
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=361837",
+        "https://news.nate.com/view/20260422n05383",
+        "https://www.newspim.com/news/view/20260623000153",
+        "https://www.sedaily.com/article/20002380",
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=355048"
+      ],
+      "fundamental_reason": "주주환원율 40% 상향(2027년까지 유지), 2026 밸류업 우수기업 선정"
+    },
+    {
+      "ticker": "024110",
+      "name": "기업은행",
+      "pbr_max": 0.57,
+      "target_price": 27000.0,
+      "rationale": "iM증권(2026-07-28, 실적 발표 당일 리포트)이 매수 의견과 목표주가 27,000원을 유지했으며 이는 최근 6개월 전체 증권사 평균 목표가 27,077~28,154원(와이즈리포트 14개 기관 컨센서스, 2026-07-01 기준)과 거의 일치함. pbr_max는 목표주가 27,000원을 와이즈리포트 2026E 컨센서스 BPS 47,414원으로 나눈 값(≈0.57배)이며, 이는 유안타증권(2026-07-09 프리뷰)이 제시한 현재 12M fwd PBR 0.47배 대비 상단, 전고점 0.6배 대비 하단에 위치해 교차확인상 합리적 범위로 판단됨. 실제 2분기 실적은 유안타의 실적 발표 전 프리뷰 추정치보다 양호하게 나와 목표가 추가 하향 압력은 크지 않았음.",
+      "sources": [
+        "https://www.etoday.co.kr/news/view/2608056",
+        "https://www.newspim.com/news/view/20260709000340",
+        "https://www.sedaily.com/article/20072418",
+        "https://comp.wisereport.co.kr/company/c1010001.aspx?cmp_cd=024110"
+      ],
+      "fundamental_reason": "2Q26 지배주주순이익 6,836억원(-1.4% YoY, 컨센서스 부합)으로 이자이익은 전년비 10.7% 증가했으나 환율 급등에 따른 비화폐성 환차손 약 356억원 반영으로 비이자이익이 55.1% 감소했고, 7월 31일 기준일 최초 분기배당(주당 210원) 실시로 예상 배당수익률 5.2%(커버리지 최고 수준)를 확보했으나 분리과세 요건 미충족으로 자사주 매입·소각 등 추가 주주환원 여력은 제한적이다."
+    },
+    {
+      "ticker": "015760",
+      "name": "한국전력",
+      "pbr_max": 0.84,
+      "target_price": 63000.0,
+      "rationale": "KB증권(2026-04-28, DCF·WACC 3.7%·영구성장률 1.0% 가정, 12M fwd PBR 0.84배 근거)이 목표가를 74,000원에서 63,000원으로 하향했고, LS증권(2026-06-16)은 중동 종전 기대를 반영해 50,000원에서 62,000원(+24%)으로 상향해 두 리포트가 62,000~63,000원 구간에서 수렴하는 반면, 유진투자증권(92,000원, 2026-05-14)·하나증권(45,000원 NEUTRAL, 2026-05-07) 등은 이보다 큰 폭(범위 45,000~92,000원)으로 엇갈려 있어 극단적 편차가 존재하므로, 보수적으로 컨센서스 중앙값에 가까운 KB증권 수치를 채택함.",
+      "sources": [
+        "https://www.mt.co.kr/stock/2026/04/28/2026042808552221316",
+        "https://m.thinkpool.com/breakingNews/cont/264329",
+        "https://www.mt.co.kr/stock/2026/06/16/2026061608320819936",
+        "https://news.nate.com/view/20260507n05182",
+        "https://www.newspim.com/news/view/20260514000592"
+      ],
+      "fundamental_reason": "미·이란 전쟁 장기화로 국제 유가·LNG·석탄 조달단가가 상승하며 2026·2027년 영업이익 전망이 기존 대비 각각 35.2%·27.3% 축소가 불가피하다는 평가가 있었으나, 6월 중순 종전 국면 진입 이후 주가가 저점 대비 반등했고 7월 28일 기준 미-이란 협상 진전 및 국제유가 9% 급락 소식으로 연료비 부담 완화 기대가 새롭게 부각되고 있어 향후 실적 방향성은 유가·환율 변수에 크게 좌우되는 상황임."
+    }
+  ],
+  "deep_tickers": [
+    "000660",
+    "005440",
+    "006040",
+    "015760",
+    "021240",
+    "024110",
+    "138930",
+    "271560"
+  ],
+  "source_reviewed": {
+    "cecs": [],
+    "t2": [
+      "commercial_code_enforcement_decrees",
+      "ifrs18_domestic_adoption_schedule_confirmed"
+    ],
+    "thesis": [
+      "thesis"
+    ],
+    "targets": []
+  },
+  "approved": {
+    "cecs": false,
+    "t2": true,
+    "thesis": true,
+    "targets": false
+  },
+  "approved_meta": {
+    "t2": {
+      "approved_by": "operator",
+      "as_of": "2026-07-25",
+      "applied": {
+        "applied": true,
+        "events": [
+          "commercial_code_enforcement_decrees",
+          "ifrs18_domestic_adoption_schedule_confirmed"
+        ],
+        "rescore_hook": {
+          "should_rescore": false,
+          "matched_triggers": [],
+          "reason": "configured triggers present but none fired in this snapshot",
+          "scores_auto_changed": false
+        }
+      }
+    },
+    "targets": {
+      "approved_by": "operator",
+      "as_of": "2026-07-25",
+      "applied": {
+        "applied": true,
+        "tickers": [
+          "000660",
+          "086790",
+          "006040",
+          "105560",
+          "271560",
+          "005440",
+          "005380",
+          "021240"
+        ],
+        "yaml_path": "C:\\Cursor\\investment-saa-alpha-v2\\data\\kr_alpha_exit_targets.yaml",
+        "target_portfolio_hash": "5b00256e2de151dad7d4ff3ebb638d06d56ffa66862fa639b9fc835feeb9311f",
+        "target_portfolio_written": false
+      }
+    },
+    "thesis": {
+      "approved_by": "operator",
+      "as_of": "2026-07-25",
+      "applied": {
+        "applied": true,
+        "damage": false,
+        "note": "damage=false — 엔진 미반영"
+      }
+    }
+  },
+  "lane": "weekly",
+  "mode": "targets_supplement"
+}

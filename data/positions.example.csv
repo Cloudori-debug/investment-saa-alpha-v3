@@ -1,0 +1,4 @@
+ticker,name,asset_group,sector,style,quantity,current_value,avg_price,current_price
+157450,TIGER 단기통안채,cash_short_bond,bond,short_duration,0,0,,
+459580,KODEX CD금리액티브,cash_short_bond,bond,cash_like,0,0,,
+CASH,예수금,cash_short_bond,cash,cash,1,0,,

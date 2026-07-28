@@ -1,0 +1,53 @@
+# KRX 업종명 → sector_group (조 분류) 매핑
+# 소스 우선: PyKRX get_market_sector_classifications (KRX 공식 업종)
+# GICS는 사용하지 않음 (확정 2026-07-16, 유니버스 B안)
+#
+# scoring 백분위 키는 krx_sector(=업종명)를 쓴다.
+# sector_group은 캡·리포트용 조분류일 뿐 percentile 축이 아니다.
+
+version: "1.0"
+source: krx_official
+primary_label_field: krx_sector
+gics_used: false
+
+# PyKRX 업종명 → sector_group
+krx_to_sector_group:
+  화학: materials
+  기타금융: financial
+  전기·전자: electronics
+  유통: distribution
+  운송장비·부품: auto
+  금속: materials_metal
+  제약: healthcare
+  음식료·담배: consumer_staples
+  건설: construction
+  일반서비스: services
+  IT 서비스: it_services
+  기계·장비: industrials
+  증권: financial_brokerage
+  섬유·의류: consumer_discretionary
+  운송·창고: transport
+  부동산: real_estate
+  비금속: materials_nonmetal
+  종이·목재: materials_paper
+  보험: insurance
+  오락·문화: media
+  전기·가스: utilities
+  의료·정밀기기: healthcare_devices
+  기타제조: industrials_other
+  통신: telecom
+  은행: financial
+  농업 임업 및 어업: agriculture
+
+# 레거시 표기(수동 매핑에 남아 있을 수 있는 구 KRX 라벨) 호환
+legacy_krx_aliases:
+  전기전자: 전기·전자
+  운수장비: 운송장비·부품
+  운수창고: 운송·창고
+  유통업: 유통
+  서비스업: 일반서비스
+  금융업: 기타금융
+  음식료품: 음식료·담배
+  통신업: 통신
+  전기가스: 전기·가스
+  의료정밀: 의료·정밀기기

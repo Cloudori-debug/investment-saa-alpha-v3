@@ -1,0 +1,22 @@
+# Core SAA ETF — canonical ticker ↔ name (KRX 6-digit)
+# 검수: scripts/audit_target_portfolio_tickers.py
+version: "1.0"
+tickers:
+  "360750": "TIGER 미국S&P500"
+  "195930": "TIGER 유로스탁스50(합성 H)"
+  "238720": "KODEX 일본TOPIX100"
+  "195980": "PLUS 신흥국MSCI(합성 H)"
+  "458730": "TIGER 미국배당다우존스"
+  "161510": "PLUS 고배당주"
+  "411060": "ACE KRX금현물"
+  "148070": "KIWOOM 국고채10년"
+  "308620": "KODEX 미국10년국채선물"
+  "157450": "TIGER 단기통안채"
+  "329200": "TIGER 리츠부동산인프라"
+  "352560": "TIGER 미국MSCI리츠(합성 H)"
+# 과거 오기 — target/price 정리 시 참고
+deprecated_replacements:
+  "357870":
+    correct_ticker: "329200"
+    wrong_name: "TIGER 리츠부동산인프라"
+    actual_product: "TIGER CD금리투자KIS(합성)"

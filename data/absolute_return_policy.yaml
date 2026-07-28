@@ -1,0 +1,147 @@
+# Core SAA benchmark-centered operating policy (Phase AR-1)
+# NOT shadow-only: drives target_portfolio.csv composition and deployment throttle.
+schema_version: absolute_return_policy.v1
+status: active_operating_policy
+execution_authority: v1.0.2
+primary_objective: beat_core_saa_benchmark_excess_return
+mode_label_ko: "Core SAA 기준 초과수익 운영 모드"
+mode_label_en: "Core SAA benchmark-centered operating mode"
+
+framework:
+  label: "Core SAA 14-slot framework / 12 active Core ETF targets"
+  reference_slot_count: 14
+  active_core_etf_target_count: 12
+  placeholder_zero_weight_slots:
+    - "356890"
+  unresolved_slots:
+    - role: usd_short_bond
+      name: 미국달러단기채
+      weight_pct: 6.25
+      status: ticker_unresolved
+
+benchmark:
+  source: data/core_saa_reference.yaml
+  schema_version: core_saa_reference.v0.2
+  description: >
+    Passive buy-and-hold mix of 14 Core SAA allocation slots (12 active ETF targets +
+    1 zero-weight placeholder + 1 unresolved). Satellite portfolio targets excess return
+    vs this mix — not lossless absolute return.
+
+domestic_beta_note: >
+  Core SAA benchmark excludes 069500 KODEX200. The 14-slot reference has no passive
+  domestic KOSPI beta sleeve. Domestic equity exposure is represented by the kr_alpha
+  satellite sleeve (stock picks), not passive KOSPI ETF beta.
+
+unresolved_weight_proxy:
+  target_ticker: "157450"
+  source_slot: 미국달러단기채
+  source_weight_pct: 6.25
+  status: temporary_proxy
+  warning: >
+    미국달러단기채 6.25% is ticker-unresolved; weight is temporarily merged into 157450
+    (KRW short bond). This does NOT replicate USD short-bond FX exposure from the Core
+    SAA original. Split into a dedicated USD short-bond instrument when ticker is resolved.
+
+portfolio_structure:
+  core_sleeve_target_pct: 75.0
+  kr_alpha_overlay_max_pct: 25.0
+  # Standing overlay floor (unchanged). Hybrid scenario B target ~6% is a TEMP
+  # EXCEPTION — see kr_alpha_overlay_min_temp_exception. Do NOT treat 6% as permanent.
+  kr_alpha_overlay_min_pct: 15.0
+  cash_buffer_max_pct: 3.0
+  unresolved_weight_to_ticker: "157450"
+  scaled_deploy_note: >
+    Core 75% + Alpha 25% scaled to 97% investable; CASH 3% buffer = 100% total.
+    Deployed targets: Core 72.75% + kr_alpha 24.25% + CASH 3%.
+
+# Temporary exception to portfolio_structure.kr_alpha_overlay_min_pct (stays 15.0).
+# Spec: docs/KR_ALPHA_POLICY_FLOOR_TEMP_EXCEPTION_SPEC.md
+# Hybrid: docs/KR_ALPHA_HYBRID_TRANSITION_RESULT.md (scenario B)
+# Note: domestic_beta_note above is unchanged — scenario B does not introduce 069500.
+kr_alpha_overlay_min_temp_exception:
+  active: true
+  approved_target_pct: 6.0
+  reason: "KR_ALPHA_HYBRID_TRANSITION_RESULT scenario B (2026-07-16)"
+  start_date: "2026-07-16"
+  review_trigger: >
+    When alpha_grade_forward_return.csv / hakedaka_forward_return_tracker.csv
+    have forward_return_60d~120d actually populated (not pending/blank).
+  review_window_provisional: "2026-Q4 (Oct–Dec 2026)"
+  review_choices:
+    - keep_6pct_with_renewed_exception
+    - permanently_lower_overlay_min
+    - restore_standing_overlay_min_15
+  lapse_if_unreviewed: >
+    If the review trigger is met and no explicit re-decision is recorded,
+    this exception LAPSES and the standing policy kr_alpha_overlay_min_pct=15.0
+    is again fully operative. The exception must not become the silent default.
+
+deployment_throttle:
+  per_trade_max_pct: 3.0
+  per_run_total_max_pct: 3.0
+  weekly_max_pct: 5.0
+  monthly_max_pct: 10.0
+  gate_required: GREEN
+  dry_run_required: true
+  ledger_file: outputs/core_deployment_ledger.jsonl
+  note: >
+    Prevents deploying cash_short_bond 57% → 28.5% in one tranche.
+    Weekly/monthly caps apply to executed entries in core_deployment_ledger.jsonl.
+
+operating_rules:
+  - id: core_coverage_first
+    rule: Fill underweight Core benchmark tickers before satellite-only ETFs (e.g. KODEX200-only bets).
+  - id: no_cash_hoard
+    rule: >
+      cash_short_bond group above core mapped target + cash_buffer is deployment source,
+      not a permanent 55% floor. Legacy 55% floor superseded for Core SAA mandate mode.
+  - id: kr_alpha_cap
+    rule: kr_alpha must stay at or below kr_alpha_overlay_max_pct; trim funds redeploy to Core underweights.
+  - id: alpha_overlay_gate
+    rule: Hakedaka / catalyst watchlist buys remain forbidden until forward-return validation passes.
+  - id: deployment_throttle
+    rule: >
+      Core ETF buys capped at 3%p per trade and per run; 5%p weekly / 10%p monthly executed.
+      gate YELLOW or RED or dry-run incomplete → 0% Core deploy.
+  - id: kr_alpha_trim_yellow
+    rule: >
+      Gate YELLOW may surface kr_alpha trim candidates for review only. Actual trim requires
+      final_execution_decision allowed_actions — not automatic on YELLOW alone.
+  - id: performance_gate
+    rule: >
+      Track excess_return_vs_core_mtd and rolling 20D/60D vs Core benchmark;
+      persistent underperformance triggers Core deployment review (not auto-trade).
+
+deployment_priority:
+  - metric: core_underweight_gap_pct
+    direction: descending
+  - metric: tradable
+    value: true
+  - exclude_tickers:
+      - "356890"
+
+trigger_alignment:
+  buy_1:
+    condition: data_gate GREEN and dry_run complete and any Core ETF underweight >= 1.5%p
+    max_deploy_pct: 3.0
+    funding: cash_buffer_then_short_bond_trim
+  buy_2:
+    condition: Core underweight persists or KOSPI -10%
+    funding:
+      - kr_alpha_trim
+      - new_cash
+  buy_3:
+    condition: KOSPI -15% or global equity sleeve underweight >= 5%p
+    funding:
+      - kr_alpha_trim
+      - new_cash
+
+forbidden_without_approval:
+  - reduce_core_sleeve_below_pct: 65
+  - increase_kr_alpha_above_pct: 25
+  - hakedaka_executable_buy: true
+  - bulk_cash_to_core_deploy_above_monthly_cap: true
+
+note: >
+  Operating policy change (v1.0.2). Drives target_portfolio.csv and deployment throttle.
+  trade_actions remain subject to data_gate, execution_scope, throttle, and human approval.

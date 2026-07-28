@@ -1,0 +1,19 @@
+# KOSIS tier2 manual provenance — only verified=true entries are applied.
+# Do not set verified=true without confirming value, source, and observation date.
+fields:
+  cpi_kr_yoy:
+    verified: false
+    value: null
+    value_date: null
+    source: null
+    source_url_or_note: null
+    updated_by: null
+    update_reason: null
+  pmi_kr:
+    verified: false
+    value: null
+    value_date: null
+    source: null
+    source_url_or_note: null
+    updated_by: null
+    update_reason: null

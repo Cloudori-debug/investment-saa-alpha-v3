@@ -1,0 +1,16 @@
+collect:
+  scope: holdings          # holdings | liquid | all
+  markets: [KOSPI, KOSDAQ]
+  lookback_days: 400
+  sleep_sec: 0.12
+  max_tickers: 0           # 0 = unlimited (liquid는 liquid.max_tickers 우선)
+  enrich_per_pbr: true     # fundamentals.csv PER/PBR 빈 칸만 PyKRX 보강
+  liquid:
+    include_holdings: true   # positions/target/fundamentals 항상 union
+    max_tickers: 400         # Gate 1차 필터 후 상위 N (시총순)
+    sync_stub_fundamentals: true
+    max_stub_rows: 150       # fundamentals에 추가할 stub 상한
+    export_template: true    # fundamentals_liquid_template.csv
+
+# holdings = positions kr_alpha + fundamentals tickers + target kr_alpha
+# liquid   = Gate 시총 통과 전체 + holdings union → Replace 후보 풀 확대

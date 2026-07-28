@@ -1,0 +1,52 @@
+# 스코어링 엔진 파라미터 (§7.2 → §7.3 선행 정리)
+# score_cutoff 는 alpha_system.yaml scoring.score_cutoff 가 권위 (TODO 유지)
+version: "0.2"
+
+# ── 5팩터 계약 (CECS-T2 중복 정리 후) ─────────────────────────────
+# 이전 7축(score_q/v/sr/r/m, cecs, factor_score_total)에서:
+#   - disclosure_status, independent_catalyst_flag 는 CECS 점수에서 제외
+#     → entry T2 event_candidate_sources 로 매핑 (정보 보존)
+#   - score_m: Core 롤업 가중 0 → 5팩터 집합에서 제외
+#   - factor_score_total: Q/V/SR/R 파생값 → 내부 blend 전용, 상관 축에서 제외
+# 상세: docs/ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md
+five_factors:
+  - score_q
+  - score_v
+  - score_sr
+  - score_r
+  - cecs
+
+# factor_score_total 롤업 (Q/V/SR/R only — m 제외)
+factor_score_weights:
+  score_q: 0.35
+  score_v: 0.30
+  score_sr: 0.25
+  score_r: 0.10
+
+# eligibility / weight_input 최종 점수 = blend(factor_score_total, cecs)
+# Ops A (2026-07-25): CECS는 순위 입력에서 제외(가중 0). 정성은 T2·논지·목표가 게이트만.
+# 이전 검토값 0.70/0.30 — docs/ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md
+total_score_blend:
+  factor_score_total: 1.0
+  cecs: 0.0
+
+# CECS 가중합 — high 중복 2개 제외 후 비례 재배분 (합=1.0)
+# 제외 전: disclosure 0.30, execution 0.20, pension 0.15, purpose 0.15, independent 0.20
+# 잔여 가중 합 0.50 → 각 × (1/0.50)
+cecs_weights:
+  execution_continuity: 0.40
+  pension_flow_score: 0.30
+  investment_purpose_flag: 0.30
+
+# 스코어에서 제외·T2 후보 소스로만 사용 (계산 가중 없음)
+cecs_excluded_to_t2:
+  - disclosure_status
+  - independent_catalyst_flag
+
+policy_dependency_penalty_weight: 0.15
+
+correlation:
+  high_abs_corr_threshold: 0.70
+  min_names: 20
+  method: pearson
+  sector_min_sample: 5

@@ -1,0 +1,40 @@
+[project]
+name = "multi-asset-trigger-portfolio"
+version = "2.0.0"
+description = "규칙 기반 자산군 나침반 + 종목 분해 + 백테스트 + Streamlit"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas==2.3.3",
+    "pydantic==2.13.3",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.3"]
+ui = ["streamlit==1.56.0"]
+data = ["pykrx==1.2.7"]
+
+[project.scripts]
+trigger-portfolio = "src.main:main"
+investment-compass = "src.compass_main:main"
+regime-backtest = "src.backtest_main:main"
+alpha-backtest = "src.alpha_backtest_main:main"
+data-refresh = "src.data_refresh.refresh_main:main"
+pykrx-collect = "src.data_refresh.pykrx_collect_main:main"
+dart-collect = "src.data_refresh.dart_collect_main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "smoke: P0~P3d regression smoke — target <= 5 min (scripts/test_smoke.ps1)",
+    "fast: unit tests excluding integration/slow/network/legacy_backlog",
+    "integration: pipeline and multi-module integration tests",
+    "slow: long-running or full-pipeline tests",
+    "network: tests that call external network APIs",
+    "pykrx: tests that depend on PyKRX live fetch",
+    "external_data: tests depending on live/sample external data files",
+    "legacy_backlog: known stale fixtures — tracked in docs/TEST_BACKLOG.md",
+    "deep: manual/long tier — network + pykrx + external_data (scripts/test_deep.ps1)",
+]

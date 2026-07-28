@@ -1,0 +1,130 @@
+# Alpha scoring — 02_스코어링_설계.md v0.1 (tuned)
+version: "0.1"
+
+composite_weights:
+  core:
+    q: 0.35
+    v: 0.30
+    sr: 0.25
+    r: 0.10
+    m: 0.00
+  satellite:
+    q: 0.30
+    v: 0.20
+    sr: 0.15
+    r: 0.10
+    m: 0.25
+
+quality:
+  sub_weights:
+    default: { roe: 0.40, opm: 0.25, debt: 0.20, earnings_stability: 0.15 }
+    holding: { roe: 0.30, opm: 0.20, debt: 0.10, earnings_stability: 0.40 }
+  roe_linear: { low: 5, high: 20 }
+  debt_linear: { low: 50, high: 200, invert: true }
+
+value:
+  sub_weights:
+    default: { per: 0.35, pbr: 0.35, ev_ebitda: 0.15, fcf_yield: 0.15 }
+    holding: { per: 0.15, pbr: 0.55, ev_ebitda: 0.15, fcf_yield: 0.15 }
+  fcf_yield_linear: { low: 0, high: 8 }
+
+shareholder_return:
+  sub_weights: { dividend_yield: 0.50, payout_ratio: 0.25, buyback: 0.25 }
+  dividend_linear: { low: 1, high: 5 }
+  payout_linear: { low: 10, high: 60 }
+  payout_cap_above: 80
+  missing_neutral_score: 50
+
+risk:
+  sub_weights: { volatility: 0.50, position_52w: 0.30, beta: 0.20 }
+  vol_linear: { low: 15, high: 45, invert: true }
+  high_52w_cap_ratio: 0.95
+  beta_missing_neutral: 50
+
+momentum:
+  sub_weights: { return_6m: 0.60, high_52w: 0.40 }
+  satellite_min_score: 70
+  satellite_min_return_6m: 0.10
+
+grades:
+  A:
+    min_composite: 70
+    min_q: 55
+    min_v: 50
+  B:
+    min_composite: 55
+    satellite_min_m: 70
+  C:
+    min_composite: 45
+
+demotion:
+  q_floor: 40
+  value_trap_v: 35
+  value_trap_q: 50
+
+incumbent_bonus: 3
+
+sleeve_weight:
+  core:
+    base: 4.0
+    composite_scale: 2.0
+    composite_ref: 70
+    max: 8.0
+  satellite:
+    base: 3.0
+    composite_scale: 2.0
+    composite_ref: 55
+    max: 5.0
+  exception_max: 8.0
+
+sector_min_sample: 5
+
+# Core role 우선 — momentum_satellite는 맨 뒤 + 엄격 조건
+role_rules:
+  - role: shareholder_return
+    min_sr: 70
+    min_dividend_yield: 2.5
+  - role: quality_dividend
+    min_sr: 65
+    min_q: 65
+    sectors: [telecom, utility]
+  - role: quality_defensive
+    min_q: 65
+    sectors: [consumer, healthcare]
+  - role: defensive_consumer
+    min_q: 60
+    require_opm_above_sector_median: true
+  - role: dividend_value
+    min_sr: 60
+    min_v: 60
+  - role: value_rerating
+    min_v: 65
+    require_holding: true
+  - role: value_defensive
+    min_v: 60
+    min_q: 50
+  - role: value_quality
+    min_q: 55
+    min_v: 55
+  - role: cyclical_value
+    tier: Satellite
+    sectors: [materials, industrial, energy]
+    min_v: 60
+  - role: momentum_satellite
+    tier: Satellite
+    min_m: 80
+    min_return_6m: 0.20
+  - role: value_quality
+    default: true
+
+sector_caps:
+  max_candidates_per_sector: 5
+  cyclical_single_sleeve_max: 5
+  max_same_core_role: 3
+
+satellite_exception:
+  min_grade: B
+  min_score_m: 75
+  min_return_6m: 0.15
+  require_risk_on: true
+  require_stop_loss_yaml: true

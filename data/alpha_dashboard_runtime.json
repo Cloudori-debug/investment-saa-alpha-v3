@@ -1,0 +1,64 @@
+{
+  "events_fired": [
+    "commercial_code_enforcement_decrees",
+    "ifrs18_domestic_adoption_schedule_confirmed",
+    "x"
+  ],
+  "cancelled_events": [],
+  "thesis_damage_active": false,
+  "thesis_damage_cancelled": false,
+  "tranche_states": {
+    "T1": "READY",
+    "T2": "READY",
+    "T3": "PENDING",
+    "T4": "PENDING"
+  },
+  "tranche_meta": {
+    "T1": {
+      "pre_launch": true,
+      "locked": true
+    },
+    "T2": {
+      "pre_launch": true,
+      "locked": true
+    },
+    "T3": {
+      "pre_launch": true,
+      "locked": true
+    },
+    "T4": {
+      "pre_launch": true,
+      "locked": true
+    }
+  },
+  "last_refresh": {
+    "prices_fundamentals": "2026-07-16T14:50:43.347055+00:00",
+    "alpha_quant_snapshot": "2026-07-28T00:19:51.751451+00:00"
+  },
+  "swap_hits": {},
+  "go_live_date": "2026-07-17",
+  "journaled_tranche_states": {
+    "T1": "READY",
+    "T2": "READY",
+    "T3": "PENDING",
+    "T4": "PENDING"
+  },
+  "journaled_trigger_met": {
+    "T1": true,
+    "T2": true,
+    "T3": false,
+    "T4": false
+  },
+  "journaled_cap_tone": {
+    "005830": "ok",
+    "021240": "ok",
+    "192400": "ok",
+    "006040": "ok",
+    "005440": "ok",
+    "036530": "ok",
+    "271560": "ok",
+    "453340": "ok",
+    "030200": "ok"
+  },
+  "journaled_block_keys": []
+}

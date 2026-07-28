@@ -1,0 +1,2 @@
+date,kospi,kospi_recent_high,kospi_200ma,sp500,sp500_recent_high,vix,usdkrw,korea_10y,oil_brent,gold,foreign_flow_3d,regime,regime_override_reason,regime_set_date,regime_expires_date
+2026-07-24,6690.62,9114.55,5666.91,7411.98,7609.7798,18.58,1462.1,2.2,96.78,4067.6,neutral,CRISIS,auto_computed_regime_pure,2026-07-24,2026-07-31

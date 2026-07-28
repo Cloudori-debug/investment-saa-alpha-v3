@@ -1,0 +1,23 @@
+{
+  "user_target_bootstrapped_at": "2026-07-02T02:06:37.458661+00:00",
+  "user_target_hash": "26035b3b85b4e45f478005e213fd4658aa9bcc5c5b7602c07de19ee99b5bfcd8",
+  "operational_target_hash": "26035b3b85b4e45f478005e213fd4658aa9bcc5c5b7602c07de19ee99b5bfcd8",
+  "last_restore_at": "2026-07-03T01:03:17.813102+00:00",
+  "restore_reason": "restore_from_user_target",
+  "restored_from": "user_target_portfolio.csv",
+  "last_target_write_source": "approval_bridge",
+  "last_target_write_allowed": true,
+  "last_target_write_at": "2026-07-15T03:53:29.649452+00:00",
+  "last_approved_write_at": "2026-07-15T03:53:29.649452+00:00",
+  "approved_by": "target_bridge.apply_proposed_target",
+  "approval_reason": "alpha_proposal_approved_by=human",
+  "approval_flag": true,
+  "blocked_reintroductions": {
+    "030190": {
+      "ticker": "030190",
+      "reason": "remove_unintended_030190_reintroduced_by_approval_bridge",
+      "source": "manual_admin_override",
+      "recorded_at": "2026-07-03T10:41:43.365613+00:00"
+    }
+  }
+}

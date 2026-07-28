@@ -1,0 +1,104 @@
+# look-through 태그 — target/position 계산은 asset_group(7칸) 유지, 노출 진단만 확장
+schema_version: "1.0"
+defaults_by_asset_group:
+  cash_short_bond:
+    region: KR
+    asset_class: cash_short_bond
+    currency: KRW
+  domestic_beta:
+    region: KR
+    asset_class: equity
+    style: broad_market
+    currency: KRW
+  global_beta:
+    region: US
+    asset_class: equity
+    style: large_cap
+    currency: USD
+  fx_dollar:
+    region: US
+    asset_class: fx
+    currency: USD
+  hedge_alt:
+    region: GLOBAL
+    asset_class: gold
+    inflation_hedge: true
+    currency: KRW
+  income_alt:
+    region: US
+    asset_class: equity_income
+    style: dividend
+    currency: USD
+  kr_alpha:
+    region: KR
+    asset_class: equity
+    currency: KRW
+
+instruments:
+  "069500":
+    name: KODEX 200
+    asset_group: domestic_beta
+    look_through:
+      region: KR
+      asset_class: equity
+      style: broad_market
+      currency: KRW
+  "360750":
+    name: TIGER 미국S&P500
+    asset_group: global_beta
+    look_through:
+      region: US
+      asset_class: equity
+      style: large_cap
+      currency: USD
+  "157450":
+    name: TIGER 단기통안채
+    asset_group: cash_short_bond
+    look_through:
+      region: KR
+      asset_class: short_bond
+      currency: KRW
+  "459580":
+    name: KODEX CD금리액티브
+    asset_group: cash_short_bond
+    look_through:
+      region: KR
+      asset_class: cash
+      currency: KRW
+  "214980":
+    name: KODEX 단기채권PLUS
+    asset_group: cash_short_bond
+    look_through:
+      region: KR
+      asset_class: short_bond
+      currency: KRW
+  "261240":
+    name: KODEX 미국달러선물
+    asset_group: fx_dollar
+    look_through:
+      region: US
+      asset_class: fx
+      currency: USD
+  "411060":
+    name: ACE KRX금현물
+    asset_group: hedge_alt
+    look_through:
+      region: GLOBAL
+      asset_class: gold
+      inflation_hedge: true
+      currency: KRW
+  "458730":
+    name: TIGER 미국배당다우존스
+    asset_group: income_alt
+    look_through:
+      region: US
+      asset_class: equity_income
+      style: dividend
+      currency: USD
+  CASH:
+    name: 예수금
+    asset_group: cash_short_bond
+    look_through:
+      region: KR
+      asset_class: cash
+      currency: KRW

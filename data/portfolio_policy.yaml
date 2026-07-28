@@ -1,0 +1,91 @@
+portfolio:
+  total_target_weight: 100
+
+risk_limits:
+  single_stock_normal_max: 8
+  single_stock_hard_max: 15
+  single_etf_max: 25
+  sector_max: 30
+  theme_max: 25
+  kr_alpha_max: 35
+  # Standing floor (unchanged). Approved hybrid target ~6% is a TEMP EXCEPTION — see
+  # kr_alpha_min_temp_exception below. Do NOT treat 6% as the new permanent floor.
+  kr_alpha_min: 20
+  cash_short_bond_min: 25
+  cash_short_bond_target: 32
+  btc_max: 2
+
+# Temporary exception to risk_limits.kr_alpha_min (numbers above stay at 20).
+# Spec: docs/KR_ALPHA_POLICY_FLOOR_TEMP_EXCEPTION_SPEC.md
+# Hybrid: docs/KR_ALPHA_HYBRID_TRANSITION_RESULT.md (scenario B)
+kr_alpha_min_temp_exception:
+  active: true
+  approved_target_pct: 6.0
+  reason: "KR_ALPHA_HYBRID_TRANSITION_RESULT scenario B (2026-07-16)"
+  start_date: "2026-07-16"
+  review_trigger: >
+    When alpha_grade_forward_return.csv / hakedaka_forward_return_tracker.csv
+    have forward_return_60d~120d actually populated (not pending/blank).
+  review_window_provisional: "2026-Q4 (Oct–Dec 2026)"
+  review_choices:
+    - keep_6pct_with_renewed_exception
+    - permanently_lower_floor
+    - restore_standing_floor_20
+  lapse_if_unreviewed: >
+    If the review trigger is met and no explicit re-decision is recorded,
+    this exception LAPSES and the standing policy kr_alpha_min=20 is again
+    fully operative. The exception must not become the silent default.
+
+execution_levels:
+  level_0: "No trade - data insufficient"
+  level_1: "Hold / Watch"
+  level_2: "Micro adjustment 1-2%"
+  level_3: "Normal rebalance 3-5%"
+  level_4: "Regime response 5-10%"
+  level_5: "Risk defense"
+
+data_gate_policy:
+  merge_alpha_gate: true
+  yellow_blocks_new_buy: true
+
+# Tier A 시세 커버리지 — system_health tier_a_price_gate 판정
+tier_a_price_gate:
+  held_coverage_min: 1.0
+  target_coverage_min: 1.0
+  trade_actions_coverage_min: 1.0
+  alpha_top30_coverage_min: 0.80
+  alpha_top50_coverage_min: 0.70
+  alpha_top30_fail_below: 0.60
+  max_stale_business_days_core: 1
+  max_stale_business_days_alpha: 2
+
+# Tier B liquid pool bulk — tier_b_refresh.json 기준 주간(5영업일) 갱신
+tier_b_refresh:
+  interval_business_days: 5
+  pass_within_business_days: 5
+  warn_within_business_days: 10
+  research_stale_business_days: 20
+
+execution_policy:
+  # 방어·현금성(cash_short_bond) HARD stop → Park (자동 분산 Trim 아님)
+  cash_short_bond_hard_stop_action: park
+  # ETF_ONLY에서도 kr_alpha 포트폴리오 cap 초과 시 리스크 축소 Trim만 허용
+  kr_alpha_risk_trim_under_etf_only: true
+
+# Alpha shadow layers — v0.2 default off; v2/flow dashboard on
+alpha_shadow:
+  v0_2_enabled: false
+  v2_enabled: true
+  flow_dashboard_enabled: true
+
+actions:
+  allowed:
+    - Buy-allowed
+    - Add
+    - Hold
+    - Wait
+    - Trim
+    - Park
+    - Replace
+    - Stop-buy
+    - Risk defense

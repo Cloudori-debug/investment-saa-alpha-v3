@@ -1,0 +1,241 @@
+# 알파 단독 운용 시스템 — 규칙·파라미터 (코드와 분리)
+
+# [TODO] 표기 필드는 null/빈 목록으로 두고, 로더 검증이 미설정 사용을 차단한다.
+
+version: "0.2"
+
+
+
+purpose: absolute_return_catalyst_bet
+
+
+
+# T4 12개월 규칙 기준일 — null = PRE_LAUNCH (앱 실행 ≠ 시스템 가동)
+# go-live는 설정·이벤트 화면에서만 선언 (체크리스트 게이트 통과 후)
+
+go_live_date: null
+
+
+
+thesis_window:
+
+  label: "KR shareholder-return re-rating 2026-2028"
+
+  window_end: "2027-12-31"
+
+
+
+# 논지 배경 — T2 발화 대상 아님 (문서 기록만)
+
+thesis_background:
+
+  basel3_excluded_from_t2: true
+
+  basel3_note: >
+
+    바젤3 최종안·시행 일정은 투자 논지 배경으로만 추적.
+
+    T2 시장 이벤트 목록에는 포함하지 않음.
+
+
+
+capital:
+
+  max_fraction_of_total_assets: 0.30
+
+
+
+tranches:
+
+  T1:
+
+    weight: 0.25
+
+    trigger_type: time
+
+    display_name: "즉시 집행분"
+
+    short_desc: "시스템 가동 시 바로 집행하는 몫입니다. 촉매가 일찍 와도 놓치지 않기 위한 헷지입니다."
+
+    description: "시스템 가동 시 즉시 집행 (촉매 조기 발화 헷지)"
+
+  T2:
+
+    weight: 0.25
+
+    trigger_type: event
+
+    display_name: "제도 확정 대기분"
+
+    short_desc: "상법·MSCI·IFRS18 등 시장 레벨 제도 이벤트 1건이 확정되면 집행합니다."
+
+    description: "시장 레벨 확정 이벤트 1건 발생 시 집행"
+
+    # 시장 레벨 3종 중 1건 (OR). MSCI 워치리스트 등재는 비발화.
+
+    event_ids:
+
+      - commercial_code_enforcement_decrees
+
+      - msci_dm_index_inclusion_confirmed
+
+      - ifrs18_domestic_adoption_schedule_confirmed
+
+    event_candidate_sources:
+
+      - disclosure_status
+
+      - independent_catalyst_flag
+
+  T3:
+
+    weight: 0.25
+
+    trigger_type: price
+
+    display_name: "저가 매수 대기분"
+
+    short_desc: "KOSPI 시장 PBR이 10년 분포 하위 20%에 들어오면 집행합니다. 매월 말에 판정합니다."
+
+    description: "KOSPI 시장 PBR 10년 분포 하위 20% 밴드 진입"
+
+    valuation_band:
+
+      scope: market
+
+      metric: pbr
+
+      market: KOSPI
+
+      lookback_years: 10
+
+      bottom_percentile: 20
+
+      data_source: pykrx_kospi_aggregate_or_manual_feed
+
+      check_frequency: monthly
+
+      or_eligible_avg_value_score:
+
+        enabled: false
+
+        lookback_months: 36
+
+        bottom_percentile: 20
+
+        note: "이력 축적 후 활성화 검토 — 스키마만 확보"
+
+  T4:
+
+    weight: 0.25
+
+    trigger_type: hybrid
+
+    display_name: "기한 보험분"
+
+    short_desc: "가동 후 12개월이 지나면 절반을 집행하고, T2·T3가 뒤늦게 오면 나머지를 이어 집행합니다."
+
+    description: "12개월 후 50% 분할 집행; T2/T3 후발 시 잔여 50%; 미발화 잔여는 window_end 소멸"
+
+    hybrid_rules:
+
+      mode: split_follow_expire
+
+      months_after_go_live: 12
+
+      require_t2_t3_unmet: true
+
+      initial_execution_fraction: 0.50
+
+      follow_on_execution_fraction: 0.50
+
+      remainder_on_window_end: expire_reflux_saa
+
+
+
+hard_rules:
+
+  sunset_enabled: true
+
+  reverse_execution_blocked: true
+
+  thesis_damage_freeze_enabled: true
+
+
+
+thesis_damage_event_ids: []
+
+
+
+universe:
+
+  boundary_mode: shareholder_return_broad
+
+  include_markets: ["KOSPI"]
+
+  gate_config_path: data/universe_filter.yaml
+
+  financial_only_filter: false
+
+
+
+scoring:
+
+  score_cutoff: null
+
+  # 종목 레벨 공시 — 재채점 훅 (T2와 분리)
+
+  rescore_triggers:
+
+    - value_up_program_disclosure
+
+    - treasury_share_cancellation_resolution
+
+    - dividend_articles_amendment
+
+
+
+sizing:
+
+  target_names: 6
+
+  initial_weight_cap: 0.25
+
+  market_value_cap: 0.35
+
+
+
+exit:
+
+  thesis_damage_exit: null
+
+  score_below_cutoff_action: null
+
+  target_valuation_exit: null
+
+  window_end_portfolio_action: null
+
+  entry_require_target_valuation: true
+
+  target_valuation_modify:
+
+    allowed_reasons:
+
+      - fundamental_event
+
+    price_move_warn: true
+
+
+
+swap_rule:
+
+  mode: observe_only
+
+  score_gap_pct: 20.0
+
+  consecutive_hits: 2
+
+
+
+benchmark: KOSPI
+

@@ -1,0 +1,8 @@
+﻿ticker,action,old_weight,new_weight,reason,paired_with
+005830,trim,3.81,3.7,overweight,
+192400,remove,1.24,0.0,H05 reject_2w,
+000660,add,0.0,1.1,replace 192400,192400
+002380,remove,1.24,0.0,H05 reject_2w,
+006040,add,0.0,1.24,replace 002380,002380
+453340,remove,1.24,0.0,H05 reject_2w,
+036530,add,0.0,1.24,replace 453340,453340

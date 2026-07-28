@@ -1,0 +1,70 @@
+# 하케다카 50종 — soft preference (Level 2.5)
+# QVM 대체·강제 슬롯 없음. 교차검증·동점 우대·진단 출력.
+
+enabled: true
+mode: soft_preference
+
+# 제안 포트 영향 분리 (실투자 전 기본: pure_qvm)
+# pure_qvm | qvm_with_bonus | qvm_with_tiebreaker
+proposal_mode: pure_qvm
+hakedaka_priority_display: true
+hakedaka_tiebreaker_enabled: false
+shadow_slot_candidate_enabled: true
+
+hakedaka_role:
+  candidate_pool_expansion: true
+  forced_portfolio_slot: false
+  qvm_replacement_allowed: false
+  liquidity_bypass_for_proposal: false
+  liquidity_watchlist_only: true
+
+dart:
+  auto_enrich_fundamentals: true
+  lookback_days: 365
+  force_refresh: false
+
+bonus:
+  in_list: 3
+  dart_verified: 5
+  dart_strong: 8
+  hakedaka_grade_A: 5
+  hakedaka_grade_core: 3
+  max_total_bonus: 16
+
+eligibility_for_priority:
+  required:
+    qvm_grade_min: "B"
+    liquidity_pass: true
+    trading_status: normal
+    dart_verified: true
+  preferred:
+    dart_signal: strong
+    hakedaka_grade: A
+    in_alpha_shortlist: true
+
+portfolio_inclusion:
+  hard_slot_enabled: false
+  max_hakedaka_soft_slots: 1
+  allow_if_qvm_failed: false
+  allow_if_liquidity_failed: false
+  allow_if_sector_cap_breached: false
+
+tie_breaker:
+  enabled: false
+  max_rank_boost: 3
+  only_within_score_gap_pct: 5
+
+review:
+  require_human_approval: true
+  output_flags:
+    - qvm_hakedaka_overlap
+    - dart_verified
+    - dart_signal
+    - hakedaka_priority
+    - shadow_slot_candidate
+
+compass:
+  annotate_kr_alpha: true
+  reform_success_note: "거시 시나리오 성공 시 — 하케다카 A·DART verified 종목을 kr_alpha 교차검증"
+  reform_delay_note: "지연 국면 — 하케다카 리서치만, kr_alpha 신규는 Scope·dry-run 확인"
+  stress_note: "스트레스 — W·부동산형 하케다카 방어적 관찰"

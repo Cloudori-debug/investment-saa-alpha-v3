@@ -1,0 +1,22 @@
+ticker,name,asset_group,sector,role,target_weight,min_weight,max_weight
+157450,TIGER 단기통안채,cash_short_bond,defensive_bond,cash_short_bond,11.63,8.27,15.37
+148070,KIWOOM 국고채10년,cash_short_bond,duration_bond,korea_10y_duration,8.9,6.36,11.82
+308620,KODEX 미국10년국채선물,cash_short_bond,duration_bond,us_treasury_duration,4.46,3.18,5.92
+CASH,예수금/CMA/MMF,cash_short_bond,cash,cash_buffer,7.18,1.0,7.55
+360750,TIGER 미국S&P500,global_beta,core_equity,global_equity_us,12.54,8.91,16.55
+195930,TIGER 유로스탁스50(합성 H),global_beta,core_equity,global_equity_europe,5.0,3.56,6.62
+195980,PLUS 신흥국MSCI(합성 H),global_beta,core_equity,global_equity_emerging,5.0,3.56,6.62
+238720,KODEX 일본TOPIX100,global_beta,core_equity,global_equity_japan,2.5,1.78,3.31
+411060,ACE KRX금현물,hedge_alt,hedge_alt,gold,7.15,5.1,9.46
+458730,TIGER 미국배당다우존스,income_alt,income_equity,dividend_us,3.59,2.55,4.73
+161510,PLUS 고배당주,income_alt,income_equity,dividend_kr,3.59,2.55,4.73
+329200,TIGER 리츠부동산인프라,income_alt,real_asset_income,korea_reit_infra,3.59,2.55,4.73
+352560,TIGER 미국MSCI리츠(합성 H),income_alt,real_asset_income,us_reit,3.59,2.55,4.73
+030200,KT,kr_alpha,telecom,quality_dividend,4.99,3.7,11.09
+021240,코웨이,kr_alpha,consumer,quality_defensive,4.99,3.7,11.09
+005830,DB손해보험,kr_alpha,insurance,shareholder_return,3.81,3.7,11.09
+000660,SK하이닉스,kr_alpha,semiconductor,defensive_consumer,2.5,0.0,7.4
+006040,동원산업,kr_alpha,consumer,dividend_value,1.28,0.95,2.85
+271560,오리온,kr_alpha,consumer,quality_defensive,1.28,0.95,2.85
+036530,SNT홀딩스,kr_alpha,holding,shareholder_return,1.28,0.95,2.85
+005440,현대지에프홀딩스,kr_alpha,holding,value_rerating,1.15,0.56,1.67

@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+outputs
+data/backups
+data/cache
+data/local
+data/quarantine
+*.egg-info
+.cursor

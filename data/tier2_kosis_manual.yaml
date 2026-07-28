@@ -1,0 +1,20 @@
+fields:
+  cpi_kr_yoy:
+    verified: false
+    value: null
+    value_date: null
+    source: null
+    source_url_or_note: null
+    updated_by: null
+    update_reason: null
+  pmi_kr:
+    verified: true
+    value: 52.1
+    value_date: '2026-06-30'
+    source: S&P Global South Korea Manufacturing PMI (released 2026-07-01)
+    source_url_or_note: https://www.pmi.spglobal.com/Public/Home/PressRelease — operator
+      must reconfirm before verified=true
+    updated_by: operator
+    update_reason: 'KOSIS tblId DT_1C8013 invalid (err21, no KOSIS-native PMI series).
+      Task A discovery: pmi_kr_kosis_unavailable=true, no high-confidence tblId. Prefill
+      only; verified=false until operator confirms official release.'

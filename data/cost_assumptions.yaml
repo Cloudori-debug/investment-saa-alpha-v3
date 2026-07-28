@@ -1,0 +1,18 @@
+# Alpha backtest cost assumptions (P5-C)
+#
+# IMPORTANT: These are PLACEHOLDER assumptions for shadow diagnostics only.
+# They do NOT change Actual Buy Allowed, gate, policy_cap, or approval_bridge.
+# The operator (원장님) should confirm broker commission and the latest
+# securities transaction tax before treating Net results as decision input.
+
+schema_version: "1.0"
+note: "가정치이며 실제 세율·수수료는 원장님이 확인 후 조정. 운용 판단용 확정치 아님."
+
+# Round-trip assumptions (bps). commission+slippage cover buy+sell;
+# securities_tx_tax applies on sell leg (included once in round-trip total).
+commission_bps: 15
+slippage_bps: 20
+securities_tx_tax_bps: 18
+
+# Optional documentation only — lite backtest uses return_3m proxy, not daily turnover.
+typical_holding_days: 63

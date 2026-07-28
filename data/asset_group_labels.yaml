@@ -1,0 +1,30 @@
+# 7자산군 internal ID 유지 — UI/리포트 표시명만 명확화
+groups:
+  cash_short_bond:
+    label: "현금·한국 단기채"
+    alias: cash_kr_short_bond
+    note: "예수금·CD·단기통안·단기채 — 방어 탄약. 미국 듀레이션 채권 아님"
+  domestic_beta:
+    label: "한국 주식 베타"
+    alias: kr_equity_beta
+    note: "KODEX 200 등 국내 broad market"
+  global_beta:
+    label: "미국 주식 프록시"
+    alias: us_equity_proxy
+    note: "global_beta ID 유지 · 실질 미국 S&P 대형주 프록시"
+  fx_dollar:
+    label: "달러 헤지"
+    alias: usd_hedge
+    note: "KRW/USD 노출 완화"
+  hedge_alt:
+    label: "금·대체 헤지"
+    alias: gold_hedge
+    note: "인플레·지정학 헤지"
+  income_alt:
+    label: "인컴·배당"
+    alias: income_equity
+    note: "배당 ETF 등 — 소형 슬롯"
+  kr_alpha:
+    label: "한국 개별주 알파"
+    alias: kr_alpha_sleeve
+    note: "배당·품질·딥밸류·지주·섹터 혼합 — look-through로 세분화"

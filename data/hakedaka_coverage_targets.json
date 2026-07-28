@@ -1,0 +1,16 @@
+{
+  "version": "1.1",
+  "description": "Hakedaka Tier H coverage targets (shadow diagnostic only)",
+  "targets_pct": {
+    "price_coverage": 100.0,
+    "ocf_coverage": 70.0,
+    "fcf_coverage": 60.0,
+    "debt_coverage": 70.0,
+    "cash_coverage": 70.0,
+    "net_cash_coverage": 60.0,
+    "treasury_scan_coverage": 80.0
+  },
+  "notes": {
+    "treasury_event_found_rate": "Informational only — not all tickers have buyback/cancel events"
+  }
+}

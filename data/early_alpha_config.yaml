@@ -1,0 +1,85 @@
+# Early Alpha Engine v0.1 — pilot entry shadow layer (no trade_actions authority)
+schema_version: "0.1"
+status: shadow_pilot_only
+execution_authority: none
+affects_trade_actions: false
+affects_final_execution: false
+
+principles:
+  - "Early Alpha is pilot_entry only — not confirmation buy"
+  - "Max pilot size = 25% of target alpha weight per ticker"
+  - "stop_level required for any pilot_entry"
+  - "Confirmation Engine unchanged"
+
+grade_thresholds:
+  e0_max: 39
+  e1_max: 54
+  e2_max: 69
+  e3_max: 84
+
+score_caps:
+  catalyst_max: 25
+  volume_max: 20
+  price_action_max: 20
+  moving_average_max: 15
+  flow_max: 10
+  risk_penalty_max: -30
+
+pilot_fractions:
+  e2: 0.10
+  e3_min: 0.20
+  e3_max: 0.25
+  absolute_max: 0.25
+
+stop_rules:
+  pct_below_entry: 0.07
+  min_stop_distance_pct: 0.05
+
+volume:
+  e3_min_ratio: 3.0
+  e2_min_ratio: 1.8
+  lookback_days: 20
+
+catalyst_keywords:
+  ma_tender:
+    - 인수
+    - 합병
+    - 공개매수
+    - M&A
+    - 지분취득
+  buyback:
+    - 자사주
+    - 소각
+    - 자기주식
+  major_shareholder:
+    - 최대주주
+    - 대주주
+    - major_shareholder
+  activist:
+    - 주주제안
+    - 행동주의
+  earnings:
+    - 실적
+    - 영업이익
+    - 분기보고서
+    - earnings
+
+denial_keywords:
+  - 부인
+  - 사실무근
+  - 해당없음
+  - 해명
+  - rumor
+  - 루머
+
+dart_lookback_days: 30
+min_catalyst_for_e3: 10
+weak_catalyst_e3_cap: true
+
+candidate_sources:
+  - positions_kr_alpha
+  - alpha_shortlist
+  - hakedaka_primary_hunt
+  - hakedaka_preliminary_hunt
+
+max_candidates: 120

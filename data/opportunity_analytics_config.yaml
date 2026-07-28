@@ -1,0 +1,56 @@
+# Alpha Opportunity Analytics v0.3 — learning & validation (shadow only)
+schema_version: "0.3"
+mode: shadow_learning_only
+execution_authority: none
+affects_trade_actions: false
+
+ledger_path: opportunity_signal_ledger.jsonl
+min_grade_to_track: E1
+
+opportunity_types:
+  - breakout
+  - re_rating
+  - recovery
+  - momentum
+  - turnaround
+  - value_awakening
+
+type_defaults:
+  breakout:
+    expected_alpha_pct: 12.0
+    expected_holding_days: 70
+    base_success_rate_pct: 55.0
+  re_rating:
+    expected_alpha_pct: 18.0
+    expected_holding_days: 94
+    base_success_rate_pct: 62.0
+  recovery:
+    expected_alpha_pct: 15.0
+    expected_holding_days: 84
+    base_success_rate_pct: 58.0
+  momentum:
+    expected_alpha_pct: 10.0
+    expected_holding_days: 60
+    base_success_rate_pct: 52.0
+  turnaround:
+    expected_alpha_pct: 20.0
+    expected_holding_days: 120
+    base_success_rate_pct: 48.0
+  value_awakening:
+    expected_alpha_pct: 14.0
+    expected_holding_days: 90
+    base_success_rate_pct: 56.0
+
+success_threshold_pct: 5.0
+failure_threshold_pct: -7.0
+post_analysis_horizons_days: [30, 60, 90]
+age_decay_per_week: 3.0
+historical_blend_weight: 0.35
+
+failure_reasons:
+  - volume_fade
+  - fake_breakout
+  - earnings_not_reflected
+  - flow_reversal
+  - sector_weakness
+  - time_decay

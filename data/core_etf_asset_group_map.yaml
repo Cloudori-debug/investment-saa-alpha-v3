@@ -1,0 +1,14 @@
+# Core benchmark ETF → 7-group compass mapping (absolute return mode)
+360750: global_beta
+195930: global_beta
+238720: global_beta
+195980: global_beta
+458730: income_alt
+161510: income_alt
+411060: hedge_alt
+356890: cash_short_bond
+148070: cash_short_bond
+308620: cash_short_bond
+157450: cash_short_bond
+357870: income_alt
+352560: income_alt

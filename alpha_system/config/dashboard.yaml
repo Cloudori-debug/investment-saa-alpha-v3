@@ -1,0 +1,55 @@
+# 알파 대시보드 — 데이터 소스 인벤토리·권장 갱신 주기
+
+version: "0.1"
+
+data_sources:
+  fundamentals:
+    label: "펀더멘털 (PyKRX/DART)"
+    path: data/fundamentals.csv
+    as_of_column: report_date
+    recommended_days: 90
+  sector_mapping:
+    label: "섹터 매핑 (KRX)"
+    path: data/krx_sector_mapping.csv
+    as_of_column: null
+    recommended_days: 180
+  prices:
+    label: "현재가 (PyKRX 종가)"
+    path: data/prices.csv
+    as_of_column: date
+    recommended_days: 1
+  cecs:
+    label: "CECS (수동 CSV)"
+    path: data/cecs_manual_scoring_template.csv
+    as_of_column: as_of
+    recommended_days: 365
+  t2_events:
+    label: "T2 / 논지훼손 (수동 입력)"
+    path: data/alpha_system_journal.jsonl
+    as_of_column: null
+    recommended_days: null
+  benchmark:
+    label: "벤치마크 KOSPI 수익률 (PyKRX)"
+    path: data/market_indicators.csv
+    as_of_column: date
+    recommended_days: 7
+  kospi_pbr_history:
+    label: "KOSPI 시장 PBR 10년 (T3 월간 판정)"
+    path: data/kospi_market_pbr_history.csv
+    as_of_column: month_end
+    recommended_days: 35
+  alpha_scores:
+    label: "알파 팩터 스코어 (quant snapshot)"
+    path: alpha_portfolio/data/output/alpha_scores.csv
+    as_of_column: as_of
+    recommended_days: 7
+  quant_snapshot_provenance:
+    label: "정량 스냅샷 provenance"
+    path: data/alpha_quant_snapshot_provenance.json
+    as_of_column: null
+    recommended_days: 7
+  weekly_qual_suggestions:
+    label: "주간 정성 AI 제안 (미승인)"
+    path: data/weekly_qual_suggestions.json
+    as_of_column: null
+    recommended_days: 14

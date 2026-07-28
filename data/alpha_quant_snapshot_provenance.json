@@ -1,0 +1,21 @@
+{
+  "run_id": "20260728T001722Z",
+  "as_of": "2026-07-28",
+  "generated_at": "2026-07-28T00:19:51.415027+00:00",
+  "collect": true,
+  "collect_scope": "liquid",
+  "input_hash_before": "8a0939588df1b54946756a0af3fffe754520c69f216f9fd42e7f385a10a02f43",
+  "input_hash_after": "93c927a6898be19a0abceb055248a4d5a1e0873250d20f08dc3d94a272d5ae80",
+  "scores_path": "alpha_portfolio/data/output/alpha_scores.csv",
+  "scores_sha256": "ffd4ded676e39521294673f87672a7029bdfe892458f8230c992a687f7c3e18f",
+  "scored_rows": 399,
+  "gate_pass": 394,
+  "candidates": 63,
+  "target_portfolio_written": false,
+  "t3_pbr_refresh": null,
+  "sources": {
+    "pykrx": "allowed",
+    "dart": "allowed",
+    "fastjusik": "forbidden"
+  }
+}

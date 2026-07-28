@@ -1,0 +1,101 @@
+# 경제 나침반 — 지표 가중치·임계값
+compass:
+  phase_weights:
+    growth: 0.35
+    inflation: 0.20
+    liquidity: 0.20
+    risk_appetite: 0.25
+
+  kospi:
+    drawdown_recovery: -5      # 고점 대비 -5% 이내 = 회복 구간
+    drawdown_slowdown: -3      # 고점 근처
+    drawdown_contraction: -10    # -10% 이하 = 위축
+    ma200_premium_expansion: 5   # 200MA 대비 +5% 이상 = 확장
+
+  vix:
+    risk_on_below: 18
+    stable_below: 22
+    caution_below: 25
+    risk_off_below: 30
+
+  foreign_flow:
+    inflow: ["inflow", "buying", "positive"]
+    outflow: ["outflow", "selling", "negative", "heavy_selling"]
+
+  usdkrw:
+    stress_above: 1550
+    stable_below: 1480
+
+  oil_brent:
+    shock_above: 90
+    deflation_below: 60
+
+  korea_10y:
+    rising_above: 4.5
+    falling_below: 3.0
+
+  sp500:
+    ma200_premium_expansion: 3
+    drawdown_contraction: -10
+    drawdown_recovery: -5
+
+  gold:
+    safe_haven_vix_above: 22
+    inflation_hedge_oil_above: 85
+
+tier2:
+  blend_weight: 0.30
+  pmi_expansion: 50
+  pmi_contraction: 48
+  cpi_high: 3.0
+  cpi_low: 1.5
+  yield_spread_positive: 0.0
+  hy_spread_stress: 500
+  hy_spread_calm: 350
+  real_rate_tight: 2.5
+
+phase_rules:
+  # growth_score 기준 국면 매핑
+  expansion_min_growth: 0.35
+  recovery_min_growth: 0.0
+  slowdown_max_growth: 0.15
+  contraction_max_growth: -0.25
+
+regime_rules:
+  crisis_vix: 30
+  crisis_kospi_drawdown: -15
+  risk_off_vix: 25
+  risk_off_drawdown: -10
+  risk_on_vix_max: 18
+  risk_on_requires_ma200: true
+  # computed vs applied severity gap (완화 방향) — AC-05b / health warn 임계
+  override_divergence_warn_gap: 2
+  # gap warn이 연속 N일(로그 기록 일수) 지속 시 재확인 재촉 강화 — 실행 게이트 변경 없음
+  override_divergence_escalation_days: 3
+  override_divergence_review_buffer_days: 2
+  # AC-05: override 설정 후 영업일 — 5일 warn, 15일 장기 미검토 메시지 승격(여전히 warn)
+  override_age_warn_days: 5
+  override_age_escalation_days: 15
+  # 조건부 조기 재검토 (경고만 — override/cap 자동 변경 없음)
+  early_review_worsening_dd_delta_pct: -5.0
+  early_review_recovery_dd_threshold: -15.0  # crisis_kospi_drawdown과 동일 기본값
+
+# ECONOMIC_COMPASS phase 0 — tilt influence shrink (calibration log accumulates under scale).
+tilt_governance:
+  taa_tilt_scale: 0.4   # 0단계 기본값 — 기존 대비 40%만 반영. 4단계 실측 후 조정.
+
+# ECONOMIC_COMPASS phase 1 — Bry-Boschan-style minimum duration (confirm consecutive runs).
+hysteresis:
+  regime_confirm_runs: 2   # 연속 2회 동일해야 레짐 확정 (CRISIS 진입은 즉시 — 코드 비대칭)
+  phase_confirm_runs: 2
+
+direction_map:
+  # growth_score, risk_appetite_score 사분면 → 나침반 방향
+  NE: {growth_min: 0.2, risk_min: 0.2}    # 성장↑ 리스크↑ = 북동 (Risk-On 확장)
+  N:  {growth_min: 0.2, risk_max: 0.2}    # 성장↑ 리스크↓ = 북 (회복)
+  E:  {growth_max: 0.2, risk_min: 0.2}    # 성장↓ 리스크↑ = 동 (스태그플레이션/인플레)
+  SE: {growth_max: -0.1, risk_max: -0.1}  # 성장↓ 리스크↓ = 남동 (침체/방어)
+  S:  {growth_max: -0.25, risk_min: -0.2} # 침체
+  SW: {growth_max: 0.0, risk_max: -0.3}   # 유동성 위기
+  W:  {growth_max: 0.1, risk_max: -0.15} # 둔화
+  NW: {growth_min: 0.0, risk_max: 0.0, growth_max: 0.2}  # 중립/관망

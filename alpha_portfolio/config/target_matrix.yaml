@@ -1,0 +1,43 @@
+# Target matrix — 04_목표매트릭스_가이드.md v0.1
+version: "0.1"
+
+kr_alpha:
+  # 상위 SAA/TAA 입력 — Alpha가 고정하지 않음
+  require_weight_input: true
+
+bands:
+  core:
+    default_sleeve_pct: 4.0
+    min_weight_ratio: 0.5
+    max_weight_ratio: 1.5
+    portfolio_max: 8.0
+  satellite:
+    default_sleeve_pct: 3.0
+    min_weight_ratio: 0.0
+    max_weight_ratio: 1.25
+    portfolio_max: 5.0
+  default:
+    default_sleeve_pct: 3.5
+    min_weight_ratio: 0.5
+    max_weight_ratio: 1.4
+    portfolio_max: 6.0
+
+replace:
+  pick_from: alpha_candidates
+  min_grade: B
+  prefer_different_sector: true
+  max_pairs_per_run: 5
+
+trim:
+  # Trim → 목표를 min_weight 또는 current×ratio 중 큰 값
+  floor_to_min: true
+  ratio_of_current: 0.7
+
+normalize:
+  # kr_alpha 행 target_weight 합 = kr_alpha_weight
+  enabled: true
+  tolerance_pct: 0.5
+
+satellite_cap:
+  sleeve_max_pct: 25
+  single_name_sleeve_pct: 5

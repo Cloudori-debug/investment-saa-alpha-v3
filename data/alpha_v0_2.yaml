@@ -1,0 +1,55 @@
+schema_version: "0.2"
+mode: shadow
+execution_authority: v1.0.2
+
+weights:
+  quality: 30
+  value: 25
+  momentum: 20
+  catalyst: 15
+  risk_control: 10
+
+score_bands:
+  core_min: 80
+  active_min: 70
+  candidate_min: 60
+  watch_min: 50
+
+quality_gate:
+  min_roe: 5.0
+  max_debt_ratio: 200.0
+  min_interest_coverage: 2.0
+  require_positive_ocf_or_fcf: true
+
+value_gate:
+  max_pbr: 3.5
+  max_per: 40.0
+  min_fcf_yield_proxy: 0.0
+
+momentum:
+  benchmark_ticker: "069500"
+  use_return_3m_as_90d: true
+  use_return_6m_as_120d: true
+  min_relative_90d: 0.0
+  min_relative_120d: 0.0
+
+catalyst:
+  min_dividend_yield: 0.015
+  min_earnings_yoy_turnaround: 0.05
+  fcf_positive_points: true
+
+exclusion:
+  min_market_cap_krw: 500000000000
+  min_trading_value_20d: 1500000000
+
+risk_budget:
+  alpha_target_pct: 12.5
+  alpha_max_pct: 22.5
+  single_name_default_pct: 3.0
+  single_name_core_max_pct: 5.0
+  single_name_hard_max_pct: 8.0
+  sector_max_pct: 28.0
+  overweight_tolerance_pct: 1.0
+
+liquidity:
+  min_trading_value_20d: 1500000000

@@ -1,0 +1,50 @@
+# Alpha 유니버스 필터 — active_preset이 liquidity 수치를 결정합니다.
+
+active_preset: standard
+
+presets:
+  aggressive:
+    label: 공격적 — 중소형 일부 포함
+    description: 시총 3,000억+, 거래대금 10억/일. 알파 후보를 넓게.
+    min_market_cap_krw: 300000000000
+    min_20d_avg_trading_value_krw: 1000000000
+    min_60d_avg_trading_value_krw: 800000000
+  standard:
+    label: 표준 (권장) — 중형 이상
+    description: 시총 5,000억+, 거래대금 15억/일. kr_alpha 균형.
+    min_market_cap_krw: 500000000000
+    min_20d_avg_trading_value_krw: 1500000000
+    min_60d_avg_trading_value_krw: 1200000000
+  conservative:
+    label: 보수적 — 대형·준대형
+    description: 시총 1조+, 거래대금 20억/일. 유동성·슬리피지 우선.
+    min_market_cap_krw: 1000000000000
+    min_20d_avg_trading_value_krw: 2000000000
+    min_60d_avg_trading_value_krw: 1500000000
+
+universe:
+  include:
+    market: ["KOSPI"]
+    security_type: ["common_stock"]
+  exclude:
+    preferred_stock: true
+    etf_etn: true
+    reit: true
+    spac: true
+    trading_halt: true
+    administrative_issue: true
+    audit_opinion_not_clean: true
+    capital_impairment: true
+
+liquidity:
+  min_20d_avg_trading_value_krw: 1500000000
+  min_60d_avg_trading_value_krw: 1200000000
+  min_market_cap_krw: 500000000000
+  min_listed_days: 252
+  max_order_to_adv_ratio: 0.05
+
+data_gate:
+  require_point_in_time: true
+  financial_statement_lag_days: 0
+  stale_data_max_days: 120
+  missing_data_policy: penalize

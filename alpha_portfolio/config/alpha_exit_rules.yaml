@@ -1,0 +1,190 @@
+# Alpha exit rules — 03_퇴출_규칙.md v0.1
+version: "0.1"
+
+# incumbent +3 무효: hard, soft, park, tier trim/replace 발동 시
+incumbent_invalidate_on:
+  - hard_exit
+  - soft_exit
+  - park_active
+  - tier_exit_trim_or_replace
+
+park:
+  max_days: 90
+  review_days: [30, 60, 90]
+  allowed_reasons:
+    - tax_lot
+    - temp_earnings
+  forbidden_reasons:
+    - loss_aversion
+    - thesis_broken
+    - governance_issue
+  force_decision_on_day: 90
+  allowed_actions_at_force: [Hold, Trim, Replace]
+
+soft_to_replace_days: 14
+
+hard_exit:
+  - id: H01
+    check: managed_or_halted
+    action: Replace
+    reason: managed_halted
+  - id: H02
+    check: audit_not_unqualified
+    action: Replace
+    reason: audit_issue
+  - id: H03
+    check: consecutive_loss_2y
+    action: Replace
+    reason: consecutive_loss
+  - id: H04
+    check: debt_ratio_above_max
+    debt_ratio_max: 200
+    exclude_financial: true
+    action: Replace
+    reason: high_debt
+  - id: H05
+    check: grade_reject_streak
+    streak_weeks: 2
+    action: Replace
+    reason: reject_2w
+  - id: H06
+    check: fundamentals_not_verified
+    action: Replace
+    reason: unverified
+  - id: H07
+    check: governance_red_flag
+    source: stock_flags.csv
+    action: Replace
+    reason: governance_red
+  - id: H08
+    check: satellite_momentum_collapse
+    tier: Satellite
+    max_score_m: 40
+    max_return_6m: -0.15
+    action: Replace
+    reason: satellite_momentum_collapse
+
+soft_exit:
+  - id: S01
+    check: composite_below
+    threshold: 45
+    exclude_incumbent_bonus: true
+    action: Trim
+    escalate_action: Replace
+    reason: low_composite
+  - id: S02
+    check: grade_streak
+    grade: C
+    streak_weeks: 2
+    action: Trim
+    escalate_action: Replace
+    reason: grade_c_2w
+  - id: S03
+    check: value_trap
+    max_score_q: 40
+    max_score_v: 35
+    action: Trim
+    escalate_action: Replace
+    reason: value_trap
+  - id: S04
+    check: relative_underperform_3m
+    benchmark: KOSPI200
+    threshold_pct: -10
+    enabled: false  # P1 — price_daily 필요
+    action: Trim
+    escalate_action: Replace
+    reason: rel_underperform_3m
+  - id: S05
+    check: overweight_vs_target
+    threshold_pct: 5
+    action: Trim
+    reason: overweight
+  - id: S06
+    check: core_to_satellite_weak
+    tier: Core
+    max_score_m: 55
+    action: Trim
+    reason: core_to_satellite_weak
+  - id: S07
+    check: role_downgrade_to_watch
+    action: Trim
+    escalate_action: Replace
+    reason: role_downgrade
+
+tier_exit:
+  satellite:
+    - id: T01
+      check: score_m_below
+      threshold: 50
+      action: Trim
+      reason: satellite_low_momentum
+    - id: T02
+      check: negative_return_6m_and_low_m
+      max_return_6m: 0
+      max_score_m: 55
+      action: Trim
+      escalate_action: Replace
+      reason: satellite_negative_momentum
+    - id: T03
+      check: momentum_satellite_drawdown
+      role: momentum_satellite
+      drawdown_from_52w_high_pct: -20
+      action: Replace
+      reason: momentum_drawdown
+    - id: T04
+      check: cyclical_in_caution_regime
+      role: cyclical_value
+      min_regime: CAUTION
+      enabled: false  # P1 — regime 입력
+      action: Trim
+      reason: cyclical_regime_defense
+  core:
+    - id: T10
+      check: grade_drop_with_low_composite
+      from_grade: A
+      to_grade: B
+      max_composite_raw: 60
+      action: Hold
+      watch: true
+      reason: core_watch
+    - id: T11
+      check: grade_to_c
+      grade: C
+      action: Trim
+      escalate_action: Replace
+      reason: core_grade_c
+    - id: T12
+      check: hold_if_quality_ok
+      min_score_q: 50
+      action: Hold
+      overrides: [T10]
+      reason: core_quality_hold
+
+regime_overlay:
+  CAUTION:
+    block_park_new: false
+    accelerate_satellite_trim: true
+  RISK_OFF:
+    satellite_trim_priority: true
+    block_park_new: true
+  CRISIS:
+    only_hard_immediate: true
+    block_park_new: true
+
+action_priority:
+  high:
+    - hard_exit
+    - park_day_90_force
+    - T03
+  medium:
+    - soft_exit
+    - S05
+  low:
+    - T10
+    - watch
+
+execution_mapping:
+  Hold: Hold
+  Trim: Trim
+  Replace: Replace
+  Park: Park

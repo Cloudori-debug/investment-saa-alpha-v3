@@ -1,0 +1,85 @@
+# QVM-SR Alpha scoring (Shareholder Return = SR, not Sharpe)
+# Pillars: Q 30% + V 25% + M 20% + SR 15% = 90% base; penalties ≈ risk control 10%
+
+scoring_profile: defensive_balanced
+
+score_weights:
+  quality: 0.30
+  valuation: 0.25
+  momentum: 0.20
+  shareholder_return: 0.15
+
+quality_metrics:
+  roe: {weight: 0.25, higher_better: true}
+  roa: {weight: 0.15, higher_better: true}
+  operating_margin: {weight: 0.20, higher_better: true}
+  gross_profitability: {weight: 0.15, higher_better: true}
+  fcf_positive: {weight: 0.15, higher_better: true}
+  ocf_quality: {weight: 0.10, higher_better: true}
+
+valuation_metrics:
+  per: {weight: 0.25, higher_better: false}
+  pbr: {weight: 0.25, higher_better: false}
+  pcr: {weight: 0.15, higher_better: false}
+  psr: {weight: 0.15, higher_better: false}
+  ev_ebitda: {weight: 0.20, higher_better: false}
+
+momentum_metrics:
+  return_12m_ex_1m: {weight: 0.35, higher_better: true}
+  return_6m: {weight: 0.25, higher_better: true}
+  return_3m: {weight: 0.20, higher_better: true}
+  distance_from_52w_high: {weight: 0.20, higher_better: true}
+
+shareholder_return_metrics:
+  dividend_yield: {weight: 0.40, higher_better: true}
+  fcf_yield: {weight: 0.30, higher_better: true}
+  ocf_quality: {weight: 0.30, higher_better: true}
+
+penalties:
+  low_liquidity: -15
+  high_debt: -10
+  negative_earnings: -20
+  declining_earnings: -10
+  high_volatility: -10
+  audit_or_trading_risk: -100
+  value_trap: -15
+  excessive_dilution: -15
+  overheated_price: -10
+
+penalty_rules:
+  debt_ratio_above: 200
+  volatility_60d_above: 0.45
+  per_below_with_negative_income: true
+  return_3m_above: 0.35
+
+grades:
+  A_min_score: 63
+  B_min_score: 50
+  C_min_score: 36
+
+output:
+  max_candidates: 30
+  max_holdings: 8
+  target_holdings: 6
+  incumbent_bonus: 3
+
+selection:
+  min_pillar_score:
+    quality: 60
+    valuation: 55
+    momentum: 55
+    shareholder_return: 55
+  min_pillars_pass: 3
+  min_all_pillar_floor: 45
+  max_sector_count: 2
+  default_proposed_weight_pct: 2.5
+  # non-satellite 제안 상한(포트 %). satellite는 target_matrix satellite_cap.single_name_sleeve_pct를
+  # kr_alpha_budget으로 동적 환산(운영 진실 B). 고정 8%를 satellite에 쓰지 말 것.
+  max_proposed_weight_pct: 8.0
+  min_proposal_count: 6
+
+sector_rules:
+  financials:
+    sectors: ["insurance", "bank", "financial"]
+    ignore_metrics: ["debt_ratio", "ev_ebitda"]
+    use_metrics: ["pbr", "roe", "dividend_yield"]

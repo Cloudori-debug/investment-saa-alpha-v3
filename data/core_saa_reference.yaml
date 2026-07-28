@@ -1,0 +1,163 @@
+schema_version: core_saa_reference.v0.2
+status: primary_absolute_return_benchmark
+authority: benchmark
+benchmark_mode: benchmark_reference_only
+affects_target_portfolio: false
+affects_trade_actions: false
+affects_execution_scope: false
+benchmark_role: passive_core_14_etf_buy_and_hold
+basis: user_long_term_core_saa
+weight_basis: total_core_saa_100pct
+reference_slot_count: 14
+tradable_etf_count: null
+
+slot_count_note: >
+  Core SAA 14-slot framework / 12 active Core ETF targets in target_portfolio.csv.
+  Includes 1 zero-weight placeholder (356890) and 1 unresolved slot (미국달러단기채 6.25%).
+  069500 KODEX200 is excluded — domestic equity via kr_alpha satellite.
+
+note: >
+  Core SAA target weights are the primary excess-return benchmark (14-slot framework).
+  Excludes 069500 KODEX200 — domestic equity via kr_alpha overlay, not passive KOSPI beta.
+  미국달러단기채 6.25% is ticker-unresolved; temporarily merged into 157450 in satellite
+  target (KRW short bond proxy — does NOT replicate USD short-bond FX exposure).
+  Satellite target_portfolio: Core 72.75% + kr_alpha 24.25% + CASH 3%.
+  MUST NOT auto-alter trade_actions or execution_scope without v1.0.2 gate + throttle + approval.
+
+assets:
+  - ticker: "360750"
+    name: TIGER 미국S&P500
+    role: global_equity_us
+    sleeve: core_equity
+    region: us
+    target_weight_pct: 17.5
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "195930"
+    name: TIGER 유로스탁스50(합성 H)
+    role: global_equity_europe
+    sleeve: core_equity
+    region: europe
+    target_weight_pct: 7.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "238720"
+    name: KODEX 일본TOPIX100
+    role: global_equity_japan
+    sleeve: core_equity
+    region: japan
+    target_weight_pct: 3.5
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "195980"
+    name: PLUS 신흥국MSCI(합성 H)
+    role: global_equity_emerging
+    sleeve: core_equity
+    region: emerging
+    target_weight_pct: 7.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "458730"
+    name: TIGER 미국배당다우존스
+    role: dividend_us
+    sleeve: income_equity
+    region: us
+    target_weight_pct: 5.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "161510"
+    name: PLUS 고배당주
+    role: dividend_kr
+    sleeve: income_equity
+    region: korea
+    target_weight_pct: 5.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "411060"
+    name: ACE KRX금현물
+    role: gold
+    sleeve: hedge_alt
+    region: global
+    target_weight_pct: 10.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "356890"
+    name: KODEX 종합채권(AA-이상)액티브
+    role: aggregate_bond
+    sleeve: duration_bond
+    duration: mid
+    target_weight_pct: 0.0
+    tradable: true
+    mapping_status: resolved
+    note: "0% reference slot — structural placeholder, not a buy signal"
+
+  - ticker: "148070"
+    name: KIWOOM 국고채10년
+    role: korea_10y_duration
+    sleeve: duration_bond
+    duration: long_kr
+    target_weight_pct: 12.5
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: null
+    name: 미국달러단기채
+    role: usd_short_bond
+    sleeve: defensive_bond
+    target_weight_pct: 6.25
+    tradable: false
+    mapping_status: unresolved
+    note: >
+      ETF ticker/product mapping required. Weight temporarily merged into 157450 in
+      target_portfolio — KRW short bond proxy; does NOT replace USD short-bond FX exposure.
+
+  - ticker: "308620"
+    name: KODEX 미국10년국채선물
+    role: us_treasury_duration
+    sleeve: duration_bond
+    duration: long_us
+    target_weight_pct: 6.25
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "157450"
+    name: TIGER 단기통안채
+    role: cash_short_bond
+    sleeve: defensive_bond
+    duration: short
+    target_weight_pct: 10.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "357870"
+    name: TIGER 리츠부동산인프라
+    role: korea_reit_infra
+    sleeve: real_asset_income
+    region: korea
+    target_weight_pct: 5.0
+    tradable: true
+    mapping_status: resolved
+
+  - ticker: "352560"
+    name: TIGER 미국MSCI리츠(합성 H)
+    role: us_reit
+    sleeve: real_asset_income
+    region: us
+    target_weight_pct: 5.0
+    tradable: true
+    mapping_status: resolved
+
+sleeve_labels:
+  core_equity: 글로벌 주식 (지역 분산)
+  income_equity: 배당·인컴
+  hedge_alt: 금·대체
+  defensive_bond: 단기·현금성 채권
+  duration_bond: 중·장기 듀레이션
+  real_asset_income: 리츠·부동산 인프라

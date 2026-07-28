@@ -1,0 +1,55 @@
+auto_regime_sync: true
+regime_sync_mode: pure_auto
+regime_auto_ttl_days: 7
+fred:
+  base_url: https://api.stlouisfed.org/fred/series/observations
+  stale_warn_days: 45
+  series:
+    cpi_us_level:
+      id: CPIAUCSL
+      transform: yoy_pct
+      target_field: cpi_us_yoy
+      frequency: monthly
+    yield_spread_2y10y:
+      id: T10Y2Y
+      transform: last
+      target_field: yield_spread_2y10y
+      frequency: daily
+    hy_oas_bp:
+      id: BAMLH0A0HYM2
+      transform: last
+      target_field: hy_oas_bp
+      frequency: daily
+    pmi_us:
+      id: UMCSENT
+      transform: last
+      target_field: pmi_us
+      frequency: monthly
+      note: ISM PMI 대리 — 소비자심리지수
+kosis:
+  base_url: https://kosis.kr/openapi/Param/statisticsParameterData.do
+  stale_warn_days: 60
+  queries:
+    cpi_kr_yoy:
+      orgId: '101'
+      tblId: DT_1J22042
+      itmId: T03
+      objL1: '0'
+      prdSe: M
+      transform: last
+      target_field: cpi_kr_yoy
+      note: KOSIS discovery selected DT_1J22042 — 월별 소비자물가 등락률 (search=전년동월비)
+    pmi_kr:
+      orgId: '101'
+      tblId: DT_1C8013
+      itmId: T10
+      objL1: ALL
+      prdSe: M
+      transform: last
+      target_field: pmi_kr
+      note: 경기종합지수(제조업) — PMI 대리. DT_1C8013은 INVALID(err21). KOSIS에 공식 PMI 없음 → data/tier2_kosis_manual.yaml
+        수동경로 사용. (연결 테스트는 DT_1J22042 CPI 표를 씀 — DT_1J20001도 폐기됨)
+derived:
+  real_rate_kr:
+    formula: korea_10y_minus_cpi_kr
+    note: market_indicators.korea_10y − cpi_kr_yoy

@@ -1,0 +1,15 @@
+﻿ticker,name,as_of,fiscal_year,sector,roe,roe_3y_avg,opm,debt_ratio,is_financial,is_holding,per,pbr,ev_ebitda,fcf_yield,sector_per_median,sector_pbr_median,net_income_y1,net_income_y2,audit_opinion,verified,source,is_etf,is_spac,is_managed,is_halted
+082640,동양생명,2026-07-24,2026,보험,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+030610,교보증권,2026-07-24,2026,증권,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+330590,롯데리츠,2026-07-24,2026,부동산,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+451800,한화리츠,2026-07-24,2026,부동산,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+071320,지역난방공사,2026-07-24,2026,전기·가스,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+137310,에스디바이오센서,2026-07-24,2026,의료·정밀기기,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+003850,보령,2026-07-24,2026,제약,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+002960,한국쉘석유,2026-07-24,2026,화학,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+002350,넥센타이어,2026-07-24,2026,화학,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+093050,LF,2026-07-24,2026,섬유·의류,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+017940,E1,2026-07-24,2026,유통,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+079940,가비아,2026-07-24,2026,IT 서비스,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+001570,금양,2026-07-24,2026,화학,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false
+023160,태광,2026-07-24,2026,금속,,,,,false,false,,,,,,,,,unqualified,false,liquid_template,false,false,false,false

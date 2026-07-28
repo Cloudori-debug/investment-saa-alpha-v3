@@ -1,0 +1,37 @@
+# CECS(촉매 실행확실성) 티어 가중치 — 백테스트로 튜닝 가능
+version: "0.1"
+
+cecs_weights:
+  disclosure_status: 0.30
+  execution_continuity: 0.20
+  pension_flow_score: 0.15
+  investment_purpose_flag: 0.15
+  independent_catalyst_flag: 0.20
+policy_dependency_penalty_weight: 0.15
+
+tier_thresholds:
+  core_min: 75
+  near_min: 55
+  satellite_min: 35
+
+tier_target_weight:
+  CORE: [0.15, 0.18]
+  NEAR: [0.10, 0.13]
+  SATELLITE: [0.08, 0.10]
+  HEDGE: [0.08, 0.10]
+
+portfolio_guards:
+  single_name_max: 0.18
+  single_name_min: 0.08
+  core_near_target_min: 0.65
+  core_near_target_max: 0.75
+  satellite_target_min: 0.15
+  satellite_target_max: 0.20
+
+hedge_candidate:
+  min_score_sr: 70
+  min_dividend_yield: 2.5
+  max_volatility_1y: 30
+
+defaults:
+  cecs_input_neutral: 0.5

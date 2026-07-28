@@ -1,0 +1,1105 @@
+{
+  "lane": "monthly",
+  "report_id": "WQR-20260725-165137",
+  "report_name": "weekly_qual_report_20260725_filled.md",
+  "as_of": "2026-07-25",
+  "input_snapshot_hash": "778390ba3824bd64",
+  "imported_at": "2026-07-25T17:54:40",
+  "migrated_from": "weekly_qual_suggestions.json",
+  "domain_status": {
+    "cecs": "approved",
+    "t2": "empty",
+    "thesis": "empty",
+    "targets": "empty"
+  },
+  "domain_failures": {
+    "cecs": [],
+    "t2": [],
+    "thesis": [],
+    "targets": []
+  },
+  "cecs": [
+    {
+      "ticker": "036530",
+      "name": "SNT홀딩스",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "분기 750원 현금배당(자본준비금 감액 재원, 배당소득 비과세) 집행 확인. 다만 최근 완결 4개 분기 각각의 배당·자사주매입·소각 이벤트 개별 공시 대조는 못함; 검색 키워드: \"SNT홀딩스 분기배당 자사주 소각 공시 KIND 2025 2026\"",
+        "sources": [
+          "https://www.s-econ.kr/news/articleView.html?idxno=4001982",
+          "https://kind.krx.co.kr/common/disclsviewer.do?acptNo=20220204000271&docno=&method=searchInitInfo"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SNT홀딩스 국민연금 지분율 대량보유 변동\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SNT홀딩스 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "006040",
+      "name": "동원산업",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025.8 발행주식 7%(350만주) 소각, 2026.5 잔여 자사주 1,046만770주 전량 소각, 배당금 2019년 400원→2024년 1,100원 인상 확인. 다만 최근 완결 4개 분기 개별 이벤트 매칭은 못함; 검색 키워드: \"동원산업 분기배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.hankyung.com/article/202409124934i",
+          "https://kind.krx.co.kr/common/disclsviewer.do?method=searchInitInfo&acptNo=20250808000265&docno="
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "최대주주 김남정 동원그룹 회장 외 특수관계인 18인이 87.85% 보유, 외국인 지분 1.37%로 유통물량 자체가 약 10%로 매우 제한적. 국민연금 보유 여부·지분율 미확인; 검색 키워드: \"동원산업 국민연금 대량보유 지분율 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"동원산업 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "005830",
+      "name": "DB손해보험",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025.12 자사주 1,416천주(1,750억원) 소각, 2026.2 추가 대규모 소각 결정(발행주식 약 5.6%, 약 7,981억원), DPS 7,600원(2025년 결산) 확인. 다만 최근 완결 4개 분기 개별 매칭은 못함; 검색 키워드: \"DB손해보험 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.thebell.co.kr/front/newsview.asp?key=202602271136053760104512",
+          "https://m.thebell.co.kr/m/newsview.asp?newskey=202602051448529560104116"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 8.69% 보유(단일 시점 기사 기준) 확인되나 2개 분기 이상 추세(순증/보합/감소) 데이터 미확보; 검색 키워드: \"DB손해보험 국민연금 지분율 변동 추이 2026\"",
+        "sources": [
+          "https://www.newstomato.com/ReadNews.aspx?no=1285954"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"DB손해보험 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "271560",
+      "name": "오리온",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026.6 오리온·오리온홀딩스 자사주 전량소각(총 675억원), 2026.7 창사 이래 첫 중간배당 실시, 2024~2026 배당성향 오리온 26%→36%·오리온홀딩스 30%→55% 확대 공시 확인. \"창사 이래 첫 중간배당\"이라는 표현상 과거 분기 환원 연속성은 낮았을 가능성이 있어 4개 완결분기 매칭은 못함; 검색 키워드: \"오리온 분기별 배당 자사주 소각 이력 2025 2026\"",
+        "sources": [
+          "https://www.newspim.com/news/view/20260616000917",
+          "https://www.newspim.com/news/view/20260706000836"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"오리온 국민연금 지분율 대량보유 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"오리온 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "005440",
+      "name": "현대지에프홀딩스",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년 상반기 중 그룹 전체 약 3,500억원 자사주 소각 완료 예정, 내년부터 반기배당(100억원+) 신설 및 2027년까지 연간 배당 500억원 단계적 확대 계획 확인. 과거 4개 완결분기 실적 매칭은 못함; 검색 키워드: \"현대지에프홀딩스 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.mt.co.kr/living/2026/03/31/2026033113461239359"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 관련 수치가 출처 간 상충(13.49% vs 8.03%, 대상 법인·시점 상이 가능성)하여 확인 불가; 검색 키워드: \"현대지에프홀딩스 국민연금 지분율 대량보유 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"현대지에프홀딩스 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "021240",
+      "name": "코웨이",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025년 현금배당 1,373억원 + 자사주매입 1,100억원(총 2,473억원 환원), 자사주 약 190만주 전량소각, 주주환원율 20%→40% 상향(2027년까지 유지 목표) 확인. 4개 완결분기 매칭은 못함; 검색 키워드: \"코웨이 분기배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://company.coway.com/newsroom/press/714",
+          "https://www.thepublic.kr/news/articleView.html?idxno=306643"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 기금운용본부가 2026.7.10 '주식 대량보유 내역(2026년 2분기)'을 공개한 사실은 확인되나 코웨이 지분 수치 자체는 미확인; 검색 키워드: \"코웨이 국민연금 지분율 대량보유 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"코웨이 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "030190",
+      "name": "NICE평가정보",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "FY2026~2028 연결배당성향 35% 유지 및 배당금 상향 계획, 자사주 매입·소각 방향성 언급 확인. 구체적 분기별 집행 데이터는 미확인; 검색 키워드: \"NICE평가정보 자사주 소각 배당 분기 공시 2025 2026\"",
+        "sources": [
+          "http://www.niceinfo.co.kr/ir/Shareholder-partcptn_2.nice"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"NICE평가정보 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"NICE평가정보 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "002380",
+      "name": "KCC",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "자사주 보유목적은 \"유사시 재원 확보 및 주주환원 정책 실행 유연성\", 발행주식 대비 자사주 7.7%(작년말 기준) 및 단계적 소각 확정 방침 확인. 구체적 분기별 집행 내역은 미확인; 검색 키워드: \"KCC 자사주 소각 배당 분기 공시 2025 2026\"",
+        "sources": [
+          "https://m.thebell.co.kr/m/newsview.asp?svccode=00&newskey=202507031306347520105859"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 20.0,
+        "rationale": "국민연금공단 지분 2026.4.29 10.16%(87만3,433주) → 2026.5.22 9.97%(85만6,429주)로 감소 확인. 채점표상 \"보유+감소\" 구간에 해당하여 보수적 점수 부여",
+        "sources": [
+          "https://www.datatooza.com/article/20260522145135533352ef3995c6_80"
+        ],
+        "provisional": false
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"KCC 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "000660",
+      "name": "SK하이닉스",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "실적 호조에 따른 주주환원 확대 기대는 다수 리포트에서 언급되나, 최근 완결 4개 분기별 배당·자사주매입·소각 개별 공시는 확인 못함; 검색 키워드: \"SK하이닉스 분기배당 자사주 매입 소각 공시 2025 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 지분율이 출처마다 7.5%~8.1%로 상이하게 제시되어 순증 여부를 확정하지 못함; 검색 키워드: \"SK하이닉스 국민연금 지분율 변동 추이 2026\"",
+        "sources": [
+          "https://newsroom.stockplus.com/breaking-news/25162",
+          "https://www.fnnews.com/news/202607141036048666"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SK하이닉스 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "005930",
+      "name": "삼성전자",
+      "execution": {
+        "score_100": 100.0,
+        "rationale": "2026.3.18 정기주총에서 16조원 규모 자사주 소각 계획 의결(2026년 상반기 중 소각 목적 보유분 전량 처리), 연간 약 11.1조원 배당(정규 9.8조원+추가배당 1.3조원) 결의. 삼성전자는 오랜 기간 분기배당을 지속해온 것으로 널리 알려져 있어 잠정 100 부여하나, 최근 4개 분기 개별 공시 원문 전수 대조는 하지 않음(일반적으로 알려진 사실 기반 판단)",
+        "sources": [
+          "https://zdnet.co.kr/view/?no=20260318104922",
+          "https://www.4th.kr/news/articleView.html?idxno=2109786"
+        ],
+        "provisional": false
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 지분 7.57%(단일 시점) 확인되나 추세(순증/감소) 데이터 없음; 검색 키워드: \"삼성전자 국민연금 지분율 변동 추이 2026\"",
+        "sources": [
+          "https://richelab.com/%EA%B5%AD%EB%AF%BC%EC%97%B0%EA%B8%88%EC%9D%B4-%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90%EB%A5%BC-%EB%A7%A4%EB%8F%84%ED%95%9C-%EC%9D%B4%EC%9C%A0/"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성전자 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "402340",
+      "name": "SK스퀘어",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026.4.30 중간배당 결의(주당 1,550원, 총 2,043억원), 2026.7.22 자사주 430억원(3만4,388주) 소각 결의, 향후 3년간 경상 배당수입의 30%+ 및 투자성과 일부를 환원하는 정책 확인. 4개 완결분기 전체 매칭은 못함; 검색 키워드: \"SK스퀘어 분기별 배당 자사주 소각 이력 2025 2026\"",
+        "sources": [
+          "https://www.datatooza.com/article/20260430170020736252ef3b1d96_80",
+          "https://view.asiae.co.kr/article/2026072218175965559"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SK스퀘어 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SK스퀘어 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "005935",
+      "name": "삼성전자우",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "우선주는 삼성전자 보통주와 동일한 배당·자사주 소각 정책이 적용되는 것으로 일반적으로 알려져 있으나, 우선주 고유의 개별 분기 공시 대조는 하지 않아 확인 불가 처리; 검색 키워드: \"삼성전자우 배당 자사주 소각 정책 2025 2026\"",
+        "sources": [
+          "https://dividend.samsung.com/"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가(보통주 기준 7.57%만 확인, 우선주 별도 수치 미확인); 검색 키워드: \"삼성전자우 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성전자우 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "055550",
+      "name": "신한지주",
+      "execution": {
+        "score_100": 100.0,
+        "rationale": "2분기 주당배당 740원 결정 + 7,000억원 자사주 추가 매입·소각 결의, 연초 이후 누적 자사주매입·소각 1.4조원 + 예상 연간 현금배당 약 1.4조원(총주주환원 최소 2.8조원), 경상 주주환원율 50%+ 목표 하에 분기배당 체계 운영 확인",
+        "sources": [
+          "https://www.wikitree.co.kr/articles/1148080",
+          "https://news.nate.com/view/20260427n08117"
+        ],
+        "provisional": false
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"신한지주 국민연금 지분율 대량보유 변동 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"신한지주 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "069960",
+      "name": "현대백화점",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2024.11 반기배당·자사주 소각 추진 밸류업 계획 발표 확인되나 실제 최근 4개 완결분기 집행 여부는 미확인; 검색 키워드: \"현대백화점 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.etnews.com/20241108000139"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "출처 간 국민연금 지분율 수치 상충(13.49% / 8.03%, 대상 법인·시점 상이 가능성)으로 확인 불가; 검색 키워드: \"현대백화점 국민연금 지분율 변동 2026\"",
+        "sources": [
+          "https://signalm.sedaily.com/article/13587777"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "2024년 현대백화점 지주사 전환 인적분할 안건에 국민연금이 반대표를 던져 부결시킨 사례가 있어(적극적 의결권 행사 정황) 단순투자로 단정하기 어려우나, 최신 DART 대량보유목적 문구 원문은 미확인이라 확정 점수 보류; 검색 키워드: \"현대백화점 국민연금 대량보유보고서 투자목적 2026\"",
+        "sources": [
+          "https://signalm.sedaily.com/article/13587777"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "024110",
+      "name": "기업은행",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "분기배당 도입은 \"추진 중\"(아직 미확정)이라는 서술만 확인, 현재는 현금배당·자본비율 개선 중심으로 운영 중. 4개 완결분기 매칭 불가; 검색 키워드: \"기업은행 분기배당 도입 확정 공시 2026\"",
+        "sources": [
+          "https://news.nate.com/view/20260512n08352"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가(최대주주는 정부); 검색 키워드: \"기업은행 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"기업은행 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "034730",
+      "name": "SK",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025년 결산 기말배당 6,500원, FY24~26 정책상 연 최소 DPS 5,000원 + 시가총액 1~2% 자사주매입·소각, 2026.3.10 이사회에서 발행주식 20.1%(14,694,388주) 소각 결의(소각예정일 2027.1.4) 확인. 4개 완결분기 매칭은 못함; 검색 키워드: \"SK주식회사 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://v.daum.net/v/20260306183555598"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SK 국민연금 지분율 대량보유 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"SK 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "032830",
+      "name": "삼성생명",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년 배당수익률 2.7% 예상(목표가 193,000원 리포트 기준) 언급이 있으나, 별도 기사에서는 \"삼성생명 배당 0원\"이라는 상반된 서술도 존재해 상충. 자사주 소각 계획은 확인되지 않으며 삼성전자 지분 매각이익의 환원재원 활용 가능성만 언급됨; 검색 키워드: \"삼성생명 배당 자사주 소각 분기 공시 2025 2026\"",
+        "sources": [
+          "https://m.thinkpool.com/news/view/16801718",
+          "https://ket.kr/news/article.html?no=37776"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성생명 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성생명 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "316140",
+      "name": "우리금융지주",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년 1분기 배당 220원 결정 및 \"연중 균등배당\" 정책 운영, 2,000억원 자사주 매입 후 전량소각(6월 완료 예정) + 2026년 추가 2,000억원 소각 예정(신탁 취득 후 전량소각 원칙), CET1 13% 초과 시 하반기 추가 소각 검토, 2025년에도 1,500억원 소각 이력 확인. 분기별 균등배당 정책은 확립되어 있으나 4개 분기 공시 전수 대조는 안 함; 검색 키워드: \"우리금융지주 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://dealsite.co.kr/articles/160832",
+          "https://www.thebell.co.kr/front/newsview.asp?key=202603171135487200109333"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"우리금융지주 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"우리금융지주 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "138930",
+      "name": "BNK금융지주",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년(예상) 주당배당 820원(총주주환원율 45.0%) + 자사주매입·소각 600억원 확정, 추가 650억원 검토 확인. 분기별 집행 시점은 특정 못함; 검색 키워드: \"BNK금융지주 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.newspim.com/news/view/20260701000664"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"BNK금융지주 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"BNK금융지주 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "029780",
+      "name": "삼성카드",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년 결산배당 약 2,988억원(배당성향 46%, 중장기 50% 목표) 확인. 다만 삼성카드는 다른 삼성 계열사와 달리 \"자사주를 소각하지 않는\" 정책을 명시적으로 택하고 있어 소각 이벤트는 구조적으로 없음. 분기배당 여부는 미확인; 검색 키워드: \"삼성카드 분기배당 여부 공시 2025 2026\"",
+        "sources": [
+          "https://newsfield.net/%EC%88%9C%EC%9D%B5-%EC%97%85%EA%B3%84-1%EC%9C%84%EC%9D%B8%EB%8D%B0-%EC%A3%BC%EA%B0%80%EB%8A%94-%E2%88%9216%EA%B9%80%EC%9D%B4%ED%83%9C-%EC%82%BC%EC%84%B1%EC%B9%B4%EB%93%9C-%EB%B0%B0%EB%8B%B9/"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가(삼성생명·자사주 등 동일인측 지분 79.77%로 유통물량 20.23%에 불과해 대량보유 자체가 제한적); 검색 키워드: \"삼성카드 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성카드 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "005380",
+      "name": "현대차",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025년 배당 주당 1만원(순이익 24.6% 감소에도 최소배당 보장) + 자사주 9,160억원 소각(TSR 35% 달성, 총 3조5,566억원 환원), 2026년 약 4,000억원 추가 자사주 매입 후 전량소각 계획(3년간 총 4조원 규모) 확인. 분기별 세부 매칭은 못함; 검색 키워드: \"현대차 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://magazine.hankyung.com/business/article/202601215036b",
+          "https://www.thevaluenews.co.kr/news/199148"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"현대차 국민연금 지분율 대량보유 변동 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"현대차 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "086790",
+      "name": "하나금융지주",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "분기 최대실적 경신 지속, \"주주환원 확대 가능성\"에 목표가 연쇄 상향(iM 15만원→키움 17.5만원→한화투자 16.8만원). 대형 금융지주 통상적 분기배당 관행에 근거한 정황은 있으나 개별 4개 분기 공시 전수 대조는 안 함; 검색 키워드: \"하나금융지주 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://m.joseilbo.com/news/view.htm?newsid=567274"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 보유주식이 2026.4.15 24,195,963주(8.69%) → 2026.6.4 24,142,429주(8.80%)로, 주식수는 53,534주 \"감소\"했으나 지분율은 상승 — 자사주 소각에 따른 분모효과로 판단되어 채점표 규정상 순증으로 인정하지 않고 중립(50) 처리",
+        "sources": [
+          "https://m.ddaily.co.kr/page/view/2026060416420224509"
+        ],
+        "provisional": false
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"하나금융지주 국민연금 대량보유보고서 투자목적 DART\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "009150",
+      "name": "삼성전기",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "검색 결과 삼성전자 관련 정보만 확인되었고 삼성전기 고유의 배당·자사주 소각 정보는 확인하지 못함; 검색 키워드: \"삼성전기 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성전기 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성전기 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "028260",
+      "name": "삼성물산",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026~2028년 주주환원정책(주당배당 최소 2,500원, 관계사 배당수익의 60~70% 환원) 발표, 자사주 소각 규모가 2024년 7,676억원→2025년 9,322억원→2026년 2조3,266억원으로 급증 확인. 분기별 매칭은 못함; 검색 키워드: \"삼성물산 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://m.ceoscoredaily.com/page/view/2026070917092873625"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성물산 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"삼성물산 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "105560",
+      "name": "KB금융",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2Q26 순이익 1.87조원 전망, 환율 1,541원 압박 속에서도 주주환원율 54% 사수 확인. 대형 금융지주 분기배당 관행에 근거한 정황은 있으나 개별 4개 분기 공시 전수 대조는 안 함; 검색 키워드: \"KB금융 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.ftoday.co.kr/news/articleView.html?idxno=361837"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "국민연금 지분율이 8.94%→9.33%로 상승했으나, 이는 KB금융 자사주 소각에 따른 발행주식총수 감소(분모효과)로 설명되어 실제 순매수로 보기 어려움. 채점표 규정상 중립(50) 처리",
+        "sources": [
+          "https://v.daum.net/v/7wIoROOcXP"
+        ],
+        "provisional": false
+      },
+      "purpose": {
+        "score_100": 100.0,
+        "rationale": "국민연금이 2026년 6월 KB금융 보유목적을 \"단순투자\"로 변경(공단은 회장 선임 이슈와 무관하다고 설명). 채점표상 일반투자/단순투자 구간에 해당",
+        "sources": [
+          "https://v.daum.net/v/7wIoROOcXP"
+        ],
+        "provisional": false
+      }
+    },
+    {
+      "ticker": "175330",
+      "name": "JB금융지주",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026년 1분기 배당 311원(전년 1분기 160원 대비 약 2배), 2026년부터 분기균등배당제 신규 도입, 상반기 자사주 소각 450억원 계획, 2026년 총주주환원율 50.0% 전망 확인. 다만 분기균등배당이 \"올해부터\" 신규 도입된 것이라 과거 4개 완결분기 전체 충족 여부는 불확실; 검색 키워드: \"JB금융지주 분기배당 도입 시행일 첫 지급 2026\"",
+        "sources": [
+          "https://m.ekn.kr/view.php?key=20260426021279859"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"JB금융지주 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"JB금융지주 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "015760",
+      "name": "한국전력",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2026.3 현금·현물배당 결정 공시 확인. 다만 2025년 배당성향(별도기준)이 2024년 16.5%에서 13.6%로 하락해 환원 강화 추세로 보기 어려움. 자사주 매입·소각 계획은 확인되지 않음; 검색 키워드: \"한국전력 자사주 매입 소각 계획 2025 2026\"",
+        "sources": [
+          "https://kind.krx.co.kr/common/disclsviewer.do?method=searchInitInfo&acptNo=20260306001134&docno="
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가(최대주주는 정부/산업은행); 검색 키워드: \"한국전력 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"한국전력 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "032640",
+      "name": "LG유플러스",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025년 자사주 1,000억원 소각 + 800억원 추가매입(2026년 소각 예정), DPS 650원(2025)→700원(2026 전망), FY24~26 배당정책(별도조정순이익 40%+, 최소 DPS 650원) 확인. 분기별 매칭은 못함; 검색 키워드: \"LG유플러스 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.press9.kr/news/articleView.html?idxno=71533"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"LG유플러스 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"LG유플러스 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "000270",
+      "name": "기아",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "2025년 결산배당 주당 6,800원(2026년 지급), TSR 35% 목표 하에 매년 약 5,000억원 자사주 매입·소각 병행 확인. 기아는 자사주 소각보다 \"현금 고배당\"을 핵심 환원 수단으로 강조하는 것으로 파악되며, 분기별 매칭은 못함; 검색 키워드: \"기아 분기 배당 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://v.daum.net/v/b21A9JUZRR"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"기아 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"기아 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    },
+    {
+      "ticker": "088350",
+      "name": "한화생명",
+      "execution": {
+        "score_100": 50.0,
+        "rationale": "\"배당을 중단한지 2년이 넘었다\"는 기사 확인(해약환급금준비금 제도 개선 이후에나 배당 재개 논의 가능하다는 입장), 자사주 13%대 보유 중이나 소각 시점은 불분명. 상법 개정에 따른 자사주 소각 기대감만 존재하고 실행은 미확정이라 4개 완결분기 중 환원 이벤트가 없었을 가능성이 있으나 단정하지 않음; 검색 키워드: \"한화생명 배당 재개 자사주 소각 공시 2025 2026\"",
+        "sources": [
+          "https://www.insightkorea.co.kr/news/articleView.html?idxno=250164",
+          "https://www.thebell.co.kr/front/newsview.asp?code=0103&key=202605121524263000105929"
+        ],
+        "provisional": true
+      },
+      "pension": {
+        "score_100": 50.0,
+        "rationale": "확인 불가(예금보험공사 10% 보유는 확인되나 국민연금 수치는 미확인); 검색 키워드: \"한화생명 국민연금 지분율 대량보유\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      },
+      "purpose": {
+        "score_100": 50.0,
+        "rationale": "확인 불가; 검색 키워드: \"한화생명 국민연금 대량보유보고서 투자목적\"",
+        "sources": [
+          "확인 불가"
+        ],
+        "provisional": true
+      }
+    }
+  ],
+  "deep_dives": [
+    {
+      "ticker": "000660",
+      "name": "SK하이닉스",
+      "disclosure": "확인 불가; 검색 키워드: \"SK하이닉스 지배구조 이사회 사외이사 2026\"",
+      "buyback_dividend": "2Q26 컨센서스(영업이익 약 62.6조원)를 상회하는 어닝서프라이즈 다수 전망(다올투자 66.4조원 등), 영업이익률 76%대로 사상 최고 전망. 신용등급 AA+(국내 3대 신평사, 2026년 1분기 중 상향), 최고등급 AAA 근접 평가. 구체적 배당·자사주 소각 계획 자체는 확인 안 됨",
+      "pension": "국민연금 2대주주(지분율 출처마다 7.5~8.1%로 상이), 지분평가액이 9.6조원→125.2조원으로 급증(주가 상승 효과 포함, 순매수 여부와는 별개). 국민연금이 5% 이상 보유한 상장사 중 삼성전자+SK하이닉스 비중이 전체의 55.5% 차지. 나스닥 ADR 상장 이슈로 외국인 수급 변수 존재",
+      "investment_purpose": "확인 불가; 검색 키워드: \"SK하이닉스 국민연금 대량보유보고서 투자목적\"",
+      "risks": "증권사간 목표주가 편차 극심(140만원~420만원, 3배 차이) — AI 투자 지속성·메모리 업황 해석 차이가 원인. MSCI DM 미편입으로 패시브 자금 유입 지연 가능",
+      "sources": [
+        "https://www.investchosun.com/site/data/html_dir/2026/07/09/2026070980118.html",
+        "https://biz.heraldcorp.com/article/10734039",
+        "https://www.fnnews.com/news/202607120938553400"
+      ]
+    },
+    {
+      "ticker": "086790",
+      "name": "하나금융지주",
+      "disclosure": "확인 불가; 검색 키워드: \"하나금융지주 지배구조 이사회 2026\"",
+      "buyback_dividend": "분기 최대실적 경신 지속, \"주주환원 확대 가능성\" 부각에 증권가 목표가 연쇄 상향(iM 15만원→키움 17.5만원→한화투자 16.8만원)",
+      "pension": "국민연금 지분 8.69%(2026.4.15)→8.80%(2026.6.4), 그러나 보유주식수는 24,195,963주→24,142,429주로 오히려 53,534주 감소 — 자사주 소각에 따른 분모효과로 순매수로 보기 어려움. 블랙록이 2026.3 기준 지분율 7.1%로 2대주주 부상",
+      "investment_purpose": "확인 불가; 검색 키워드: \"하나금융지주 국민연금 대량보유보고서 투자목적\"",
+      "risks": "외국계(블랙록) 지분 확대에 따른 지배구조 변수, 원화 약세(1,541원)에 따른 자본비율 압박",
+      "sources": [
+        "https://www.press9.kr/news/articleView.html?idxno=71788",
+        "https://m.ddaily.co.kr/page/view/2026060416420224509"
+      ]
+    },
+    {
+      "ticker": "006040",
+      "name": "동원산업",
+      "disclosure": "최대주주 김남정 동원그룹 회장 외 특수관계인 18인이 87.85% 보유, 외국인 지분 1.37%로 유통물량 약 10% 내외",
+      "buyback_dividend": "2025.8 발행주식 7%(350만주) 소각, 2026.5 잔여 자사주(1,046만770주) 전량 소각, 배당 2019년 400원→2024년 1,100원으로 인상",
+      "pension": "확인 불가(유통물량 자체가 작아 국민연금 대량보유 여부 불투명); 검색 키워드: \"동원산업 국민연금 대량보유 지분율\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"동원산업 국민연금 대량보유보고서 투자목적\"",
+      "risks": "HMM 인수 우려가 지속적으로 주가 발목(흥국·하나증권 등 목표가 연쇄 하향: 7.2만원→6만원, 6.7만원→4.8만원), 동원F&B 원가 부담",
+      "sources": [
+        "https://www.businesspost.co.kr/BP?command=article_view&num=442633",
+        "https://marketin.edaily.co.kr/News/ReadE?newsId=03250486645448264"
+      ]
+    },
+    {
+      "ticker": "105560",
+      "name": "KB금융",
+      "disclosure": "2026년 6월 회장 선임 이슈 진행 중, 국민연금이 보유목적을 \"단순투자\"로 하향 변경(회장 선임 이슈와 무관하다고 해명)",
+      "buyback_dividend": "2Q26 순이익 1.87조원 전망, 환율 1,541원 압박 속에서도 주주환원율 54% 사수, 자사주 소각 지속",
+      "pension": "지분율 8.94%→9.33% 상승, 다만 이는 KB금융 자사주 소각(발행주식 감소)에 따른 분모효과로 설명되어 실제 순매수는 아닌 것으로 판단",
+      "investment_purpose": "2026.6 \"단순투자\"로 변경 확인(경영참여적 목적 아님)",
+      "risks": "회장 선임을 둘러싼 지배구조 불확실성, 단기 변동성 확대 코멘트(유안타증권)",
+      "sources": [
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=361837",
+        "https://v.daum.net/v/7wIoROOcXP"
+      ]
+    },
+    {
+      "ticker": "271560",
+      "name": "오리온",
+      "disclosure": "오리온홀딩스-오리온 지주 구조, 2026.6 양사 자사주 전량소각(총 675억원)",
+      "buyback_dividend": "창사 이래 첫 중간배당 실시(2026.7), 2024~2026년 배당성향 오리온 26%→36%, 오리온홀딩스 30%→55%로 상향",
+      "pension": "확인 불가; 검색 키워드: \"오리온 국민연금 지분율 대량보유\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"오리온 국민연금 대량보유보고서 투자목적\"",
+      "risks": "증권사 간 목표가 편차 존재(15만~20만원, 최근 6개월 컨센서스 평균 16.7만원), 해외(중국·베트남 등) 판매 의존도",
+      "sources": [
+        "https://www.newspim.com/news/view/20260616000917",
+        "https://www.insight.co.kr/news/561742"
+      ]
+    },
+    {
+      "ticker": "005440",
+      "name": "현대지에프홀딩스",
+      "disclosure": "장호진 사장 체제, 우량 자회사 지배력 강화를 통한 배당수입 확대 전략. 흥국증권은 \"거버넌스 선진화, 재평가로 귀결\" 논리로 목표가 제시",
+      "buyback_dividend": "2026년 상반기 그룹 전체 약 3,500억원 자사주 소각 완료 예정, 내년부터 반기배당(100억원+) 신설, 2027년까지 연간 배당 500억원 확대 목표, 지분투자수익률 4%+ 목표",
+      "pension": "확인 불가(수치 상충으로 검증 필요, 13.49%/8.03% 두 수치가 혼재); 검색 키워드: \"현대지에프홀딩스 국민연금 지분율 대량보유 2026\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"현대지에프홀딩스 국민연금 대량보유보고서 투자목적\"",
+      "risks": "2024년 인적분할을 통한 지주사 전환이 국민연금 반대로 부결된 전례(현대백화점 관련) — 지배구조 개편 시도의 불확실성",
+      "sources": [
+        "https://www.mt.co.kr/living/2026/03/31/2026033113461239359",
+        "https://signalm.sedaily.com/article/13587777"
+      ]
+    },
+    {
+      "ticker": "005380",
+      "name": "현대차",
+      "disclosure": "현대모비스의 현대차 지분율이 2022년 말 21.43%→2025년 말 22.36%로 상승(자사주 소각의 지배력 강화 효과), 정의선 승계 이슈와 연계된 해석 존재",
+      "buyback_dividend": "2025년 배당 주당 1만원(순이익 24.6% 감소에도 최소배당 보장), 자사주 9,160억원 소각(TSR 35% 달성), 2026년 추가 약 4,000억원 자사주 매입 후 전량소각(3년 총 4조원 규모)",
+      "pension": "확인 불가; 검색 키워드: \"현대차 국민연금 지분율 대량보유 변동 2026\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"현대차 국민연금 대량보유보고서 투자목적\"",
+      "risks": "승계 이슈와 자사주 소각 정책의 연관성에 대한 시장 해석(지배력 강화 목적 논란 가능성)",
+      "sources": [
+        "https://magazine.hankyung.com/business/article/202601215036b",
+        "https://www.thevaluenews.co.kr/news/199148"
+      ]
+    },
+    {
+      "ticker": "021240",
+      "name": "코웨이",
+      "disclosure": "최대주주 넷마블, 방준혁 의장이 넷마블·코웨이 의장 겸직 — 얼라인파트너스자산운용이 겸직 문제로 연임 반대를 요구했으나 2026.3.31 주총에서 원안(방준혁 재선임 포함) 가결",
+      "buyback_dividend": "2025년 현금배당 1,373억원+자사주매입 1,100억원(총 2,473억원), 주주환원율 20%→40% 상향(2027년까지 유지 목표), 2026 밸류업 우수기업 선정(금융위원장상)",
+      "pension": "확인 불가; 검색 키워드: \"코웨이 국민연금 지분율 대량보유\"",
+      "investment_purpose": "확인 불가; 검색 키워드: \"코웨이 국민연금 대량보유보고서 투자목적\"",
+      "risks": "행동주의펀드(얼라인파트너스)와의 지배구조 갈등 지속 가능성, 넷마블 종속 논란",
+      "sources": [
+        "https://www.ftoday.co.kr/news/articleView.html?idxno=355048",
+        "https://www.thebell.co.kr/front/newsview.asp?key=202602241721149240105331"
+      ]
+    }
+  ],
+  "t2": [],
+  "thesis": null,
+  "targets": [],
+  "deep_tickers": [],
+  "source_reviewed": {
+    "cecs": [
+      "000270",
+      "000660",
+      "002380",
+      "005380",
+      "005440",
+      "005830",
+      "005930",
+      "005935",
+      "006040",
+      "009150",
+      "015760",
+      "021240",
+      "024110",
+      "028260",
+      "029780",
+      "030190",
+      "032640",
+      "032830",
+      "034730",
+      "036530",
+      "055550",
+      "069960",
+      "086790",
+      "088350",
+      "105560",
+      "138930",
+      "175330",
+      "271560",
+      "316140",
+      "402340"
+    ],
+    "t2": [],
+    "thesis": [],
+    "targets": []
+  },
+  "approved": {
+    "cecs": true,
+    "t2": false,
+    "thesis": false,
+    "targets": false
+  },
+  "approved_meta": {
+    "cecs": {
+      "approved_by": "operator",
+      "as_of": "2026-07-25",
+      "applied": {
+        "applied": true,
+        "mode": "approve_ai_suggestions",
+        "imported": [
+          "036530",
+          "006040",
+          "005830",
+          "271560",
+          "005440",
+          "021240",
+          "030190",
+          "002380",
+          "000660",
+          "005930",
+          "402340",
+          "005935",
+          "055550",
+          "069960",
+          "024110",
+          "034730",
+          "032830",
+          "316140",
+          "138930",
+          "029780",
+          "005380",
+          "086790",
+          "009150",
+          "028260",
+          "105560",
+          "175330",
+          "015760",
+          "032640",
+          "000270",
+          "088350"
+        ],
+        "import_failures": [],
+        "approved": [
+          "036530",
+          "006040",
+          "005830",
+          "271560",
+          "005440",
+          "021240",
+          "030190",
+          "002380",
+          "000660",
+          "005930",
+          "402340",
+          "005935",
+          "055550",
+          "069960",
+          "024110",
+          "034730",
+          "032830",
+          "316140",
+          "138930",
+          "029780",
+          "005380",
+          "086790",
+          "009150",
+          "028260",
+          "105560",
+          "175330",
+          "015760",
+          "032640",
+          "000270",
+          "088350"
+        ]
+      }
+    }
+  }
+}
