@@ -29,10 +29,13 @@ _WATCH_MAX = 30
 
 def render_portfolio(ctx: DashboardContext) -> None:
     focus = consume_focus()
-    open_input = focus == FOCUS_HOLDINGS_INPUT or bool(
-        st.session_state.get("holdings_input_open")
-    )
-    _render_holdings_input(ctx, expanded=open_input)
+    # Primary job of this page — keep picker open after restart / sidebar nav.
+    if focus == FOCUS_HOLDINGS_INPUT:
+        st.session_state["holdings_input_open"] = True
+    if "holdings_input_open" not in st.session_state:
+        st.session_state["holdings_input_open"] = True
+    open_input = bool(st.session_state.get("holdings_input_open", True))
+    _render_holdings_input(ctx)
     _render_ops_holdings_guide(ctx)
 
     with st.container(border=True):
@@ -79,7 +82,7 @@ def _render_ops_holdings_guide(ctx: DashboardContext) -> None:
         )
         if not compass.items:
             st.markdown(
-                "알파 실보유가 없습니다. 위에서 **실보유 입력 → 후보에서 선택**으로 "
+                "알파 실보유가 없습니다. 위에서 **내 보유종목 선택 → 후보에서 선택**으로 "
                 "종목을 고르세요 (수량 불필요)."
             )
             return
@@ -149,14 +152,16 @@ def _current_alpha_paste(ctx: DashboardContext) -> str:
     return format_drafts_as_paste(drafts)
 
 
-def _render_holdings_input(ctx: DashboardContext, *, expanded: bool) -> None:
+def _render_holdings_input(ctx: DashboardContext) -> None:
     from alpha_system.ui.services.holdings_input import (
         drafts_from_tickers,
         parse_holdings_paste,
         upsert_kr_alpha_positions,
     )
 
-    with st.expander("실보유 입력 (알파)", expanded=expanded):
+    # Bordered block (not only a collapsed expander) so the picker stays visible.
+    with st.container(border=True):
+        st.subheader("내 보유종목 선택")
         st.caption(
             "적격 후보 ≤30 안 슬라이더로 고르기 (수량 불필요) · "
             "또는 HTS 붙여넣기 · kr_alpha만 갱신 · 현금/ETF 유지 · target·자동매매 없음"
