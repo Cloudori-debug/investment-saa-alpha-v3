@@ -24,6 +24,7 @@
 
 | 영역 | RESULT / 요지 |
 |------|----------------|
+| **모멘텀 Review-only** | `MOMENTUM_REVIEW_ONLY_SPEC` — 홈「모멘텀 집행 판정」GO/SLOW/WAIT/CUT_PACE · 12-1 · 주간·회차 집행 · target 자동변경 없음 (2026-07-28) |
 | **v3 분기** | C:\\Cursor\\investment-saa-alpha-v3 활성. 홈「월 리밸 · 오늘 할 일」보드(밴드/신호/CRISIS/SCALE_IN). (2026-07-28) |
 | **월 리밸 홈 보드** | ①밴드±25% ②익절·게이트 ③CRISIS 예외 ④SCALE_IN 제외 — Review-only · target 자동변경 없음 (2026-07-28) |
 | **정량 잠금 영구 off** | \data/proposal_freeze_policy.json\ enabled=false · 활성 freeze 해제. 설정「정량 잠금 정책」토글. (2026-07-28) |
@@ -102,7 +103,8 @@
 7. (후순위) Alpha BT 옵션 b
 8. ~~목표가 대기 보충~~ — E-only 완료
 9. ~~P1 컨센서스 조사·재채점 신호 MVP~~ — 완료 (자동 수집 불가·수동 F·큐만)
-10. **모멘텀 Review-only 표시(A안)** — 미구현 (v3 예정)\n11. ~~월 리밸 홈 보드~~ — 완료 (2026-07-28)
+10. ~~모멘텀 Review-only 표시(A안)~~ — 완료 (2026-07-28) `MOMENTUM_REVIEW_ONLY_SPEC`
+11. ~~월 리밸 홈 보드~~ — 완료 (2026-07-28)
 ---
 
 | 구분 | 의미 | 현재 기본 |

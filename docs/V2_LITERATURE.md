@@ -25,8 +25,12 @@
 
 | 문헌 | 요지 | 링크 |
 |------|------|------|
-| Jegadeesh & Titman (1993) | 모멘텀은 별 팩터 | https://doi.org/10.1111/j.1540-6261.1993.tb04702.x |
+| Jegadeesh & Titman (1993) | 모멘텀은 별 팩터 · 3~12M | https://doi.org/10.1111/j.1540-6261.1993.tb04702.x |
+| Moskowitz et al. TSMOM | 절대 12M 추세 · vol scaling | https://fairmodel.econ.yale.edu/ec439/mosk.pdf |
+| Barroso & Santa-Clara (2015) | 모멘텀 변동성↑ → 노출↓ | https://doi.org/10.1016/j.jfineco.2014.11.008 |
 | Lo, Mamaysky & Wang (2000) | 차트 패턴 정보 ≠ 안정 알파 | https://doi.org/10.1111/0022-1082.00265 |
+
+**v3 적용:** Review-only 집행 판정만 — Core `score_m` 제외. [`MOMENTUM_REVIEW_ONLY_SPEC.md`](MOMENTUM_REVIEW_ONLY_SPEC.md)
 
 ## 재채점 신호 (v2 P1)
 

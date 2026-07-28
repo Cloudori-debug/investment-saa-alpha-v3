@@ -35,7 +35,7 @@ v1/v2에 신규 기능을 넣지 말 것.
 1. **홈「월 리밸 · 오늘 할 일」** — 밴드 / 익절·게이트 / CRISIS 예외 / SCALE_IN 제외 (Review-only)
 2. 정량 freeze **기본 off** (`proposal_freeze_policy.json`)
 3. `positions.csv` git 비추적 · 고스트 보유 방지
-4. (예정) 모멘텀 Review-only 표시 A안
+4. **모멘텀 Review-only 집행 판정** — [`MOMENTUM_REVIEW_ONLY_SPEC.md`](MOMENTUM_REVIEW_ONLY_SPEC.md) (2026-07-28)
 
 ---
 

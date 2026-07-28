@@ -211,6 +211,101 @@ def _render_next_action(ctx: DashboardContext, overview: HomeOverview) -> None:
         _open_stage(action)
 
 
+def _fmt_ret(v: float | None) -> str:
+    if v is None:
+        return "—"
+    return f"{v * 100:+.1f}%"
+
+
+def _render_momentum_review(ctx: DashboardContext) -> None:
+    """Canvas mock style: one table + 실행/보류 only."""
+    import pandas as pd
+
+    from alpha_system.ui.services.momentum_review import (
+        build_momentum_review_board,
+        record_momentum_decision,
+    )
+
+    board = build_momentum_review_board(ctx)
+    decision_label = {"execute": "실행", "hold": "보류", "unset": "—"}
+    advice_short = {
+        "GO": "3회 균등",
+        "SLOW": "2회·느리게",
+        "WAIT": "사지 않음",
+        "CUT_PACE": "추가매수 중지",
+    }
+    with st.container(border=True):
+        st.subheader("모멘텀 집행 판정")
+        if not board.items:
+            st.caption("판정 대상 없음")
+            return
+
+        by_tk = {i.ticker: i for i in board.items}
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "종목": i.name,
+                        "12-1": _fmt_ret(i.ret_12_1),
+                        "교차%": (
+                            f"{i.cross_pct:.0f}"
+                            if i.cross_pct is not None
+                            else "—"
+                        ),
+                        "절대": i.absolute,
+                        "변동성": "높음" if i.vol_high else "정상",
+                        "등급": i.grade,
+                        "권고": advice_short.get(i.grade, i.grade),
+                        "내 판단": decision_label.get(i.last_decision, "—"),
+                    }
+                    for i in board.items
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        choice = st.radio(
+            "선택",
+            options=[i.ticker for i in board.items],
+            format_func=lambda t: by_tk[t].name,
+            horizontal=True,
+            key="mom_pick",
+            label_visibility="collapsed",
+        )
+        item = by_tk[choice]
+
+        b1, b2 = st.columns(2)
+        with b1:
+            if st.button(
+                "실행",
+                key="mom_exec_one",
+                type="primary",
+                disabled=not item.execute_allowed,
+                use_container_width=True,
+            ):
+                record_momentum_decision(
+                    ticker=item.ticker,
+                    grade=item.grade,
+                    decision="execute",
+                    advice=item.advice,
+                    as_of=ctx.as_of,
+                    rationale=item.reason,
+                )
+                st.rerun()
+        with b2:
+            if st.button("보류", key="mom_hold_one", use_container_width=True):
+                record_momentum_decision(
+                    ticker=item.ticker,
+                    grade=item.grade,
+                    decision="hold",
+                    advice=item.advice,
+                    as_of=ctx.as_of,
+                    rationale=item.reason,
+                )
+                st.rerun()
+
+
 def _render_monthly_rebal(ctx: DashboardContext) -> None:
     """Operator checklist: band / exit signal / CRISIS / SCALE_IN — no auto orders."""
     from alpha_system.ui.services.monthly_rebal_board import build_monthly_rebal_board
@@ -415,14 +510,15 @@ def render_home(ctx: DashboardContext) -> None:
             unsafe_allow_html=True,
         )
 
-    # 오늘 할 일 → 레짐/T3/다음 → 월 리밸 → 후보
+    # 오늘 할 일 → 레짐/T3/다음 → 월 리밸 → 모멘텀 판정 → 후보
     _render_next_action(ctx, overview)
     _render_system_judgment(ctx)
     _render_monthly_rebal(ctx)
+    _render_momentum_review(ctx)
     _render_proposal_result(ctx, overview)
 
     with st.expander("접힌 운용 · 익절 · 자동 준비 · 트랜치", expanded=False):
-        st.caption("첫 화면은 「오늘 할 일 → 월 리밸 → 후보」. 아래는 필요 시 펼침.")
+        st.caption("첫 화면은 「오늘 할 일 → 월 리밸 → 모멘텀 → 후보」. 아래는 필요 시 펼침.")
         _render_holdings_cues(ctx)
         st.markdown("#### 자동 준비")
         _render_preparation(overview)
