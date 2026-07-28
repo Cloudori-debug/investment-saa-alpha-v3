@@ -154,31 +154,31 @@ def _render_preparation(overview: HomeOverview) -> None:
             )
 
 
-def _render_next_action(ctx: DashboardContext, overview: HomeOverview) -> None:
+def _fmt_ret(v: float | None) -> str:
+    if v is None:
+        return "—"
+    return f"{v * 100:+.1f}%"
+
+
+def _render_today_line(ctx: DashboardContext, overview: HomeOverview, mom_n: int) -> None:
+    """Wireframe: one-line today cue (merged 후보·모멘텀 first)."""
     action = overview.next_action
-    clicked = False
-    with st.container(border=True):
-        st.subheader("오늘 할 일")
-        if action is None:
-            st.markdown(
-                '<div class="alpha-empty-queue"><strong>'
-                "지금은 추가 확인이 없습니다 — 아래 후보를 보세요."
-                "</strong></div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div class="alpha-action-item"><strong>{action.title}</strong><br/>'
-                f"{action.reason}</div>",
-                unsafe_allow_html=True,
-            )
-            clicked = st.button(
-                action.cta_label,
-                type="primary",
-                key="home_next_action",
-                use_container_width=True,
-            )
-    if action is None or not clicked:
+    n = overview.proposal_count or mom_n
+    bits = [f"후보·모멘텀 {n}종", "주간·회차일 참고"]
+    if action is not None:
+        bits.append(action.title)
+    st.markdown(f"**오늘 할 일** — {' · '.join(bits)}")
+    if action is not None:
+        if st.button(action.cta_label, key="home_next_action", type="secondary"):
+            st.session_state["_home_run_next_action"] = True
+            st.rerun()
+
+
+def _run_next_action_if_flagged(ctx: DashboardContext, overview: HomeOverview) -> None:
+    if not st.session_state.pop("_home_run_next_action", False):
+        return
+    action = overview.next_action
+    if action is None:
         return
     if action.key == "quant":
         from alpha_system.ui.services.auto_journal import journal_data_refresh
@@ -207,107 +207,124 @@ def _render_next_action(ctx: DashboardContext, overview: HomeOverview) -> None:
         st.error(result.message)
         with st.expander("실패 상세"):
             st.json(result.detail)
-    else:
-        _open_stage(action)
+        return
+    navigate(action.page, focus=action.focus, prefill=action.prefill)
 
 
-def _fmt_ret(v: float | None) -> str:
-    if v is None:
-        return "—"
-    return f"{v * 100:+.1f}%"
-
-
-def _render_momentum_review(ctx: DashboardContext) -> None:
-    """Canvas mock style: one table + 실행/보류 only."""
+def _render_proposal_momentum_merged(ctx: DashboardContext, overview: HomeOverview, mom_board=None) -> None:
+    """A안: 후보(정량순위) + 모멘텀 참고를 한 표로. 실행 버튼 없음."""
     import pandas as pd
 
     from alpha_system.ui.services.momentum_review import (
+        GRADE_KO,
         build_momentum_review_board,
-        record_momentum_decision,
     )
 
-    board = build_momentum_review_board(ctx)
-    decision_label = {"execute": "실행", "hold": "보류", "unset": "—"}
-    advice_short = {
-        "GO": "3회 균등",
-        "SLOW": "2회·느리게",
-        "WAIT": "사지 않음",
-        "CUT_PACE": "추가매수 중지",
-    }
+    mom_board = mom_board or build_momentum_review_board(ctx)
+    mom_by_tk = {i.ticker: i for i in mom_board.items}
+    proposal = list(ctx.portfolio_rows or [])
+    ops = list(ctx.ops_portfolio_rows or [])
+    proposal_tks = {str(r.ticker).zfill(6) for r in proposal}
+    ops_tks = {str(r.ticker).zfill(6) for r in ops}
+
     with st.container(border=True):
-        st.subheader("모멘텀 집행 판정")
-        if not board.items:
-            st.caption("판정 대상 없음")
-            return
+        h1, h2 = st.columns([4, 1])
+        with h1:
+            st.subheader(f"후보 · 모멘텀 ({len(proposal)}종)")
+        with h2:
+            show_nums = st.toggle("숫자 보기", key="mom_show_nums", value=False)
 
-        by_tk = {i.ticker: i for i in board.items}
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "종목": i.name,
-                        "12-1": _fmt_ret(i.ret_12_1),
-                        "교차%": (
-                            f"{i.cross_pct:.0f}"
-                            if i.cross_pct is not None
-                            else "—"
-                        ),
-                        "절대": i.absolute,
-                        "변동성": "높음" if i.vol_high else "정상",
-                        "등급": i.grade,
-                        "권고": advice_short.get(i.grade, i.grade),
-                        "내 판단": decision_label.get(i.last_decision, "—"),
-                    }
-                    for i in board.items
+        st.caption(
+            "순위=정량(QVM) · 모멘텀=참고 · 순위 밖≠자동 매도 · "
+            "매도 권고는 익절·테제 신호만 · 자동매매·target 변경 없음"
+        )
+
+        rows: list[dict] = []
+        for rank, r in enumerate(proposal, start=1):
+            tk = str(r.ticker).zfill(6)
+            m = mom_by_tk.get(tk)
+            status = "보유·제안" if tk in ops_tks else "제안"
+            abs_ko = "—"
+            if m is not None:
+                abs_ko = {"UP": "상승", "DOWN": "하락", "—": "—"}.get(
+                    m.absolute, m.absolute
+                )
+            row = {
+                "순위": rank,
+                "종목": r.name,
+                "모멘텀": GRADE_KO.get(m.grade, "—") if m else "—",
+                "권고": m.advice if m else "—",
+                "상태": status,
+            }
+            if show_nums:
+                row["12-1"] = _fmt_ret(m.ret_12_1) if m else "—"
+                row["교차%"] = (
+                    f"{m.cross_pct:.0f}"
+                    if m is not None and m.cross_pct is not None
+                    else "—"
+                )
+                row["추세"] = abs_ko
+                row["변동성"] = (
+                    ("높음" if m.vol_high else "정상") if m else "—"
+                )
+            rows.append(row)
+
+        if not rows:
+            st.caption("제안 후보 없음 — 정량·게이트 후 다시 평가")
+        else:
+            if show_nums:
+                cols = [
+                    "순위",
+                    "종목",
+                    "모멘텀",
+                    "권고",
+                    "상태",
+                    "12-1",
+                    "교차%",
+                    "추세",
+                    "변동성",
                 ]
-            ),
-            hide_index=True,
-            use_container_width=True,
-        )
+                st.dataframe(
+                    pd.DataFrame(rows)[cols],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.dataframe(
+                    pd.DataFrame(rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
-        choice = st.radio(
-            "선택",
-            options=[i.ticker for i in board.items],
-            format_func=lambda t: by_tk[t].name,
-            horizontal=True,
-            key="mom_pick",
-            label_visibility="collapsed",
-        )
-        item = by_tk[choice]
-
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button(
-                "실행",
-                key="mom_exec_one",
-                type="primary",
-                disabled=not item.execute_allowed,
+        # Holdings not in proposal band — review cue only (not auto-sell)
+        outside = [r for r in ops if str(r.ticker).zfill(6) not in proposal_tks]
+        if outside:
+            st.markdown("**보유 · 순위 밖** (재검토 단서 · 자동 매도 아님)")
+            out_rows = []
+            for r in outside:
+                tk = str(r.ticker).zfill(6)
+                m = mom_by_tk.get(tk)
+                out_rows.append(
+                    {
+                        "종목": r.name,
+                        "모멘텀": GRADE_KO.get(m.grade, "—") if m else "—",
+                        "권고": m.advice if m else "—",
+                        "상태": "순위밖·보유",
+                    }
+                )
+            st.dataframe(
+                pd.DataFrame(out_rows),
+                hide_index=True,
                 use_container_width=True,
-            ):
-                record_momentum_decision(
-                    ticker=item.ticker,
-                    grade=item.grade,
-                    decision="execute",
-                    advice=item.advice,
-                    as_of=ctx.as_of,
-                    rationale=item.reason,
-                )
-                st.rerun()
-        with b2:
-            if st.button("보류", key="mom_hold_one", use_container_width=True):
-                record_momentum_decision(
-                    ticker=item.ticker,
-                    grade=item.grade,
-                    decision="hold",
-                    advice=item.advice,
-                    as_of=ctx.as_of,
-                    rationale=item.reason,
-                )
-                st.rerun()
+            )
+            st.caption(
+                "물린 종목도 여기 올 수 있음. 추가 매수(물타기) 금지 권고와 별개로, "
+                "매도는 익절·논지 훼손 신호를 따르세요."
+            )
 
 
 def _render_monthly_rebal(ctx: DashboardContext) -> None:
-    """Operator checklist: band / exit signal / CRISIS / SCALE_IN — no auto orders."""
+    """Operator checklist — collapsed by default (wireframe)."""
     from alpha_system.ui.services.monthly_rebal_board import build_monthly_rebal_board
     from alpha_system.ui.services.nav import PAGE_PORTFOLIO, PAGE_REGIME
     from alpha_system.ui.services.portfolio_widgets import navigate_to_portfolio
@@ -319,13 +336,13 @@ def _render_monthly_rebal(ctx: DashboardContext) -> None:
         "danger": "alpha-badge-danger",
         "muted": "alpha-badge-warn",
     }
-    with st.container(border=True):
-        st.subheader("월 리밸 · 오늘 할 일")
+    title = "월 리밸 · 참고"
+    if board.do_now_count:
+        title = f"월 리밸 · 참고 ({board.do_now_count}건 지금)"
+    with st.expander(title, expanded=False):
         st.caption(
-            f"{board.summary} · as_of {board.as_of.isoformat()} · "
-            f"레짐 {board.regime_label} · "
-            f"{'월초 창(1~3일)' if board.is_month_start_window else '월중'} · "
-            "자동매매 없음 · target 자동 변경 없음"
+            f"{board.summary} · {board.as_of.isoformat()} · "
+            f"시장 {board.regime_label} · 자동매매 없음"
         )
         for card in board.cards:
             badge = tone_cls.get(card.tone, "alpha-badge-warn")
@@ -409,31 +426,6 @@ def _render_holdings_cues(ctx: DashboardContext) -> None:
                     navigate_to_portfolio(row.ticker)
 
 
-def _render_proposal_result(ctx: DashboardContext, overview: HomeOverview) -> None:
-    with st.container(border=True):
-        st.subheader("후보")
-        from alpha_system.ui.services.proposal_freeze import is_freeze_active, load_freeze
-
-        if is_freeze_active(ctx.root):
-            fr = load_freeze(ctx.root)
-            st.info(
-                f"스냅샷 고정 · {fr.as_of or '—'} · {len(fr.tickers)}종 · "
-                f"필수 게이트(T2·논지·목표가) 승인 후 해제 · 정량 재실행 차단"
-            )
-        if not ctx.portfolio_rows:
-            st.info(
-                "후보 대기 — 위 「오늘 할 일」을 끝내면 다시 평가됩니다."
-            )
-            return
-        st.caption(
-            f"제안 북 {overview.proposal_count}종 · 익절 신호 포함 · 검토용 · "
-            "매입 지시 아님 · target 자동 변경 없음 · 순위=정량(Ops A)"
-        )
-        from alpha_system.ui.services.portfolio_widgets import render_portfolio_bullets
-
-        render_portfolio_bullets(ctx, mode="summary", key_prefix="pf_home")
-
-
 def _render_tranche_card(
     ctx: DashboardContext,
     st_status,
@@ -487,11 +479,14 @@ def _render_tranche_card(
 
 
 def render_home(ctx: DashboardContext) -> None:
-    """Ops assistant home: 오늘 할 일 → 판정 3칸 → 후보. Legacy ops folded."""
+    """Ops assistant home — wireframe: 오늘 → 모멘텀 → 월리밸·후보 접힘."""
+    from alpha_system.ui.services.momentum_review import build_momentum_review_board
+
     frozen = ctx.runtime.effective_thesis_damage()
     past_window = ctx.as_of >= ctx.window_end
     overview = build_home_overview(ctx)
     blocker = overview.next_action
+    mom_board = build_momentum_review_board(ctx)
 
     _render_first_run_card(ctx)
 
@@ -510,15 +505,14 @@ def render_home(ctx: DashboardContext) -> None:
             unsafe_allow_html=True,
         )
 
-    # 오늘 할 일 → 레짐/T3/다음 → 월 리밸 → 모멘텀 판정 → 후보
-    _render_next_action(ctx, overview)
-    _render_system_judgment(ctx)
+    _render_today_line(ctx, overview, len(mom_board.items))
+    _run_next_action_if_flagged(ctx, overview)
+    _render_proposal_momentum_merged(ctx, overview, mom_board=mom_board)
     _render_monthly_rebal(ctx)
-    _render_momentum_review(ctx)
-    _render_proposal_result(ctx, overview)
 
-    with st.expander("접힌 운용 · 익절 · 자동 준비 · 트랜치", expanded=False):
-        st.caption("첫 화면은 「오늘 할 일 → 월 리밸 → 모멘텀 → 후보」. 아래는 필요 시 펼침.")
+    with st.expander("접힌 운용 · 레짐 · 익절 · 자동 준비 · 트랜치", expanded=False):
+        st.caption("첫 화면은 「오늘 → 후보·모멘텀 → 월 리밸(접힘)」.")
+        _render_system_judgment(ctx)
         _render_holdings_cues(ctx)
         st.markdown("#### 자동 준비")
         _render_preparation(overview)

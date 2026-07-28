@@ -17,7 +17,7 @@ def test_band_breach_relative() -> None:
     assert ok is False
     bad, detail = _band_breach(8.0, 5.0, band_rel=0.25)
     assert bad is True
-    assert "밴드" in detail
+    assert "허용" in detail or "목표" in detail
 
 
 def test_board_crisis_and_band(tmp_path: Path) -> None:

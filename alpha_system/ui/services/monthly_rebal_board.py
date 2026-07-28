@@ -120,13 +120,33 @@ def _band_breach(
         return False, "목표/실비중 없음"
     if target <= 0:
         if actual > 0.05:
-            return True, f"목표 0 · 실 {actual:.2f}%p (정리 검토)"
+            return True, f"목표 0 · 실비중 {actual:.2f}%p (정리 검토)"
         return False, "목표 0"
     lo = target * (1.0 - band_rel)
     hi = target * (1.0 + band_rel)
     if actual < lo or actual > hi:
-        return True, f"실 {actual:.2f}% · 목표 {target:.2f}% · 밴드 {lo:.2f}~{hi:.2f}%"
-    return False, f"실 {actual:.2f}% · 목표 {target:.2f}% · 밴드 내"
+        return True, f"실비중 {actual:.2f}% · 목표 {target:.2f}% · 허용 {lo:.2f}~{hi:.2f}%"
+    return False, f"실비중 {actual:.2f}% · 목표 {target:.2f}% · 밴드 안"
+
+
+def _regime_label_ko(label: str) -> str:
+    """Map regime codes to Korean for operator-facing UI."""
+    raw = (label or "—").strip()
+    if not raw or raw == "—":
+        return "—"
+    upper = raw.upper()
+    mapping = {
+        "CRISIS": "위기",
+        "RISK_ON": "위험선호",
+        "RISK_OFF": "위험회피",
+        "CAUTION": "주의",
+        "NEUTRAL": "중립",
+        "YELLOW": "주의(노랑)",
+    }
+    for key, ko in mapping.items():
+        if key in upper:
+            return ko
+    return raw
 
 
 def build_monthly_rebal_board(
@@ -193,12 +213,12 @@ def build_monthly_rebal_board(
             RebalItem(
                 ticker=tk,
                 name=nm,
-                action="밴드 밖 → 리밸 검토" if tk in actual_map else "미보유 · 목표>0",
+                action="밴드 밖 → 비중 조정 검토" if tk in actual_map else "아직 미보유 · 목표는 있음",
                 detail=detail
                 + (
                     ""
                     if tk in actual_map
-                    else " · 편입은 게이트·SCALE_IN 후"
+                    else " · 편입은 필수 확인·분할매수 후"
                 ),
                 tone="warn" if tk in actual_map else "muted",
             )
@@ -212,7 +232,7 @@ def build_monthly_rebal_board(
                     ticker=tk,
                     name=nm,
                     action="목표 없음 · 정리 검토",
-                    detail=f"실 {act:.2f}% · target에 kr_alpha 행 없음",
+                    detail=f"실비중 {act:.2f}% · 목표 목록에 알파 종목 없음",
                     tone="warn",
                 )
             )
@@ -220,17 +240,17 @@ def build_monthly_rebal_board(
     band_do = bool(band_items) and (is_month_start or crisis)
     card_band = RebalRuleCard(
         key="band",
-        title="① kr_alpha 밴드만 리밸",
+        title="① 알파 비중 밴드만 조정",
         status=(
             f"밴드 밖 {len(band_items)}종"
             if band_items
-            else "전 종목 밴드 내 (전량 월 리밸 불필요)"
+            else "전 종목 밴드 안 · 전량 월 조정 불필요"
         ),
         detail=(
             f"목표 대비 ±{int(band_rel * 100)}% 상대 밴드. "
             "밴드 안이면 매달 1일에 맞추지 않습니다."
             + (
-                " · 월초 창이라 오늘 정렬 검토"
+                " · 월초라 오늘 정렬 검토"
                 if is_month_start and band_items
                 else ""
             )
@@ -261,29 +281,34 @@ def build_monthly_rebal_board(
     ]
     card_signal = RebalRuleCard(
         key="signal",
-        title="② 주간 게이트·익절 신호 우선",
+        title="② 주간 확인·익절 신호 우선",
         status=(
-            f"실행 검토 {len(sig_items)}종"
+            f"검토할 신호 {len(sig_items)}종"
             if sig_items
             else "줄이기·환금·전량 신호 없음"
         ),
-        detail="월 리밸보다 익절/게이트 신호를 먼저 수행합니다. 자동 주문 없음.",
+        detail="월 조정보다 익절·확인 신호를 먼저 봅니다. 자동 주문 없음.",
         tone="warn" if sig_items else "ok",
         do_now=bool(sig_items),
         items=tuple(sig_items[:12]),
     )
 
-    # --- Rule 3: CRISIS exception ---
+    # --- Rule 3: crisis exception ---
+    regime_ko = _regime_label_ko(regime_label)
     card_crisis = RebalRuleCard(
         key="crisis",
-        title="③ CRISIS 예외 리밸",
-        status="CRISIS — 월초 기다리지 말고 방어 정렬 허용" if crisis else "비위기 — 예외 리밸 불필요",
+        title="③ 위기 시 예외 조정",
+        status=(
+            "위기 — 월초를 기다리지 말고 방어 정렬 가능"
+            if crisis
+            else "비위기 — 예외 조정 불필요"
+        ),
         detail=(
-            f"현재 레짐: {regime_label}. "
+            f"현재 시장 상태: {regime_ko}. "
             + (
-                "ETF·현금 방어 비중과 kr_alpha 과다 노출을 오늘 점검하세요."
+                "ETF·현금 방어 비중과 알파 과다 노출을 오늘 점검하세요."
                 if crisis
-                else "정기 리밸은 월초 창(1~3일) 또는 밴드 이탈·신호 시."
+                else "정기 조정은 월초(1~3일) 또는 밴드 이탈·신호 있을 때."
             )
         ),
         tone="danger" if crisis else "ok",
@@ -295,13 +320,13 @@ def build_monthly_rebal_board(
         )[:8],
     )
 
-    # --- Rule 4: SCALE_IN exclude ---
+    # --- Rule 4: scale-in exclude ---
     scale_items = [
         RebalItem(
             ticker=tk,
             name=tk,
-            action="월 전량 정렬 제외",
-            detail="분할매수 진행 중 — 회차만 진행, 한날 전액 금지",
+            action="월 전량 정렬에서 제외",
+            detail="분할매수 진행 중 — 회차만 진행, 하루에 전액 금지",
             tone="warn",
         )
         for tk in sorted(open_scale)
@@ -310,18 +335,18 @@ def build_monthly_rebal_board(
     overlap = [i for i in band_items if i.ticker in open_scale]
     card_scale = RebalRuleCard(
         key="scale_in",
-        title="④ SCALE_IN 중 → 월 리밸 제외",
+        title="④ 분할매수 중 → 월 조정 제외",
         status=(
             f"진행 {len(open_scale)}종 · 월 정렬에서 빼기"
             if open_scale
-            else "진행 중 분할매수 없음 (data/scale_in_open.json 또는 저널)"
+            else "진행 중 분할매수 없음"
         ),
         detail=(
             "진행 종목은 회차만 집행. "
             + (
-                f"밴드 밖이면서 SCALE_IN 중: {', '.join(i.ticker for i in overlap)}"
+                f"밴드 밖이면서 분할매수 중: {', '.join(i.ticker for i in overlap)}"
                 if overlap
-                else "밴드 겹침 없음."
+                else "밴드와 겹치는 종목 없음."
             )
         ),
         tone="warn" if open_scale else "ok",
@@ -332,16 +357,16 @@ def build_monthly_rebal_board(
     cards = (card_band, card_signal, card_crisis, card_scale)
     do_now_count = sum(1 for c in cards if c.do_now)
     if do_now_count:
-        summary = f"오늘 수행할 리밸 규칙 {do_now_count}건 · 자동매매 아님"
+        summary = f"오늘 볼 조정 규칙 {do_now_count}건 · 자동매매 아님"
     elif is_month_start:
-        summary = "월초 창 · 당장 할 리밸 없음 (밴드 내·신호 없음)"
+        summary = "월초 · 당장 할 조정 없음 (밴드 안·신호 없음)"
     else:
-        summary = "정기 월 리밸 대기 · 신호·밴드·CRISIS만 감시"
+        summary = "정기 월 조정 대기 · 신호·밴드·위기만 감시"
 
     return MonthlyRebalBoard(
         as_of=as_of,
         is_month_start_window=is_month_start,
-        regime_label=regime_label,
+        regime_label=regime_ko,
         crisis=crisis,
         band_rel=band_rel,
         cards=cards,

@@ -20,11 +20,18 @@ CROSS_GO = 60.0
 CROSS_WAIT = 40.0
 VOL_HIGH_PCTILE = 80.0
 
+GRADE_KO: dict[Grade, str] = {
+    "GO": "진행",
+    "SLOW": "천천히",
+    "WAIT": "관망",
+    "CUT_PACE": "추가매수 중지",
+}
+
 GRADE_ADVICE: dict[Grade, str] = {
-    "GO": "SCALE_IN 3회 · 1/3 · 1/3 · 1/3",
-    "SLOW": "SCALE_IN 2회 · 1/2 · 1/2 (또는 1회차만)",
-    "WAIT": "이번 회차 0% · 신규 매수 보류",
-    "CUT_PACE": "잔여 분할매수 중지 · 이미 산 분만 유지",
+    "GO": "3회 균등 분할매수",
+    "SLOW": "느리게(2회 또는 1회만)",
+    "WAIT": "이번엔 사지 않음",
+    "CUT_PACE": "남은 분할매수 중단 · 보유분만",
 }
 
 
