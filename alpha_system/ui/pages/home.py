@@ -575,9 +575,14 @@ def render_home(ctx: DashboardContext) -> None:
                     }.get(item.severity.value, "alpha-badge-warn")
                     cols = st.columns([5, 1])
                     with cols[0]:
+                        sev = {
+                            "danger": "긴급",
+                            "warn": "주의",
+                            "info": "안내",
+                        }.get(item.severity.value, "주의")
                         st.markdown(
                             f'<div class="alpha-action-item"><span class="{badge}">'
-                            f"{item.severity.value}</span> <strong>{item.title}</strong>"
+                            f"{sev}</span> <strong>{item.title}</strong>"
                             f"<br/>{item.detail}</div>",
                             unsafe_allow_html=True,
                         )
@@ -600,7 +605,9 @@ def render_home(ctx: DashboardContext) -> None:
                     _render_tranche_card(ctx, statuses[idx], blocker=blocker)
 
         days_left = (ctx.window_end - ctx.as_of).days
-        st.caption(f"window_end {ctx.window_end.isoformat()} — D-{max(0, days_left)}")
+        st.caption(
+            f"논지 창 종료일 {ctx.window_end.isoformat()} — 남은 일수 D-{max(0, days_left)}"
+        )
 
         st.markdown("#### 데이터 상세")
         for src in ctx.source_status:
@@ -618,5 +625,7 @@ def render_home(ctx: DashboardContext) -> None:
         st.markdown(
             f"**CECS 검토(선택)** — final {ctx.cecs_final_count} / {ctx.cecs_total}종 · 순위 미반영"
         )
-        st.markdown(f"**sector_peer_fallback** — {ctx.sector_peer_fallback_count}종")
-        st.markdown(f"**gate_pass** — {ctx.gate_pass_count}종")
+        st.markdown(
+            f"**섹터 동료 표본 부족(시장 대체)** — {ctx.sector_peer_fallback_count}종"
+        )
+        st.markdown(f"**섹터 게이트 통과** — {ctx.gate_pass_count}종")

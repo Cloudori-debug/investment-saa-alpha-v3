@@ -161,29 +161,29 @@ rules:
   edit_friction: "일반 규칙 변경은 PC에서 config 파일 직접 수정 — 의도된 마찰입니다. score_cutoff만 체크리스트의 상관 리포트·2단계 승인 경로로 확정합니다."
 
 journal:
-  append_only: "저널은 append-only입니다. 정정은 취소 기록을 추가로만 남깁니다."
-  discretion_tooltip: "재량 이탈 누적이 커지면 규칙 재설계 신호입니다."
+  append_only: "저널은 추가만 가능합니다(수정·삭제 없음). 정정은 취소 기록을 새로 남깁니다."
+  discretion_tooltip: "재량 이탈 = 규칙 밖 판단을 적어 둔 메모입니다. 자동매매·강제 청산이 아닙니다. 같은 일이 자주 쌓이면 규칙을 손볼지 검토하세요."
 
 checklist:
   score_cutoff:
-    title: "score_cutoff 미확정"
+    title: "점수 컷오프(score_cutoff) 미확정"
     why: "적격 컷라인이 비어 있으면 편입·청산 기준을 확정할 수 없습니다"
-    todo: "체크리스트 처리 패널에서 상관 리포트 확인 후, 상위 N종 슬라이더로 score_cutoff를 확정하세요"
+    todo: "체크리스트 처리 패널에서 상관 리포트 확인 후, 상위 N종 슬라이더로 점수 컷오프를 확정하세요"
   cecs_final:
     title: "CECS 검토(선택·순위 미반영)"
-    why: "Ops A: CECS는 proposal 순위에 들어가지 않습니다. final {final}/{total}은 참고 기록입니다"
+    why: "운영안 A: CECS는 제안 순위에 들어가지 않습니다. final {final}/{total}은 참고 기록입니다"
     todo: "필수 게이트는 T2·논지·목표가입니다. CECS는 여유 있을 때 결재함에서 검토하세요"
   t3_history:
     title: "T3 PBR 이력 CSV 부재"
     why: "월간 저가 밴드 판정에 필요한 10년 PBR 이력이 없습니다"
     todo: "data/kospi_market_pbr_history.csv를 준비하세요"
-  go_live_blocked: "go-live를 차단했습니다. 미충족: {items}"
+  go_live_blocked: "가동(go-live) 선언을 막았습니다. 미충족: {items}"
 
 cecs_scoring:
-  page_task: "shortlist 30종을 하나씩, 근거를 남기며 채점합니다."
+  page_task: "후보(shortlist) 30종을 하나씩, 근거를 남기며 채점합니다."
   ai_button_batch: "전체 배치 조사 요청서 생성"
   ai_batch_scope_unrated: "미채점 종목 전체"
-  ai_batch_scope_all: "shortlist 30종 전체"
+  ai_batch_scope_all: "후보 30종 전체"
   ai_warning: "AI 제안은 초안입니다. 종목별 출처 원문을 펼쳐 확인하고, 필요하면 점수·근거를 수정한 뒤 승인해야 final이 됩니다."
   ai_provider_note: "외부 AI 도구(웹검색 가능)에 생성 파일을 붙여넣어 채운 뒤 완성된 마크다운 파일을 업로드하세요. 현재 앱은 자체 AI 연동이 없습니다."
   ai_saved: "배치 조사 요청서 저장됨: {path}"

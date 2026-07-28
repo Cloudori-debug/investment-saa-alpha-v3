@@ -259,7 +259,7 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
         f"{row.total_score if row.total_score is not None else '—'}"
     )
     if wview.reduce_signal:
-        score_bits += ' · <span class="alpha-badge-danger">cap 감축 신호</span>'
+        score_bits += ' · <span class="alpha-badge-danger">비중 한도 초과 · 감축 신호</span>'
 
     rescores = [
         e

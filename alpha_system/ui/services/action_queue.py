@@ -98,7 +98,7 @@ def build_action_queue(
             items.append(
                 ActionItem(
                     key=f"exit_{act.ticker}",
-                    title=f"Exit 감축 — {act.ticker}",
+                    title=f"청산 감축 권고 — {act.ticker}",
                     detail=action_sentence("exit_reduce", why=why),
                     severity=ActionSeverity.DANGER,
                     source="exit",
@@ -111,7 +111,7 @@ def build_action_queue(
             items.append(
                 ActionItem(
                     key=f"exit_warn_{act.ticker}",
-                    title=f"Exit 경고 — {act.ticker}",
+                    title=f"청산 경고 — {act.ticker}",
                     detail=action_sentence("exit_reduce", why=why),
                     severity=ActionSeverity.WARN,
                     source="exit",
@@ -124,7 +124,7 @@ def build_action_queue(
         items.append(
             ActionItem(
                 key=f"cap_{ticker}",
-                title=f"cap 감축 — {name}",
+                title=f"비중 한도 초과 · 감축 — {name}",
                 detail=action_sentence(
                     "cap_reduce", cap=f"{cap_pct:.0f}", weight=f"{weight_pct:.1f}"
                 ),
