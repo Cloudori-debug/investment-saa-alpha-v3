@@ -39,11 +39,14 @@ DART 키·이식 zip·Go-Live 점검은 **나중에도 됩니다.**
 | `data/alpha_dashboard_runtime.json` | 런타임 플래그 |
 
 이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
-**Windows 설치·업데이트 패키징:** [`V3_WINDOWS_PACKAGING.md`](V3_WINDOWS_PACKAGING.md)
+**Windows 설치·업데이트 패키징:** [`V3_WINDOWS_PACKAGING.md`](V3_WINDOWS_PACKAGING.md)  
+**USB 2덩어리(앱+장부):** [`V3_CARRY_KIT.md`](V3_CARRY_KIT.md)
 
 ```powershell
 # 포터블(+venv) 빌드
 powershell -ExecutionPolicy Bypass -File scripts\bundle_runtime.ps1 -Zip
+# USB 키트: 01_App + 02_Backup
+powershell -ExecutionPolicy Bypass -File scripts\build_carry_kit.ps1
 # 장부 유지 업데이트
 .\업데이트.bat path\to\saa-alpha-update.zip
 ```

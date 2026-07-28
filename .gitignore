@@ -54,7 +54,7 @@ env/
 *~
 .DS_Store
 Thumbs.db
-desktop.ini
+*.lnk
 
 # Cursor / agent local
 .cursor/

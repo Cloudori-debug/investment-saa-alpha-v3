@@ -165,6 +165,74 @@ def create_ops_backup_zip(
     )
 
 
+def create_ops_backup_folder(
+    root: Path,
+    *,
+    dest_dir: Path | None = None,
+    include_optional_data: bool = False,
+    include_secrets: bool = False,
+    generated_at: datetime | None = None,
+) -> PackResult:
+    """Export ledger as a portable folder (USB-friendly) + zip twin inside it."""
+    import shutil
+
+    root = Path(root)
+    generated_at = generated_at or datetime.now()
+    stamp = generated_at.strftime("%Y%m%d_%H%M%S")
+    base = Path(dest_dir) if dest_dir else (root / "dist" / "CARRY" / "02_SAA-Alpha-Backup")
+    folder = base if base.name.startswith("02_") or base.name == "SAA-Alpha-Backup" else (
+        base / f"SAA-Alpha-Backup_{stamp}"
+    )
+    if folder.exists():
+        shutil.rmtree(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    zip_result = create_ops_backup_zip(
+        root,
+        dest_dir=folder,
+        include_optional_data=include_optional_data,
+        include_secrets=include_secrets,
+        generated_at=generated_at,
+    )
+
+    # Also unpack core files as a folder tree for drag-drop inspection
+    for rel in zip_result.included:
+        src = root / rel
+        if not src.is_file():
+            continue
+        dest = folder / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+
+    readme = folder / "README_BACKUP.txt"
+    readme.write_text(
+        "\n".join(
+            [
+                f"{PRODUCT_NAME}",
+                f"{PRODUCT_TAGLINE}",
+                "",
+                "This folder = LEDGER backup only (holdings / targets / approvals).",
+                "Keep separate from the program (Setup / App folder).",
+                "",
+                "Restore:",
+                "  Run 장부_가져오기.bat and select this folder (or the zip inside).",
+                "",
+                f"created: {generated_at.isoformat(timespec='seconds')}",
+                f"files: {len(zip_result.included)}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return PackResult(
+        path=folder,
+        included=zip_result.included,
+        missing=zip_result.missing,
+        include_secrets=include_secrets,
+        include_optional_data=include_optional_data,
+    )
+
+
 def restore_ops_backup_zip(
     root: Path,
     zip_path: Path,
@@ -187,7 +255,6 @@ def restore_ops_backup_zip(
                 "README_RESTORE.txt",
             }:
                 continue
-            # Only allow known relative paths under data/ or alpha_portfolio/
             if not (
                 name.startswith("data/")
                 or name.startswith("alpha_portfolio/data/")
@@ -204,6 +271,56 @@ def restore_ops_backup_zip(
 
     mark_setup_done(root, source="restore_ops_backup")
     return {"restored": restored, "skipped": skipped, "zip": str(zip_path)}
+
+
+def restore_ops_backup_folder(
+    root: Path,
+    folder: Path,
+    *,
+    overwrite: bool = True,
+) -> dict[str, Any]:
+    """Restore from an exported backup folder (or find zip inside it)."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        raise NotADirectoryError(f"백업 폴더 없음: {folder}")
+
+    zips = sorted(folder.glob("saa_ops_assistant_backup_*.zip"), reverse=True)
+    if zips:
+        return restore_ops_backup_zip(root, zips[0], overwrite=overwrite)
+
+    restored: list[str] = []
+    skipped: list[str] = []
+    data_src = folder / "data"
+    if not data_src.is_dir():
+        raise FileNotFoundError(f"백업 zip/data 없음: {folder}")
+    for path in data_src.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(folder).as_posix()
+        dest = root / rel
+        if dest.exists() and not overwrite:
+            skipped.append(rel)
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(path.read_bytes())
+        restored.append(rel)
+    mark_setup_done(root, source="restore_ops_backup_folder")
+    return {"restored": restored, "skipped": skipped, "folder": str(folder)}
+
+
+def restore_ops_backup_any(
+    root: Path,
+    path: Path,
+    *,
+    overwrite: bool = True,
+) -> dict[str, Any]:
+    """Restore from zip file or backup folder."""
+    path = Path(path)
+    if path.is_file() and path.suffix.lower() == ".zip":
+        return restore_ops_backup_zip(root, path, overwrite=overwrite)
+    if path.is_dir():
+        return restore_ops_backup_folder(root, path, overwrite=overwrite)
+    raise FileNotFoundError(f"백업 경로를 찾을 수 없음: {path}")
 
 
 def setup_status(root: Path) -> dict[str, Any]:
@@ -257,7 +374,10 @@ __all__ = [
     "product_identity",
     "list_pack_candidates",
     "create_ops_backup_zip",
+    "create_ops_backup_folder",
     "restore_ops_backup_zip",
+    "restore_ops_backup_folder",
+    "restore_ops_backup_any",
     "setup_status",
     "mark_setup_done",
     "needs_first_run_banner",

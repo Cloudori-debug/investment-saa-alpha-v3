@@ -52,17 +52,21 @@ echo [2] Install / repair packages
 echo [3] Analysis
 echo [4] Backup zip (format / other PC)
 echo [5] UI minimized (same as .vbs)
-echo [6] Update (keep data\)
+echo [6] Update (program only, keep data\)
+echo [7] Export ledger folder (USB ②)
+echo [8] Import ledger folder/zip
 echo [0] Exit
 echo.
 set "SEL="
-set /p SEL=Select 1/2/3/4/5/6/0 then Enter: 
+set /p SEL=Select 1/2/3/4/5/6/7/8/0 then Enter: 
 if "%SEL%"=="1" goto RUN_UI
 if "%SEL%"=="2" goto RUN_INSTALL
 if "%SEL%"=="3" goto RUN_ANALYSIS
 if "%SEL%"=="4" goto RUN_BACKUP
 if "%SEL%"=="5" goto RUN_UI_MIN
 if "%SEL%"=="6" goto RUN_UPDATE
+if "%SEL%"=="7" goto RUN_EXPORT
+if "%SEL%"=="8" goto RUN_IMPORT
 if "%SEL%"=="0" goto EXIT
 echo.
 echo [WARN] Unknown input: "%SEL%"
@@ -135,6 +139,16 @@ goto MENU
 echo.
 call "%~dp0업데이트.bat"
 pause
+goto MENU
+
+:RUN_EXPORT
+echo.
+call "%~dp0장부_내보내기.bat"
+goto MENU
+
+:RUN_IMPORT
+echo.
+call "%~dp0장부_가져오기.bat"
 goto MENU
 
 :FAIL

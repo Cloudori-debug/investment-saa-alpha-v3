@@ -27,7 +27,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 InfoBeforeFile=install_info_ko.txt
-SetupIconFile=
+SetupIconFile=icons\saa_alpha.ico
+UninstallDisplayIcon={app}\saa_alpha.ico
 UninstallDisplayName={#MyAppName}
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Keep user ledger across upgrades
@@ -44,16 +45,20 @@ Name: "desktopicon"; Description: "바탕 화면 아이콘 만들기"; GroupDesc
 ; Full portable tree. data\* only if missing so upgrades keep positions/target.
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "data\*"
 Source: "{#MySourceDir}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs onlyifdoesntexist uninsneveruninstall
+; Icon always present for shortcuts
+Source: "icons\saa_alpha.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\투자나침반.bat"; WorkingDir: "{app}"
-Name: "{group}\메뉴 (설치·백업·업데이트)"; Filename: "{app}\START_OPS_ASSISTANT.bat"; WorkingDir: "{app}"
-Name: "{group}\업데이트 (장부 유지)"; Filename: "{app}\업데이트.bat"; WorkingDir: "{app}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch_SAA.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
+Name: "{group}\메뉴 (설치·백업·업데이트)"; Filename: "{app}\START_OPS_ASSISTANT.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
+Name: "{group}\장부 내보내기"; Filename: "{app}\장부_내보내기.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
+Name: "{group}\장부 가져오기"; Filename: "{app}\장부_가져오기.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
+Name: "{group}\업데이트 (프로그램만)"; Filename: "{app}\업데이트.bat"; WorkingDir: "{app}"
 Name: "{group}\제거 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\투자나침반.bat"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch_SAA.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\투자나침반.bat"; Description: "지금 실행"; Flags: nowait postinstall skipifsilent shellexec
+Filename: "{app}\Launch_SAA.bat"; Description: "지금 실행"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallDelete]
 ; Do NOT delete user data by default — operator may want ledger after uninstall
