@@ -21,7 +21,8 @@ streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 ```
 
 설치·백업·분석 메뉴: `START_OPS_ASSISTANT.bat`  
-이식: [`docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md`](docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md)
+이식: [`docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md`](docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
+패키징(Setup·업데이트): [`docs/V3_WINDOWS_PACKAGING.md`](docs/V3_WINDOWS_PACKAGING.md)
 
 | bat / vbs | 용도 |
 |-----------|------|

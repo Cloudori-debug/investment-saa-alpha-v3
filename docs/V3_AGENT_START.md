@@ -38,6 +38,7 @@
 - `positions.csv` git 비추적 (고스트 보유 방지)
 - 정량 freeze 기본 off
 - Hygiene: 문서 archive · journal 축약 스크립트
+- Windows 패키징: 포터블 `.venv` · `업데이트.bat`(data 보존) · Inno Setup (`V3_WINDOWS_PACKAGING`)
 
 ---
 

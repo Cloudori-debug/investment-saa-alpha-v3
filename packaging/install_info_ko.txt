@@ -1,0 +1,10 @@
+SAA 알파 운용 비서 — 설치 안내
+
+• 자동매매·증권사 API가 아닙니다. Review-only 실투자 보조입니다.
+• 설치 위치 기본값: %LOCALAPPDATA%\SAA-Alpha
+• 일상 실행: 시작 메뉴의 「SAA 알파 운용 비서」또는 투자나침반.bat
+• 장부(data\positions, target_portfolio, 목표가 YAML)는 업데이트 시 유지됩니다.
+• 포맷/이사 전: 메뉴 [4] 백업 zip 또는 설정 › 이식·백업
+• 문서: 설치 폴더의 docs\V3_WINDOWS_PACKAGING.md
+
+Python을 따로 설치할 필요가 없습니다(포터블에 .venv 포함 시).

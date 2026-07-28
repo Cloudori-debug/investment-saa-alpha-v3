@@ -2,7 +2,8 @@
 
 > **제품 포지션:** 규칙 있는 **개인 운용 비서** (자동매매·증권사 API 아님)  
 > **목표:** 포맷하거나 다른 Windows PC에서도 같은 장부·승인 상태로 다시 켠다.  
-> **코드 루트:** `C:\Cursor\investment-saa-alpha-v2`
+> **코드 루트:** `C:\Cursor\investment-saa-alpha-v3`  
+> **설치형 패키징:** [`V3_WINDOWS_PACKAGING.md`](V3_WINDOWS_PACKAGING.md)
 
 ---
 

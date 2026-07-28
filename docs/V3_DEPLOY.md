@@ -38,7 +38,15 @@ DART 키·이식 zip·Go-Live 점검은 **나중에도 됩니다.**
 | `data/kr_alpha_exit_targets.yaml` | 익절 목표가 SoT |
 | `data/alpha_dashboard_runtime.json` | 런타임 플래그 |
 
-이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)
+이식: [`OPS_ASSISTANT_WINDOWS_PORTABLE.md`](OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
+**Windows 설치·업데이트 패키징:** [`V3_WINDOWS_PACKAGING.md`](V3_WINDOWS_PACKAGING.md)
+
+```powershell
+# 포터블(+venv) 빌드
+powershell -ExecutionPolicy Bypass -File scripts\bundle_runtime.ps1 -Zip
+# 장부 유지 업데이트
+.\업데이트.bat path\to\saa-alpha-update.zip
+```
 
 ### (선택) 백업·업데이트 전 점검
 

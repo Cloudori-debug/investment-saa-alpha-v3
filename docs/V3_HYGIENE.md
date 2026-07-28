@@ -26,6 +26,7 @@
 | `V3_AGENT_START.md` | 새 채팅/에이전트 시작 (짧은 핸드오프) |
 | `V3_HYGIENE.md` | 이 정책 |
 | `V3_DEPLOY.md` / `V3_GO_LIVE.md` | 배포·선택 Go-Live |
+| `V3_WINDOWS_PACKAGING.md` | Setup·포터블·업데이트 |
 | `USER_GUIDE.md` | 운영자 사용설명 |
 | `OPS_ASSISTANT_WINDOWS_PORTABLE.md` | 이식·백업 |
 | `SCALE_IN_OPS_RULE.md` / `EXIT_STEP_OPS_RULE.md` | 승인된 운영 규칙 |

@@ -1,28 +1,28 @@
 @echo off
-REM Direct UI start - no menu. Called by Start-Ops-Assistant.vbs (minimized).
+REM Direct UI start - prefers bundled .venv (packaged install).
 setlocal EnableExtensions
 set PYTHONUNBUFFERED=1
 title SAA Alpha Ops Assistant UI
 cd /d "%~dp0"
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
 
-set "PY="
-where python >nul 2>&1
-if not errorlevel 1 set "PY=python"
-if not defined PY (
-  where py >nul 2>&1
-  if not errorlevel 1 set "PY=py -3"
-)
-if not defined PY (
-  echo [ERROR] Python not found. Install Python 3.11+ with PATH.
+call "%~dp0scripts\_env_python.bat"
+if not defined SAA_PY (
+  echo [ERROR] Python not found.
+  echo Install Python 3.11+ with PATH, or run packaging\bundle first.
+  echo See docs\V3_WINDOWS_PACKAGING.md
   pause
   exit /b 1
 )
+set "PY=%SAA_PY%"
+echo [SAA] Python: %PY%
 
 %PY% -c "import streamlit" >nul 2>&1
 if errorlevel 1 (
   echo Installing packages first time...
   %PY% -m pip install --upgrade pip
-  %PY% -m pip install -e ".[dev,ui,data]"
+  %PY% -m pip install -e ".[ui,data]"
   if errorlevel 1 (
     echo [ERROR] Install failed.
     pause

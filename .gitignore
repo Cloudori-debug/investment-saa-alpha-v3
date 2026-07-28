@@ -70,6 +70,7 @@ temp/
 # Zip / export dumps
 *.zip
 outputs/_zip_*/
+packaging/Output/
 
 # Operator runtime state (do not resurrect ghost holdings / freeze locks via git)
 data/positions.csv
