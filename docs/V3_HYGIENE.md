@@ -29,6 +29,7 @@
 | `V3_WINDOWS_PACKAGING.md` | Setup·포터블·업데이트 |
 | `V3_CARRY_KIT.md` | USB 앱+장부 2덩어리 |
 | `FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md` | 팩터 가중 문헌 · SR 흡수 B안 |
+| `MOMENTUM_HOLDING_MONITOR_SPEC.md` | 모멘텀 보유 상방/하방 측정 초안 |
 | `USER_GUIDE.md` | 운영자 사용설명 |
 | `OPS_ASSISTANT_WINDOWS_PORTABLE.md` | 이식·백업 |
 | `SCALE_IN_OPS_RULE.md` / `EXIT_STEP_OPS_RULE.md` | 승인된 운영 규칙 |
