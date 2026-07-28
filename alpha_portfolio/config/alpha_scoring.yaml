@@ -29,7 +29,13 @@ value:
   fcf_yield_linear: { low: 0, high: 8 }
 
 shareholder_return:
-  sub_weights: { dividend_yield: 0.50, payout_ratio: 0.25, buyback: 0.25 }
+  # B안 (2026-07-29): execution_continuity → SR4. Core 롤업 Q/V/SR/R 비율은 유지(휴리스틱).
+  # sub weights are design heuristics — not IR-calibrated (see docs/FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md)
+  sub_weights:
+    dividend_yield: 0.30
+    payout_ratio: 0.15
+    buyback: 0.25
+    execution_continuity: 0.30
   dividend_linear: { low: 1, high: 5 }
   payout_linear: { low: 10, high: 60 }
   payout_cap_above: 80

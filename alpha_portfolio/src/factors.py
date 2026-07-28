@@ -115,8 +115,18 @@ def score_value(row: pd.Series, df: pd.DataFrame, cfg: dict[str, Any]) -> float:
 
 
 def score_shareholder(row: pd.Series, cfg: dict[str, Any]) -> tuple[float, str]:
+    from src.execution_continuity import resolve_execution_continuity
+
     sr_cfg = cfg.get("shareholder_return", {})
-    if pd.isna(row.get("dividend_yield")) and pd.isna(row.get("payout_ratio")) and pd.isna(row.get("buyback_3y")):
+    sr4, sr4_prov = resolve_execution_continuity(row)
+
+    bare = (
+        pd.isna(row.get("dividend_yield"))
+        and pd.isna(row.get("payout_ratio"))
+        and pd.isna(row.get("buyback_3y"))
+        and sr4_prov == "neutral"
+    )
+    if bare:
         return float(sr_cfg.get("missing_neutral_score", 50)), "YELLOW"
 
     div_cfg = sr_cfg.get("dividend_linear", {})
@@ -134,11 +144,13 @@ def score_shareholder(row: pd.Series, cfg: dict[str, Any]) -> tuple[float, str]:
 
     w = sr_cfg.get("sub_weights", {})
     score = weighted_mean([
-        (sr1, w.get("dividend_yield", 0.5)),
-        (sr2, w.get("payout_ratio", 0.25)),
+        (sr1, w.get("dividend_yield", 0.30)),
+        (sr2, w.get("payout_ratio", 0.15)),
         (sr3, w.get("buyback", 0.25)),
+        (sr4, w.get("execution_continuity", 0.30)),
     ])
-    return score, "GREEN"
+    gate = "YELLOW" if sr4_prov == "neutral" and pd.isna(row.get("dividend_yield")) else "GREEN"
+    return score, gate
 
 
 def score_risk(row: pd.Series, cfg: dict[str, Any]) -> float:

@@ -175,11 +175,20 @@ def run_screener(
 
     sr_scores: list[float] = []
     sr_gates: list[str] = []
+    sr_exec: list[float] = []
+    sr_exec_prov: list[str] = []
+    from src.execution_continuity import resolve_execution_continuity
+
     for _, row in work.iterrows():
         sr, gate = score_shareholder(row, scoring_cfg)
+        ex, prov = resolve_execution_continuity(row)
         sr_scores.append(round(sr, 2))
         sr_gates.append(gate)
+        sr_exec.append(round(ex, 2))
+        sr_exec_prov.append(prov)
     work["score_sr"] = sr_scores
+    work["sr_execution"] = sr_exec
+    work["sr_execution_provenance"] = sr_exec_prov
     work["score_r"] = work.apply(lambda r: score_risk(r, scoring_cfg), axis=1).round(2)
     work["score_m"] = work.apply(lambda r: score_momentum(r, work, scoring_cfg), axis=1).round(2)
 
@@ -242,6 +251,7 @@ def run_screener(
     score_cols = [
         "ticker", "name", "sector", "gate_pass", "gate_fail_reason",
         "score_q", "score_v", "score_sr", "score_r", "score_m",
+        "sr_execution", "sr_execution_provenance",
         "composite_raw", "composite_score", "incumbent_bonus",
         "grade", "role_suggested", "tier", "satellite_track",
         "is_held", "data_gate", "sleeve_weight_suggested", "portfolio_weight_suggested",

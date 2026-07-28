@@ -17,6 +17,8 @@ five_factors:
   - cecs
 
 # factor_score_total 롤업 (Q/V/SR/R only — m 제외)
+# 가중 35/30/25/10 = 설계 휴리스틱 (문헌 테마 정합 · IR 캘리브 아님)
+# SR 내부: execution_continuity(SR4) 포함 — docs/FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md
 factor_score_weights:
   score_q: 0.35
   score_v: 0.30

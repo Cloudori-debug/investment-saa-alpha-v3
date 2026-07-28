@@ -37,6 +37,7 @@ v1/v2에 신규 기능을 넣지 말 것.
 3. `positions.csv` git 비추적 · 고스트 보유 방지
 4. **모멘텀 Review-only 집행 판정** — [`MOMENTUM_REVIEW_ONLY_SPEC.md`](MOMENTUM_REVIEW_ONLY_SPEC.md)
 5. **Hygiene** — 문서 archive · 짧은 에이전트 핸드오프 · journal 축약 ([`V3_HYGIENE.md`](V3_HYGIENE.md))
+5b. **SR4 (B안)** — CECS execution 연속성을 `score_sr`에 흡수 · CECS 순위 가중 0 유지 ([`FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md`](FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md))
 
 ---
 

@@ -39,6 +39,7 @@
 - 정량 freeze 기본 off
 - Hygiene: 문서 archive · journal 축약 스크립트
 - Windows 패키징: 포터블 `.venv` · `업데이트.bat`(data 보존) · Inno Setup (`V3_WINDOWS_PACKAGING`)
+- **SR4(B안):** 환원 연속성 → `score_sr` · CECS 순위 가중 0 (`FACTOR_WEIGHT_LITERATURE_AND_B_SPEC`)
 
 ---
 
