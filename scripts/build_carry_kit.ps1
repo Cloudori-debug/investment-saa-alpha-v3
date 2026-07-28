@@ -83,9 +83,14 @@ if (Test-Path $batApp) {
   New-AppShortcut (Join-Path $App "SAA_Alpha.lnk") $batApp $App $icoApp
 }
 
-$rootBat = Join-Path $Root "Launch_SAA.bat"
+$rootBat = Join-Path $Root "Start-Ops-Assistant.vbs"
 if (Test-Path $rootBat) {
   New-AppShortcut (Join-Path $Root "SAA_Alpha.lnk") $rootBat $Root $icoRoot
+} else {
+  $rootBat = Join-Path $Root "Launch_SAA.bat"
+  if (Test-Path $rootBat) {
+    New-AppShortcut (Join-Path $Root "SAA_Alpha.lnk") $rootBat $Root $icoRoot
+  }
 }
 
 $py = if (Test-Path $venvPy) { $venvPy } else { "python" }
