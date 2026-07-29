@@ -13,10 +13,12 @@ from alpha_system.ui.services.monthly_rebal_board import (
 
 
 def test_band_breach_relative() -> None:
-    ok, _ = _band_breach(5.0, 5.0, band_rel=0.25)
+    ok, _, lo, hi = _band_breach(5.0, 5.0, band_rel=0.25)
     assert ok is False
-    bad, detail = _band_breach(8.0, 5.0, band_rel=0.25)
+    assert lo == 3.75 and hi == 6.25
+    bad, detail, lo2, hi2 = _band_breach(8.0, 5.0, band_rel=0.25)
     assert bad is True
+    assert lo2 == 3.75 and hi2 == 6.25
     assert "허용" in detail or "목표" in detail
 
 
@@ -73,7 +75,7 @@ def test_month_start_without_breach_is_idle(tmp_path: Path) -> None:
         SimpleNamespace(
             ticker="005830",
             name="DB손보",
-            weight_pct=5.1,
+            weight_pct=90.0,
             initial_weight_pct=5.0,
             ops_signal="",
             ops_signal_label="",

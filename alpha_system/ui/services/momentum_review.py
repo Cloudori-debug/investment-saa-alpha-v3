@@ -43,6 +43,7 @@ class MomentumReviewItem:
     ret_12_1: float | None
     ret_6: float | None
     ret_3: float | None
+    ret_1m: float | None
     cross_pct: float | None
     absolute: Literal["UP", "DOWN", "—"]
     vol_60d: float | None
@@ -163,6 +164,7 @@ def _load_price_rows(root: Path) -> tuple[str, dict[str, dict[str, float | None]
             "ret_12_1": _f(row.get("return_12m_ex_1m")),
             "ret_6": _f(row.get("return_6m")),
             "ret_3": _f(row.get("return_3m")),
+            "ret_1m": _f(row.get("return_1m")),
             "vol_60d": _f(row.get("volatility_60d")),
         }
     return price_as_of, out
@@ -293,6 +295,7 @@ def build_momentum_review_board(
         ret_12 = m.get("ret_12_1")
         ret_6 = m.get("ret_6")
         ret_3 = m.get("ret_3")
+        ret_1 = m.get("ret_1m")
         vol = m.get("vol_60d")
         cp = cross.get(tk)
         vh = tk in vol_high_set
@@ -318,6 +321,7 @@ def build_momentum_review_board(
                 ret_12_1=ret_12,
                 ret_6=ret_6,
                 ret_3=ret_3,
+                ret_1m=ret_1,
                 cross_pct=cp,
                 absolute=absolute,
                 vol_60d=vol,
@@ -335,10 +339,10 @@ def build_momentum_review_board(
     go_n = sum(1 for i in items if i.grade == "GO")
     wait_n = sum(1 for i in items if i.grade in ("WAIT", "CUT_PACE"))
     if not items:
-        summary = "판정 대상 없음 (보유·후보·SCALE_IN 없음)"
+        summary = "판정 대상 없음 (보유·후보·분할매수 없음)"
     else:
         summary = (
-            f"{len(items)}종 · GO {go_n} · WAIT/CUT {wait_n} · "
+            f"{len(items)}종 · 진행 {go_n} · 관망/중지 {wait_n} · "
             "주간·회차일 집행 · 자동매매 없음"
         )
 
@@ -348,8 +352,8 @@ def build_momentum_review_board(
         regime_label=regime_label,
         crisis=crisis,
         cadence_note=(
-            "신호=prices.csv 최신 종가 · 매일 확인만 · "
-            "매매 결정은 주간 또는 SCALE_IN 회차일"
+            "신호=가격표 최신 종가 · 매일 확인만 · "
+            "매매 결정은 주간 또는 분할매수 회차일"
         ),
         items=tuple(items),
         summary=summary,

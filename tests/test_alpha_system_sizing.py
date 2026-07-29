@@ -46,7 +46,7 @@ def _score(
 
 def test_sizing_locks(cfg) -> None:
     n, init_cap, mv_cap = require_sizing(cfg)
-    assert 5 <= n <= 8
+    assert 5 <= n <= 9
     assert init_cap == 0.25
     assert mv_cap == 0.35
     assert int(getattr(cfg.sizing, "max_names_per_sector", 2)) == 2

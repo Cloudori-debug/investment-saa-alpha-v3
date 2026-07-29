@@ -197,7 +197,7 @@ scoring:
 
 sizing:
 
-  target_names: 8
+  target_names: 9
 
   initial_weight_cap: 0.25
 

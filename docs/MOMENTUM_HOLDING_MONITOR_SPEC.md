@@ -59,9 +59,11 @@ UI: 홈「모멘텀 보유 모니터」
 
 | 필드 | 정의 | 상방/하방 |
 |------|------|-----------|
-| `ts_sign` | `return_12m_ex_1m` > 0 → **UP** else **DOWN** | 절대 |
+| `ts_sign` | `return_12m_ex_1m` > 0 → **UP** else **DOWN** | 중기 절대 |
+| `ret_1m` / `ret_3m` | 1·3개월 수익률 | 단기 |
+| `short_weak` | 1M&lt;0 또는 3M&lt;0 | 급락 가드 |
 | `xs_pct` | 유니버스 12-1 퍼센타일 | 상대 강도 |
-| `xs_bucket` | ≥60 Strong / 40–60 Mid / <40 Weak | |
+| `xs_bucket` | ≥60 Strong / 40–60 Mid / &lt;40 Weak | |
 | `vol_flag` | `volatility_60d` ≥ 80%ile | 위험 |
 | `grade` | 기존 GO/SLOW/WAIT/CUT_PACE | 집행 속도 |
 | `bearing` | **ENTER_OK** / **HOLD_UP** / **TRIM_PACE** / **EXIT_REVIEW** | 보유 중 바늘 |
@@ -70,23 +72,25 @@ UI: 홈「모멘텀 보유 모니터」
 
 | bearing | 조건 (모두 Review) |
 |---------|-------------------|
-| ENTER_OK | UP · xs≥60 · not vol_high · GO | 신규/추가 분할 허용 |
-| HOLD_UP | UP · xs≥40 · not CUT_PACE | 유지 |
-| TRIM_PACE | SLOW 또는 vol_high 또는 CUT_PACE | 남은 SCALE_IN 중단·비중 축소 **검토** |
-| EXIT_REVIEW | DOWN 또는 xs<40 (WAIT) **연속 N일**(기본 5 거래일) | 전량/교체 **검토** (자동매도 아님) |
+| ENTER_OK | 중기 UP · xs≥60 · not vol · not short_weak · GO | 신규/추가 분할 허용 |
+| HOLD_UP | 중기 UP · xs≥40 · not short_weak · not CUT_PACE | 유지 |
+| TRIM_PACE | SLOW/vol/CUT **또는** short_weak(중기는 UP여도) | 분할 중단·축소 **검토** |
+| EXIT_REVIEW | mid 또는 short 약세 **연속 N일**(기본 5) | 전량/교체 **검토** |
 
 N일 연속은 “노이즈 한 방”을 줄이려는 문헌·실무 공통 감각 (이산 청산 신호의 최소 필터).
 
 ### 3.3 상방 vs 하방 “객관” 한 줄
 
 ```
-상방 = ts_sign=UP AND xs_pct≥40
-하방 = ts_sign=DOWN OR xs_pct<40
+상방 = ts_sign=UP AND xs_pct≥40 AND NOT short_weak
+약세일 = mid_weak OR short_weak
+mid_weak = DOWN OR xs<40
+short_weak = ret_1m<0 OR ret_3m<0
 위험가속 = vol_flag
 ```
 
-가격 목표가 `remaining_upside`와 **이름을 섞지 말 것** (익절 여력 ≠ 모멘텀 상방).
-
+가격 목표가 `remaining_upside`와 **이름을 섞지 말 것** (익절 여력 ≠ 모멘텀 상방).  
+반도체 등 사이클 급락: 12-1만 보면 괴리 → **1·3M 이중 시계**로 보완.
 ### 3.4 UI · 로그 (**적용**)
 - 홈: **모멘텀 보유 모니터** 표 (상방 Y/N · 바늘 · 전일대비 · 연속약세)
 - 토글「전체 실보유」— 기본은 momentum 역할·SCALE_IN만

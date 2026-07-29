@@ -610,7 +610,7 @@ def _panel_checklist_cutoff(ctx: DashboardContext, item: ActionItem) -> None:
     else:
         st.markdown(
             f"- 현재 `score_cutoff`: **{current:.2f}**\n"
-            f"- 현재 `target_names`: **{target_n}종** (5~8 밴드)"
+            f"- 현재 `target_names`: **{target_n}종** (5~9 밴드)"
         )
     if st.button(
         "포트폴리오에서 절대 컷오프·편입 수 확정",

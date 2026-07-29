@@ -22,8 +22,8 @@ from alpha_system.ui.services.ui_copy import copy_get
 
 # Initial §7.5 review band (not unlocked to 30).
 _TARGET_NAMES_MIN = 5
-_TARGET_NAMES_MAX = 8
-_TARGET_NAMES_DEFAULT = 6
+_TARGET_NAMES_MAX = 9
+_TARGET_NAMES_DEFAULT = 9
 _WATCH_MAX = 30
 
 
@@ -54,7 +54,7 @@ def render_portfolio(ctx: DashboardContext) -> None:
         if not ctx.portfolio_rows:
             st.info(
                 "적격(eligibility) 통과 종목이 없어 제안 북을 표시할 수 없습니다. "
-                "위 절대 컷오프·편입 수를 확인하거나 CECS final·alpha_scores를 점검하세요."
+                "위 절대 컷오프·편입 수를 확인하거나 정성 채점(확정)·점수표를 점검하세요."
             )
         else:
             st.markdown("#### 제안 북")
@@ -598,9 +598,9 @@ def _render_cutoff_and_count(ctx: DashboardContext) -> None:
         expanded=not ctx.portfolio_rows,
     ):
         st.caption(
-            "초기 설계: **절대 score_cutoff → eligibility → 상위 편입 수(5~8, 기본 6)**. "
+            "초기 설계: **절대 점수 컷오프 → 적격 판정 → 상위 편입 수(5~8, 기본 6)**. "
             "종목 수를 먼저 고르고 그 점수를 컷으로 만드는 상대순위 방식은 쓰지 않습니다. "
-            "확정 전에는 설정과 제안 북이 바뀌지 않으며 `target_portfolio.csv`도 변경하지 않습니다."
+            "확정 전에는 설정과 제안 북이 바뀌지 않으며 목표 포트 파일도 자동 변경하지 않습니다."
         )
         if not ladder:
             st.warning("컷오프를 계산할 유효 스코어가 없습니다.")
@@ -621,10 +621,10 @@ def _render_cutoff_and_count(ctx: DashboardContext) -> None:
 
         natural = [option for option in ladder if option.is_natural_break]
         if natural:
-            st.markdown("**① 절대 score_cutoff — 점수 단절점 참고**")
+            st.markdown("**① 절대 점수 컷오프 — 점수 단절점 참고**")
             labels = {
                 option.rank_n: (
-                    f"cutoff {option.cutoff:.2f} · 적격 {option.eligible_count}종"
+                    f"컷오프 {option.cutoff:.2f} · 적격 {option.eligible_count}종"
                     + (
                         f" · 갭 {option.margin_below:.2f}"
                         if option.margin_below is not None
@@ -651,19 +651,19 @@ def _render_cutoff_and_count(ctx: DashboardContext) -> None:
                 st.rerun()
 
         cutoff_rank = st.slider(
-            "① 절대 score_cutoff (경계 순위 기준)",
+            "① 절대 점수 컷오프 (경계 순위 기준)",
             min_value=ladder[0].rank_n,
             max_value=ladder[-1].rank_n,
             step=1,
             key=cutoff_key,
             help=(
-                "선택한 순위의 total_score가 절대 컷오프가 됩니다. "
-                "이 값 이상만 eligibility=True입니다."
+                "선택한 순위의 종합점수가 절대 컷오프가 됩니다. "
+                "이 값 이상만 적격입니다."
             ),
         )
         cutoff_opt = by_rank[int(cutoff_rank)]
         st.markdown(
-            f"- 절대 `score_cutoff`: **{cutoff_opt.cutoff:.2f}**\n"
+            f"- 절대 점수 컷오프: **{cutoff_opt.cutoff:.2f}**\n"
             f"- 이 컷을 통과하는 적격: **{cutoff_opt.eligible_count}종**\n"
             f"- 경계: `{cutoff_opt.boundary_ticker}` {cutoff_opt.boundary_name}"
             + (
@@ -774,8 +774,8 @@ def _render_cutoff_and_count(ctx: DashboardContext) -> None:
             key="portfolio_abs_cutoff_confirm_1",
         )
         confirm_2 = st.checkbox(
-            "확정 시 score_cutoff·target_names가 바뀌고 제안 북이 재계산됨을 이해했습니다 "
-            "(target_portfolio.csv는 변경되지 않음)",
+            "확정 시 점수 컷오프·편입 종목 수가 바뀌고 제안 북이 재계산됨을 이해했습니다 "
+            "(목표 포트 파일은 변경되지 않음)",
             key="portfolio_abs_cutoff_confirm_2",
         )
         if st.button(

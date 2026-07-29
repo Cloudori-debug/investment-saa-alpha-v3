@@ -51,6 +51,14 @@ html, body, [data-testid="stAppViewContainer"], .stMarkdown, .stText, .stCaption
   color: #5b6b68;
   font-weight: 500;
 }}
+.v2-side-nav-ver {{
+  margin-top: 0.28rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: #0f766e;
+}}
 .v2-side-nav-label {{
   font-size: 0.72rem;
   font-weight: 700;

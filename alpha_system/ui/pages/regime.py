@@ -211,6 +211,10 @@ def render_regime(ctx: DashboardContext) -> None:
                 )
             )
 
+    from alpha_system.ui.services.basel_theme_widgets import render_basel_theme_board
+
+    render_basel_theme_board(ctx, key_prefix="regime_basel")
+
     _render_analysis_refresh(ctx)
 
     with st.container(border=True):

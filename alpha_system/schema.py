@@ -125,9 +125,9 @@ class ScoringConfig(BaseModel):
 class SizingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Confirmed operating band (§7.5): review range 5~8, default policy 6.
+    # Alpha book ops: 5~9 (policy default 9 = equity slots in 9:1 book).
     # Not unlocked to 30 — theme correlation means more names ≠ less thesis risk.
-    target_names: int = Field(..., ge=5, le=8)
+    target_names: int = Field(..., ge=5, le=9)
     initial_weight_cap: float = Field(..., gt=0.0, le=1.0)
     market_value_cap: float = Field(..., gt=0.0, le=1.0)
     # Post-cutoff concentration: max names per normalized sector_group.

@@ -342,7 +342,7 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
         f"{_section('스코어', f'<div class=\"pf-sec-body\">{score_bits}</div>')}"
         f"{_section('재채점 추이', trend_html)}"
         f"{_section('편입 근거', journal_html)}"
-        f"{_section('CECS 하위지표', cecs_html)}"
+        f"{_section('정성 채점 하위지표', cecs_html)}"
         f"{modify_html}"
         f"</div>"
     )

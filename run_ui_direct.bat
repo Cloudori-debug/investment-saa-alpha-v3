@@ -2,10 +2,17 @@
 REM Direct UI start - prefers bundled .venv (packaged install).
 setlocal EnableExtensions
 set PYTHONUNBUFFERED=1
-title SAA Alpha Ops Assistant UI
+title SAA Alpha Ops Assistant UI [v3]
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
+
+echo [SAA] root=%ROOT%
+echo [SAA] expect: investment-saa-alpha-v3
+echo %ROOT% | find /I "investment-saa-alpha-v3" >nul
+if errorlevel 1 (
+  echo [WARN] Launcher path is not investment-saa-alpha-v3 — wrong shortcut?
+)
 
 call "%~dp0scripts\_env_python.bat"
 if not defined SAA_PY (

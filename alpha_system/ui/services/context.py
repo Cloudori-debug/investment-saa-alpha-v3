@@ -302,6 +302,32 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         window_end=cfg.thesis_window.window_end,
         pending_rescores=_load_pending_rescores(root),
     )
+    # Basel thematic timeline — Review-only auto cues (no Core/target writes)
+    if not pre_launch:
+        try:
+            from alpha_system.ui.services.action_queue import ActionSeverity
+            from alpha_system.ui.services.basel_theme_board import build_basel_auto_cues
+
+            _, basel_cues = build_basel_auto_cues(root, as_of=as_of, persist_log=True)
+            for cue in basel_cues:
+                sev = (
+                    ActionSeverity.WARN
+                    if cue.severity == "warn"
+                    else ActionSeverity.INFO
+                )
+                action_queue.append(
+                    ActionItem(
+                        key=cue.key,
+                        title=cue.title,
+                        detail=cue.detail,
+                        severity=sev,
+                        source="basel_theme",
+                        panel_kind="generic",
+                        payload={"phase_ids": list(cue.phase_ids)},
+                    )
+                )
+        except Exception:
+            pass
 
     from alpha_system.ui.services.auto_journal import sync_system_journal
 
@@ -680,12 +706,37 @@ def _build_screen_portfolio(
     if not name_scores:
         return []
 
+    from alpha_system.ui.services.alpha_book_ops import (
+        equal_equity_weights,
+        load_alpha_book_ops,
+    )
+
+    # root is not on cfg — use exit path parent.parent or default
+    root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
+    policy = load_alpha_book_ops(root_guess)
+    # Prefer policy target_names when cfg still older
+    sizing_n = int(getattr(cfg.sizing, "target_names", policy.target_names))
+    use_n = max(sizing_n, policy.target_names) if policy.target_names else sizing_n
+    # Keep cfg as source of truth if already 9
+    alloc_cfg = cfg
+    if int(cfg.sizing.target_names) != int(policy.target_names):
+        try:
+            alloc_cfg = cfg.model_copy(
+                update={
+                    "sizing": cfg.sizing.model_copy(
+                        update={"target_names": int(policy.target_names)}
+                    )
+                }
+            )
+        except Exception:
+            alloc_cfg = cfg
+
     allocation = allocate_tranche(
-        cfg,
+        alloc_cfg,
         tranche_id=TrancheId.T1,
         scores=name_scores,
         existing_weights={},
-        tranche_budget=1.0,
+        tranche_budget=float(policy.equity_share),
     )
     selected = [
         item for item in allocation.allocated if item.incremental_weight > 0
@@ -693,6 +744,21 @@ def _build_screen_portfolio(
     if not selected:
         return []
 
+    # Literature ops: rank by score, weight equal within equity sleeve
+    if policy.equity_weight_mode == "equal":
+        each = equal_equity_weights(len(selected), equity_share=policy.equity_share)
+        from alpha_system.sizing.allocate import NameAllocation
+
+        selected = [
+            NameAllocation(
+                ticker=a.ticker,
+                weight_input=a.weight_input,
+                incremental_weight=each,
+                total_weight_after=each,
+                capped=False,
+            )
+            for a in selected
+        ]
     score_map = {str(s.ticker).zfill(6): s for s in scores}
     exit_yaml: dict[str, Any] = {}
     if exit_targets_path.exists():

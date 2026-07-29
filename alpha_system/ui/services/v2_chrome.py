@@ -9,6 +9,7 @@ import streamlit as st
 import yaml
 
 from alpha_system.scoring.pending_rescore import load_pending, pending_path
+from alpha_system.ui.services.app_version import sidebar_version_label
 from alpha_system.ui.services.context import DashboardContext
 from alpha_system.ui.services.nav import (
     FOCUS_REGIME,
@@ -36,10 +37,12 @@ def render_primary_nav(
         st.session_state[key] = options[0]
     current = str(st.session_state[key])
 
+    ver = sidebar_version_label()
     st.markdown(
         '<div class="v2-side-nav-brand">'
         '<div class="v2-side-nav-title">SAA 알파</div>'
         '<div class="v2-side-nav-sub">운용 비서 · 자동매매 아님</div>'
+        f'<div class="v2-side-nav-ver">{ver}</div>'
         "</div>",
         unsafe_allow_html=True,
     )
@@ -123,7 +126,7 @@ def render_ops_strip(ctx: DashboardContext) -> None:
 
     cards = [
         {
-            "title": "분할매수 (SCALE_IN)",
+            "title": "분할매수",
             "body": "신규 매수는 3회×균등 · 회차 사이 ≥3거래일 · 하루 전액 투입 금지",
             "tone": "ok",
         },
@@ -280,7 +283,7 @@ def regime_info(root: Path) -> dict[str, Any]:
                 copy_get(
                     "regime",
                     "card_detail_pure",
-                    default="산출=적용 · 일 파이프라인 갱신 · QVM 순위 불변",
+                    default="산출=적용 · 일 파이프라인 갱신 · 정량 순위 불변",
                 )
             )
         else:

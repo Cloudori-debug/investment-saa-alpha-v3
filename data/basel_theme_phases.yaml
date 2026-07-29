@@ -1,0 +1,115 @@
+# Basel III / bank prudential — thematic phase timeline (soft dates).
+# Review-only. NOT wired into Core QVM / target_portfolio.
+# See docs/BASEL3_SECTOR_TIMELINE_SUBRULE.md
+
+schema_version: 1
+updated: "2026-07-29"
+status: ui_readonly_board
+# Ph4 checklist lives in code: alpha_system/ui/services/basel_theme_board.py PH4_CHECKLIST
+# Operator notes: data/local/basel_ph4_anchor.json (not Core/target)
+invariants:
+  - review_only
+  - no_target_portfolio_write
+  - no_core_score_mix
+  - direction_hard_dates_soft
+
+early_entry:
+  months_before_t0: 6
+  error_band_months_default: 6
+  error_band_months_floor_steps: 12
+
+stages:
+  S0: { name: credit_risk_early, status: done }
+  S1: { name: final_package, status: done }
+  S2: { name: large_exposure, status: done }
+  S3: { name: buffers_stress, status: active }
+  S4a: { name: output_floor_step_up, status: active }
+  S4b: { name: output_floor_final_72_5, status: target }
+  S5: { name: productive_finance_overlay, status: overlay }
+
+themes:
+  BX_SME_CREDIT:
+    primary: [banks]
+    secondary: [sme_cyclicals, domestic_demand]
+    burden: []
+  BX_LARGE_BANK:
+    primary: [large_bank_holdings]
+    secondary: [bluechip_corporates]
+    burden: [thin_capital_banks]
+  BX_LEX_LIMIT:
+    primary: [diversified_lenders]
+    secondary: []
+    burden: [single_name_concentration]
+  BX_BUFFER_CAP:
+    primary: [thick_cet1_holdings]
+    secondary: []
+    burden: [thin_cet1_high_payout]
+  BX_FLOOR_UP:
+    primary: [banks_managing_sa_rwa, mortgage_collateral]
+    secondary: [high_grade_corp, utilities, select_insurers]
+    burden: [unrated_sme_midcap, some_pf_project]
+  BX_FLOOR_FINAL:
+    primary: [BX_FLOOR_UP]
+    secondary: [capital_actions_banks]
+    burden: [sme_credit_squeeze_risk]
+  BX_PROD_FIN:
+    primary: [policy_named_advanced_mfg]
+    secondary: [policy_named_venture]
+    burden: []
+    note: "Only names/sectors explicitly cited in FSC/FSS productive-finance texts"
+
+phases:
+  - id: Ph0
+    stage: S0
+    t0: "2020-06-01"
+    error_months: 0
+    theme: BX_SME_CREDIT
+    status: historical
+  - id: Ph1
+    stage: S1
+    t0: "2023-01-01"
+    error_months: 6
+    theme: BX_LARGE_BANK
+    status: historical
+  - id: Ph2
+    stage: S2
+    t0: "2024-01-01"
+    error_months: 6
+    theme: BX_LEX_LIMIT
+    status: historical
+  - id: Ph3
+    stage: S3
+    t0: "2025-06-01"
+    error_months: 12
+    theme: BX_BUFFER_CAP
+    status: active
+    early_entry_from: "2024-12-01"
+  - id: Ph4
+    stage: S4a
+    t0: null
+    t0_note: "Anchor to official k% step (media conflict on year). Soft until FSS/disclosure."
+    error_months: 12
+    theme: BX_FLOOR_UP
+    status: active_soft
+    early_entry_rule: "T0_minus_6M_after_anchor"
+  - id: Ph5
+    stage: S4a
+    t0_offset_months_from: Ph4
+    t0_offset_months: 12
+    error_months: 12
+    theme: BX_FLOOR_UP
+    status: pending_ph4_anchor
+  - id: Ph6
+    stage: S4b
+    t0: "2028-01-01"
+    error_months: 6
+    theme: BX_FLOOR_FINAL
+    status: target
+    early_entry_from: "2027-07-01"
+  - id: Ph7
+    stage: S5
+    t0: null
+    t0_note: "Event-driven on productive-finance announcements"
+    error_months: 3
+    theme: BX_PROD_FIN
+    status: overlay

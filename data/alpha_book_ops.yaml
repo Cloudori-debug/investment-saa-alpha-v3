@@ -1,0 +1,49 @@
+# 알파북 운영 정책 (SAA와 분리 · Review-only)
+# 문헌 종합: vol-managed 규모조절 · 종목 기업가치 익절 · Core/target 비자동
+# target_portfolio.csv 자동 기입 없음
+
+version: 1
+invariants:
+  - proposal_mode_pure_qvm
+  - target_portfolio_human_only
+  - no_auto_orders
+  - core_excludes_score_m
+  - regime_does_not_rewrite_target
+
+# 알파북 = 100% (SAA ETF·글로벌 비중과 별개)
+book:
+  equity_share: 0.90          # 개별주 합
+  cash_share: 0.10            # 단기채
+  cash_ticker: "214980"
+  cash_name: "KODEX 단기채권PLUS"
+  target_names: 9             # 개별주 슬롯
+  equity_weight_mode: equal   # 순위=점수, 비중=등가(문헌·운영 단순)
+  # 종목당 목표(알파 내): equity_share / target_names = 10%
+  band_rel: 0.25              # 목표 대비 ±25% 상대 밴드
+  exclude_zero_qty: true      # qty=0은 실보유·밴드에서 제외
+
+# 시장 변동 → 단기채 가이던스만 (target CSV 불변 · Moreira–Muir / FTS)
+regime_cash_guidance:
+  RISK_ON: 0.10
+  NEUTRAL: 0.10
+  CAUTION: 0.20
+  RISK_OFF: 0.25
+  CRISIS: 0.30
+  YELLOW: 0.20
+  default: 0.10
+
+# 신호 우선순위 (동일 종목 충돌 시)
+signal_priority:
+  - exit_full      # 전량·논지
+  - cash_half      # 환금
+  - trim           # 익절 줄이기
+  - band_reduce    # 밴드 과비중 축소
+  - mhm_trim       # 모멘텀 속도↓
+  - band_increase  # 밴드 미달·편입
+  - mhm_enter      # 분할매수 진행
+  - hold
+
+notes:
+  - "Core 순위는 Q/V/SR/R 고정. 레짐·모멘텀으로 순위·target 자동 변경 금지."
+  - "기업가치 운영은 종목 익절·목표가·분할매수 규칙(포트폴리오·주간확인)."
+  - "Deep value 극단만 Review에서 V·대기현금 집행 검토 (Asness Deep Value)."

@@ -534,7 +534,7 @@ def confirm_score_cutoff(
     cutoff_f = float(cutoff)
     if not 0.0 <= cutoff_f <= 100.0:
         raise ValueError("score_cutoff은 0~100 범위여야 합니다.")
-    if target_names is not None and not 5 <= int(target_names) <= 8:
+    if target_names is not None and not 5 <= int(target_names) <= 9:
         raise ValueError("편입 종목 수는 초기 설계 범위 5~8이어야 합니다.")
 
     text = config_path.read_text(encoding="utf-8")
