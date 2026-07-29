@@ -3,6 +3,10 @@
 Priority (from alpha_book_ops signal_priority):
   exit_full / cash_half / trim → band_reduce → mhm_trim → band_increase / mhm_enter
 
+Scope: ops holdings ∪ proposal book ∪ open scale-in only.
+Pure target_portfolio names that are neither held nor proposed stay on the
+monthly-rebal checklist — not on 「오늘 조치」.
+
 Review-only · no auto orders · no target_portfolio writes.
 """
 
@@ -56,17 +60,69 @@ def _pri(kind: str) -> tuple[int, str]:
     return _PRIORITY.get(kind, (5, "참고"))
 
 
+def _held_tickers(ops: list[Any]) -> set[str]:
+    held: set[str] = set()
+    for r in ops:
+        tk = str(getattr(r, "ticker", "") or "").zfill(6)
+        if not tk or tk == "000000":
+            continue
+        qty = getattr(r, "quantity", None)
+        val = getattr(r, "current_value", None)
+        try:
+            if qty is not None and float(qty) > 0:
+                held.add(tk)
+                continue
+        except (TypeError, ValueError):
+            pass
+        try:
+            if val is not None and float(val) > 0:
+                held.add(tk)
+                continue
+        except (TypeError, ValueError):
+            pass
+        try:
+            w = getattr(r, "weight_pct", None)
+            if w is not None and float(w) > 0.05:
+                held.add(tk)
+        except (TypeError, ValueError):
+            pass
+    return held
+
+
 def build_today_action_board(ctx: Any) -> TodayActionBoard:
     """Merge exit / band / MHM into one sorted action list (one row per ticker)."""
     as_of = getattr(ctx, "as_of", None) or date.today()
     by_tk: dict[str, TodayActionRow] = {}
 
+    proposal = list(getattr(ctx, "portfolio_rows", None) or [])
+    ops = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+    proposal_tks = {
+        str(getattr(r, "ticker", "") or "").zfill(6) for r in proposal if getattr(r, "ticker", None)
+    }
+    held_tks = _held_tickers(ops)
+
+    root = getattr(ctx, "root", None)
+    scale_tks: set[str] = set()
+    if root is not None:
+        try:
+            from alpha_system.ui.services.monthly_rebal_board import (
+                _load_scale_in_open_tickers,
+            )
+
+            scale_tks = set(_load_scale_in_open_tickers(root))
+        except Exception:
+            scale_tks = set()
+
+    # Today-action scope: what you own, what you proposed, or open scale-in
+    allowed = held_tks | proposal_tks | scale_tks
+
     def _keep(row: TodayActionRow) -> None:
+        if row.ticker not in allowed:
+            return
         prev = by_tk.get(row.ticker)
         if prev is None or row.priority < prev.priority:
             by_tk[row.ticker] = row
         elif prev is not None and row.priority == prev.priority:
-            # Enrich note / trend if empty
             note = prev.note
             if row.note and row.note not in note:
                 note = f"{note} · {row.note}".strip(" ·")
@@ -90,8 +146,6 @@ def build_today_action_board(ctx: Any) -> TodayActionBoard:
     # --- 1) Exit signals (proposal book, fallback ops) ---
     from alpha_system.ui.services.ops_exit_signal import actionable_ops_signals
 
-    proposal = list(getattr(ctx, "portfolio_rows", None) or [])
-    ops = list(getattr(ctx, "ops_portfolio_rows", None) or [])
     sig_rows = actionable_ops_signals(proposal) if proposal else []
     if not sig_rows and ops:
         sig_rows = actionable_ops_signals(ops)
@@ -117,13 +171,16 @@ def build_today_action_board(ctx: Any) -> TodayActionBoard:
             )
         )
 
-    # --- 2) Band breaches (alpha-book %) ---
+    # --- 2) Band breaches (held / proposed / scale-in only) ---
     from alpha_system.ui.services.monthly_rebal_board import build_monthly_rebal_board
 
     rebal = build_monthly_rebal_board(ctx, as_of=as_of)
     band_card = next((c for c in rebal.cards if c.key == "band"), None)
     for item in band_card.items if band_card else ():
         tk = item.ticker
+        # target-only ghosts ("미보유 · 목표는 있음") → monthly checklist only
+        if "미보유" in item.action and tk not in proposal_tks and tk not in scale_tks:
+            continue
         is_reduce = (
             item.actual_pct is not None
             and item.target_pct is not None
@@ -204,7 +261,8 @@ def build_today_action_board(ctx: Any) -> TodayActionBoard:
     else:
         summary = (
             f"오늘 조치 {len(rows)}종 "
-            f"(익절·청산 {n1} · 밴드·축소 {n2} · 편입·분할 {n3}) · Review-only"
+            f"(익절·청산 {n1} · 밴드·축소 {n2} · 편입·분할 {n3}) · "
+            "보유·제안·분할매수만 · Review-only"
         )
     return TodayActionBoard(as_of=as_of, rows=tuple(rows), summary=summary)
 

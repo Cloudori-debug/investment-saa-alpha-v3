@@ -714,25 +714,10 @@ def _build_screen_portfolio(
     # root is not on cfg — use exit path parent.parent or default
     root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
     policy = load_alpha_book_ops(root_guess)
-    # Prefer policy target_names when cfg still older
-    sizing_n = int(getattr(cfg.sizing, "target_names", policy.target_names))
-    use_n = max(sizing_n, policy.target_names) if policy.target_names else sizing_n
-    # Keep cfg as source of truth if already 9
-    alloc_cfg = cfg
-    if int(cfg.sizing.target_names) != int(policy.target_names):
-        try:
-            alloc_cfg = cfg.model_copy(
-                update={
-                    "sizing": cfg.sizing.model_copy(
-                        update={"target_names": int(policy.target_names)}
-                    )
-                }
-            )
-        except Exception:
-            alloc_cfg = cfg
-
+    # Candidate count = sizing.target_names (portfolio UI / yaml). Do not
+    # override with alpha_book_ops default (that file is 9:1 weight policy).
     allocation = allocate_tranche(
-        alloc_cfg,
+        cfg,
         tranche_id=TrancheId.T1,
         scores=name_scores,
         existing_weights={},
