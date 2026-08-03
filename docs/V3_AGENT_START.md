@@ -13,7 +13,9 @@
 - `target_portfolio.csv` — **사람만** (자동 기입·자동 주문 없음)
 - ETF·현금 = Executable / **kr_alpha·하케다카·수급 = Review-only**
 - FASTJUSIK 금지 — PyKRX·DART
-- Core에서 `score_m` 제외 · Ops A `total_score` = 정량 100% (CECS 순위 미반영)
+- Core에서 `score_m` 제외 · Ops A `total_score` = 정량 100% (CECS 순위 미반영 · 선택 원장)
+- 익절 YAML = 실측 앵커만 신규 · 증권사 SoT 금지 ([`EXIT_TARGET_ANCHOR_POLICY.md`](EXIT_TARGET_ANCHOR_POLICY.md))
+- 정성 = 선택 공적 브레이크 · 주간 C/D/E 비필수 ([`QUAL_PUBLIC_OVERLAY_SPEC.md`](QUAL_PUBLIC_OVERLAY_SPEC.md))
 
 ---
 
@@ -22,7 +24,7 @@
 | 사이드바 표시 | 내부 키 | 하는 일 |
 |---------------|---------|---------|
 | 오늘 | 홈 | **① 비중(보유+제안) → ② 보유 분석 → ③ 제안 분석** · 월리밸·레짐은 접힘 |
-| 확인 | 결재함 | 주간/월간 정성 승인 |
+| 확인 | 결재함 | ①숫자 · ②공적 브레이크(선택) · ③가동 · CECS 접힘 |
 | **포트폴리오** | 포트폴리오 | **내 보유종목 선택**(항상 표시) · 종목별 안내 · 제안 북 |
 | 더보기 | 저널·레짐·설정 | 감사·시장·API/백업 |
 
@@ -30,7 +32,7 @@
 
 ---
 
-## 최근 고정 (2026-07-28~29)
+## 최근 고정 (2026-07-28~08-04)
 
 - v3 활성 · 홈 월 리밸 보드 · 모멘텀 Review-only
 - 종목별 교체 안내 · 전체 나침반 UI 제거
@@ -41,6 +43,10 @@
 - Windows 패키징: 포터블 `.venv` · `업데이트.bat`(data 보존) · Inno Setup (`V3_WINDOWS_PACKAGING`)
 - **SR4(B안):** 환원 연속성 → `score_sr` · CECS 순위 가중 0 (`FACTOR_WEIGHT_LITERATURE_AND_B_SPEC`)
 - **모멘텀 보유 모니터(MHM):** 상방/하방·EXIT_REVIEW 연속일 (`MOMENTUM_HOLDING_MONITOR_SPEC`)
+- **Value 스크린:** KR default **PBR 우세** · 사이클/장치/지주/SW 프로필 · 문헌·비율 구분은 [`VALUE_PER_PBR_PROFILE_SPEC.md`](VALUE_PER_PBR_PROFILE_SPEC.md)
+- **익절 실측 앵커 · CECS 원장 고정 (2026-08-03):** 증권사 목표가 참고만 · 월간 CECS execution-only · Ops A 유지
+- **공적 정성 오버레이:** [`QUAL_PUBLIC_OVERLAY_SPEC.md`](QUAL_PUBLIC_OVERLAY_SPEC.md) — 증권사 SoT 금지 · 주간 비필수
+- **실투 범위 체크리스트:** [`REAL_INVEST_SCOPE_CHECKLIST.md`](REAL_INVEST_SCOPE_CHECKLIST.md) — 남김/접음 · CECS 스킵 기본
 
 ---
 
@@ -49,7 +55,7 @@
 1. dry-run · Actual Buy — 운영자 판단 (`P0_OPERATOR_CHECKLIST`)
 2. 익절 **자동 집행 2차** — **미승인** (표시만)
 3. Alpha BT 장기 재무 히스토리 — 후순위
-
+4. (선택) 의심 목표가 실측 앵커 재승인 큐 — [`REAL_INVEST_SCOPE_CHECKLIST.md`](REAL_INVEST_SCOPE_CHECKLIST.md)
 ---
 
 ## 시작 체크

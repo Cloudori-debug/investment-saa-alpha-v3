@@ -6,8 +6,7 @@ SAA 알파 v3 대시보드 — Streamlit 단일 앱 (모바일 우선).
   streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 
 일상 진입: 투자나침반.bat  /  Start-Ops-Assistant.vbs
-v2 보관: C:\\Cursor\\investment-saa-alpha-v2
-v1 동결: C:\\Cursor\\investment-saa-alpha
+코드 루트: investment-saa-alpha-v3 only (v1/v2 폴더 없음)
 """
 
 from __future__ import annotations
@@ -39,7 +38,7 @@ st.set_page_config(
     page_title="SAA 알파 운용 비서",
     page_icon="📗",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 if "compact_mode" not in st.session_state:
@@ -100,6 +99,6 @@ render_app_header(as_of=ctx.as_of.isoformat(), page=page)
 PAGES[page](ctx)
 
 st.caption(
-    "순위=정량(Ops A) · 필수 게이트=T2·논지·목표가 · "
-    "target_portfolio 자동 변경 없음 · 매매는 증권사"
+    "순위=정량(Ops A) · 정성=선택 공적 브레이크 · "
+    "증권사 SoT 금지 · target_portfolio 자동 변경 없음 · 매매는 증권사"
 )

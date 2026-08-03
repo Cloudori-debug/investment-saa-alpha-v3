@@ -14,7 +14,7 @@ from alpha_system.ui.services.home_pipeline import (
     build_pipeline_stages,
     first_blocker,
 )
-from alpha_system.ui.services.nav import PAGE_CECS
+from alpha_system.ui.services.nav import PAGE_PORTFOLIO
 
 
 def _ctx(**overrides):
@@ -74,23 +74,19 @@ def test_cutoff_mismatch_is_first_blocker() -> None:
     blocker = first_blocker(stages)
     assert blocker is not None
     assert blocker.key == "cutoff"
-    assert blocker.page == PAGE_CECS
+    assert blocker.page == PAGE_PORTFOLIO
     assert "적격 0" in blocker.reason
 
 
-def test_cecs_incomplete_does_not_block_pipeline() -> None:
-    """Ops A: incomplete CECS is advisory warn, not a hard blocker."""
+def test_cecs_stage_removed_from_pipeline() -> None:
+    """REAL_INVEST_SCOPE: CECS is not a home pipeline stage."""
     cfg = load_config()
     cfg = cfg.model_copy(
         update={"scoring": cfg.scoring.model_copy(update={"score_cutoff": 60.0})}
     )
     ctx = _ctx(cfg=cfg, cecs_final_count=10, cecs_total=30, proposal_count=0)
     stages = build_pipeline_stages(ctx)
-    cecs_stage = next(s for s in stages if s.key == "cecs")
-    assert cecs_stage.status == "warn"
-    assert cecs_stage.blocks_next is False
-    blocker = first_blocker(stages)
-    assert blocker is None or blocker.key != "cecs"
+    assert all(s.key != "cecs" for s in stages)
 
 
 def test_home_overview_shows_only_quant_action_first(tmp_path: Path) -> None:
@@ -107,14 +103,16 @@ def test_home_overview_shows_only_quant_action_first(tmp_path: Path) -> None:
     overview = build_home_overview(ctx)
     assert len(overview.preparation) == 2
     assert overview.preparation[0].status == "warn"
-    assert overview.preparation[1].status == "missing"
+    assert overview.preparation[1].title == "공적 브레이크"
+    assert overview.preparation[1].status == "ok"
     assert overview.next_action is not None
     assert overview.next_action.key == "quant"
 
 
-def test_home_overview_routes_uploaded_report_to_one_approval_action(
+def test_home_overview_weekly_pending_does_not_block_next_action(
     tmp_path: Path,
 ) -> None:
+    """QUAL_PUBLIC_OVERLAY: weekly C/D/E are optional — not home blockers."""
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "weekly_qual_suggestions.json").write_text(
         """
@@ -138,8 +136,11 @@ def test_home_overview_routes_uploaded_report_to_one_approval_action(
     )
     ctx = _ctx(root=tmp_path)
     overview = build_home_overview(ctx)
-    assert overview.pending_approvals == 2
-    assert overview.preparation[1].status == "warn"
+    # CECS pending is ignored (REAL_INVEST_SCOPE); only t2 counts in pending.
+    assert overview.pending_approvals == 1
+    assert overview.preparation[1].status == "ok"
+    assert "선택" in overview.preparation[1].summary
     assert overview.next_action is not None
-    assert overview.next_action.key == "weekly_approve"
-    assert "2영역" in overview.next_action.reason
+    assert overview.next_action.key != "weekly_approve"
+    assert overview.next_action.key != "weekly_collect"
+    assert overview.next_action.key != "weekly_repair"

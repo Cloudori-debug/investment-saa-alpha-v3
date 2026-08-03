@@ -9,12 +9,27 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
+
+# QUAL_PUBLIC_OVERLAY / EXIT_TARGET_ANCHOR: sell-side must not become YAML SoT.
+_SELL_SIDE_NEGATE_RE = re.compile(
+    r"(컨센서스|증권사)\s*미사용|증권사\s*(참고\s*)?금지|공시[/·]\s*시세\s*기반",
+    re.IGNORECASE,
+)
+_SELL_SIDE_AFFIRM_RE = re.compile(
+    r"증권사\s*(목표가|리포트|컨센서스|의견|평균)|"
+    r"목표가\s*컨센서스|컨센서스\s*(목표가|평균)|"
+    r"투자의견|애널리스트\s*(목표가|리포트)|"
+    r"(삼성|KB|미래에셋|NH|한국투자|대신|신한|하나|키움|유안타|메리츠|교보|현대차)\s*증권|"
+    r"\bconsensus\s*target\b|\bsell[- ]?side\b|\bbroker\s*target\b",
+    re.IGNORECASE,
+)
 
 from alpha_system.journal import append_record
 from alpha_system.ui.services.cecs_ai_research import (
@@ -336,6 +351,7 @@ def _apply_targets(
             "요청서를 proposal_book 기준으로 다시 생성·업로드하세요."
         )
     rejected: list[str] = []
+    sell_side_rejected: list[str] = []
     for item in payload.get("targets") or []:
         ticker = str(item.get("ticker") or "").zfill(6)
         if not ticker:
@@ -348,6 +364,9 @@ def _apply_targets(
             existing_entry if isinstance(existing_entry, dict) else None
         ):
             protected.append(ticker)
+            continue
+        if _looks_like_sell_side_sot(item if isinstance(item, dict) else {}):
+            sell_side_rejected.append(ticker)
             continue
         entry = dict(existing_entry or {}) if isinstance(existing_entry, dict) else {}
         valuation = dict(entry.get("valuation") or {})
@@ -365,6 +384,13 @@ def _apply_targets(
         tickers[ticker] = entry
         updated.append(ticker)
 
+    if sell_side_rejected:
+        raise ValueError(
+            "목표가 승인 거부: 증권사·컨센서스·투자의견 SoT 금지 "
+            f"({', '.join(sell_side_rejected)}). "
+            "BPS·trailing PBR·52주 등 실측 앵커만 근거로 다시 작성하세요. "
+            "(docs/EXIT_TARGET_ANCHOR_POLICY.md · QUAL_PUBLIC_OVERLAY_SPEC.md)"
+        )
     if rejected:
         raise ValueError(
             "목표가 승인 거부: 최종 선정(proposal_book)에 없는 종목 — "
@@ -405,6 +431,21 @@ def _apply_targets(
         "target_portfolio_hash": after_hash,
         "target_portfolio_written": False,
     }
+
+
+def _looks_like_sell_side_sot(item: dict[str, Any]) -> bool:
+    """True when broker/consensus language is the SoT basis for a new exit target."""
+    parts: list[str] = [
+        str(item.get("fundamental_reason") or ""),
+        str(item.get("rationale") or ""),
+    ]
+    for src in item.get("sources") or []:
+        parts.append(str(src))
+    blob = " ".join(parts)
+    if not blob.strip():
+        return False
+    cleaned = _SELL_SIDE_NEGATE_RE.sub(" ", blob)
+    return bool(_SELL_SIDE_AFFIRM_RE.search(cleaned))
 
 
 def _required_review_keys(payload: dict[str, Any], domain: str) -> list[str]:

@@ -2,9 +2,9 @@
 
 ## 버전
 
-- **이 저장소 = v3 활성 개발·운영.**
-- v2: `C:\Cursor\investment-saa-alpha-v2` (보관)
-- v1: `C:\Cursor\investment-saa-alpha` (유지·동결)
+- **이 저장소 = v3 활성 개발·운영** (`C:\Cursor\investment-saa-alpha-v3` only).
+- v1·v2 폴더는 **삭제됨** — 경로·바로가기가 v1/v2를 가리키면 안 됨.
+- 문서에 남은 v1/v2 언급은 이력·archive용이며 코드 루트가 아님.
 
 ## 단일 채팅방
 
@@ -20,3 +20,6 @@
 - ETF Executable / kr_alpha·하케다카·수급 Review-only
 - FASTJUSIK 금지 — KRX/PyKRX·DART 직접
 - Core에서 `score_m` 제외
+- Ops A: CECS 순위 가중 0 (선택 원장) · 환원 순위는 `score_sr` SR4
+- 익절 YAML = 실측 앵커만 신규 · 증권사 SoT 금지 ([`docs/EXIT_TARGET_ANCHOR_POLICY.md`](docs/EXIT_TARGET_ANCHOR_POLICY.md))
+- 정성 = 선택 공적 브레이크 · 주간 비필수 ([`docs/QUAL_PUBLIC_OVERLAY_SPEC.md`](docs/QUAL_PUBLIC_OVERLAY_SPEC.md))

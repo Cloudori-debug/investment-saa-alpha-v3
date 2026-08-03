@@ -9,15 +9,15 @@ from alpha_system.ui.services.context import DashboardContext
 from alpha_system.ui.services.data_freshness import SourceStatus
 from alpha_system.ui.services.nav import (
     FOCUS_DATA_REFRESH,
+    FOCUS_CUTOFF,
     FOCUS_GO_LIVE,
     FOCUS_SCORES,
     FOCUS_T3_DETAIL,
-    FOCUS_WEEKLY_QUAL,
     PAGE_APPROVAL,
     PAGE_PORTFOLIO,
 )
 from alpha_system.ui.services.weekly_qual_report import (
-    DOMAIN_KEYS,
+    WEEKLY_DOMAIN_KEYS,
     load_weekly_suggestions,
 )
 
@@ -83,45 +83,38 @@ def build_home_overview(ctx: DashboardContext) -> HomeOverview:
     weekly = load_weekly_suggestions(ctx.root)
     approved = dict(weekly.get("approved") or {}) if weekly else {}
     statuses = dict(weekly.get("domain_status") or {}) if weekly else {}
+    # QUAL_PUBLIC_OVERLAY: weekly domains are optional brakes, not home blockers.
     pending = [
         key
-        for key in DOMAIN_KEYS
+        for key in WEEKLY_DOMAIN_KEYS
         if statuses.get(key) == "ai_suggested" and not approved.get(key, False)
     ]
     failed = [
         key
-        for key in DOMAIN_KEYS
+        for key in WEEKLY_DOMAIN_KEYS
         if statuses.get(key) in {"failed", "empty", "missing"}
         and not approved.get(key, False)
     ]
-    if not weekly:
+    qualitative = PreparationItem(
+        key="qualitative",
+        title="공적 브레이크",
+        status="ok",
+        summary=(
+            f"선택 · 미승인 {len(pending)}영역"
+            if pending
+            else (
+                f"선택 · as_of {weekly.get('as_of') or '—'}"
+                if weekly
+                else "선택 · 증권사 SoT 금지"
+            )
+        ),
+    )
+    if failed and not pending:
         qualitative = PreparationItem(
             key="qualitative",
-            title="정성",
-            status="missing",
-            summary="주간 리포트 없음",
-        )
-    elif pending:
-        qualitative = PreparationItem(
-            key="qualitative",
-            title="정성",
+            title="공적 브레이크",
             status="warn",
-            summary=f"업로드됨 · 승인 {len(pending)}영역 남음",
-        )
-    elif failed:
-        qualitative = PreparationItem(
-            key="qualitative",
-            title="정성",
-            status="warn",
-            summary=f"보완 필요 · {', '.join(failed)}",
-        )
-    else:
-        report_as_of = str(weekly.get("as_of") or "—")
-        qualitative = PreparationItem(
-            key="qualitative",
-            title="정성",
-            status="ok",
-            summary=f"승인 완료 · as_of {report_as_of}",
+            summary=f"선택 보완 · {', '.join(failed)}",
         )
 
     next_action: Optional[PipelineStage]
@@ -139,42 +132,6 @@ def build_home_overview(ctx: DashboardContext) -> HomeOverview:
             cta_label="정량 전체 갱신",
             page=PAGE_APPROVAL,
             focus=FOCUS_DATA_REFRESH,
-            blocks_next=True,
-        )
-    elif not weekly:
-        next_action = PipelineStage(
-            key="weekly_collect",
-            step=2,
-            title="주간 정성 리포트 수집",
-            status="locked",
-            reason="이번 주 통합 정성 리포트를 생성·작성·업로드하세요.",
-            cta_label="주간 요청서로",
-            page=PAGE_APPROVAL,
-            focus=FOCUS_WEEKLY_QUAL,
-            blocks_next=True,
-        )
-    elif pending:
-        next_action = PipelineStage(
-            key="weekly_approve",
-            step=3,
-            title="주간 정성 승인",
-            status="warn",
-            reason=f"출처 확인과 승인이 {len(pending)}영역 남았습니다.",
-            cta_label="승인판 열기",
-            page=PAGE_APPROVAL,
-            focus=FOCUS_WEEKLY_QUAL,
-            blocks_next=True,
-        )
-    elif failed:
-        next_action = PipelineStage(
-            key="weekly_repair",
-            step=2,
-            title="주간 정성 보완",
-            status="warn",
-            reason=f"파싱 실패·누락 영역을 보완해 다시 업로드하세요: {', '.join(failed)}",
-            cta_label="리포트 보완",
-            page=PAGE_APPROVAL,
-            focus=FOCUS_WEEKLY_QUAL,
             blocks_next=True,
         )
     else:
@@ -198,8 +155,6 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
     eligible_n = sum(1 for r in ctx.scoreboard_rows if r.eligibility is True)
     proposal_n = int(getattr(ctx, "proposal_count", None) or len(ctx.portfolio_rows or []))
     cutoff = ctx.cfg.scoring.score_cutoff
-    cecs_final = int(ctx.cecs_final_count)
-    cecs_total = int(ctx.cecs_total)
     checklist = ctx.checklist
 
     stages: list[PipelineStage] = []
@@ -251,51 +206,20 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
             )
         )
 
-    # 2) CECS — Ops A: review note only (does not block pipeline / rank)
-    if cecs_total < 30 or cecs_final < 30:
-        stages.append(
-            PipelineStage(
-                key="cecs",
-                step=2,
-                title="CECS 검토(선택)",
-                status="warn",
-                reason=(
-                    f"CECS final {cecs_final}/{cecs_total} — 순위에는 미반영(Ops A). "
-                    "T2·논지·목표가 게이트만 필수."
-                ),
-                cta_label="결재함 정성",
-                page=PAGE_APPROVAL,
-                focus=FOCUS_WEEKLY_QUAL,
-                blocks_next=False,
-            )
-        )
-    else:
-        stages.append(
-            PipelineStage(
-                key="cecs",
-                step=2,
-                title="CECS 검토(선택)",
-                status="ok",
-                reason=f"CECS final {cecs_final}/{cecs_total} · 순위 미반영(Ops A)",
-                cta_label="결재함 보기",
-                page=PAGE_APPROVAL,
-                focus=FOCUS_WEEKLY_QUAL,
-                blocks_next=False,
-            )
-        )
+    # CECS stage removed — REAL_INVEST_SCOPE_CHECKLIST (스킵 기본 · 순위 무관)
 
-    # 3) Cutoff + eligibility alignment
+    # 2) Cutoff + eligibility alignment
     if cutoff is None:
         stages.append(
             PipelineStage(
                 key="cutoff",
-                step=3,
+                step=2,
                 title="컷오프 확정",
                 status="locked",
                 reason="score_cutoff이 비어 있어 eligibility를 판정할 수 없습니다.",
                 cta_label="컷오프 확정",
-                page=PAGE_APPROVAL,
-                focus=FOCUS_GO_LIVE,
+                page=PAGE_PORTFOLIO,
+                focus=FOCUS_CUTOFF,
                 blocks_next=True,
             )
         )
@@ -303,16 +227,16 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
         stages.append(
             PipelineStage(
                 key="cutoff",
-                step=3,
+                step=2,
                 title="컷오프 정합",
                 status="warn",
                 reason=(
                     f"cutoff={cutoff:g} 인데 적격 0종입니다. "
-                    "alpha_scores 총점대와 맞지 않으면 상대 순위로 재확정하세요."
+                    "alpha_scores 총점대와 맞지 않으면 포트폴리오에서 재확정하세요."
                 ),
                 cta_label="컷오프 재확정",
-                page=PAGE_APPROVAL,
-                focus=FOCUS_GO_LIVE,
+                page=PAGE_PORTFOLIO,
+                focus=FOCUS_CUTOFF,
                 blocks_next=True,
             )
         )
@@ -320,7 +244,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
         stages.append(
             PipelineStage(
                 key="cutoff",
-                step=3,
+                step=2,
                 title="컷오프 정합",
                 status="ok",
                 reason=f"cutoff={cutoff:g} · 적격 {eligible_n}종",
@@ -337,7 +261,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
         stages.append(
             PipelineStage(
                 key="proposal",
-                step=4,
+                step=3,
                 title="제안 북",
                 status="locked",
                 reason=(
@@ -362,7 +286,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
         stages.append(
             PipelineStage(
                 key="proposal",
-                step=4,
+                step=3,
                 title="제안 북",
                 status="ok" if proposal_n >= target_n else "warn",
                 reason=f"proposal_book {proposal_n}종 (목표 {target_n})",
@@ -372,7 +296,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
             )
         )
 
-    # 5) Go-live / checklist
+    # 4) Go-live / checklist
     if ctx.pre_launch:
         blocking = list(checklist.blocking) if checklist is not None else []
         if blocking:
@@ -381,7 +305,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
             stages.append(
                 PipelineStage(
                     key="golive",
-                    step=5,
+                    step=4,
                     title="가동 선언",
                     status="locked",
                     reason=f"{first.title} — {first.why} (할 일: {first.todo})",
@@ -395,7 +319,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
             stages.append(
                 PipelineStage(
                     key="golive",
-                    step=5,
+                    step=4,
                     title="가동 선언",
                     status="warn",
                     reason="체크리스트는 충족. go-live를 선언하면 트랜치가 열립니다.",
@@ -409,7 +333,7 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
         stages.append(
             PipelineStage(
                 key="golive",
-                step=5,
+                step=4,
                 title="가동 선언",
                 status="ok",
                 reason=f"가동 중 (go_live={ctx.effective_go_live})",
@@ -420,16 +344,16 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
             )
         )
 
-    # 6) Proposal book ready (ops_book UI removed — exit cues live on proposal)
+    # 5) Proposal book ready (ops_book UI removed — exit cues live on proposal)
     prop_n = int(getattr(ctx, "proposal_count", 0) or 0)
     if prop_n <= 0:
         stages.append(
             PipelineStage(
-                key="proposal",
-                step=6,
+                key="proposal_ops",
+                step=5,
                 title="제안 북",
                 status="locked",
-                reason="제안 북이 비어 있습니다. 컷오프·CECS·스코어를 확인하세요.",
+                reason="제안 북이 비어 있습니다. 컷오프·스코어를 확인하세요.",
                 cta_label="포트폴리오",
                 page=PAGE_PORTFOLIO,
                 blocks_next=False,
@@ -438,8 +362,8 @@ def build_pipeline_stages(ctx: DashboardContext) -> list[PipelineStage]:
     else:
         stages.append(
             PipelineStage(
-                key="proposal",
-                step=6,
+                key="proposal_ops",
+                step=5,
                 title="제안 북",
                 status="ok",
                 reason=f"proposal_book {prop_n}종 · 익절 신호 표시 · target 자동변경 없음",
@@ -467,10 +391,8 @@ def stale_sources_summary(sources: Sequence[SourceStatus]) -> list[SourceStatus]
 
 
 def _checklist_nav(key: str) -> tuple[str, Optional[str]]:
-    if key == "cecs_final":
-        return PAGE_APPROVAL, FOCUS_WEEKLY_QUAL
     if key == "score_cutoff":
-        return PAGE_APPROVAL, FOCUS_GO_LIVE
+        return PAGE_PORTFOLIO, FOCUS_CUTOFF
     if key == "t3_history":
         return PAGE_APPROVAL, FOCUS_T3_DETAIL
     return PAGE_APPROVAL, FOCUS_GO_LIVE

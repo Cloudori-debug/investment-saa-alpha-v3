@@ -20,6 +20,7 @@ def _render_weekly_qual(
     ctx: DashboardContext,
     *,
     focused: bool = False,
+    prefer_approve: bool = False,
 ) -> None:
     """One collection surface and one compact domain approval board."""
     from datetime import date as _date
@@ -46,12 +47,12 @@ def _render_weekly_qual(
         write_weekly_qual_report,
     )
 
-    st.subheader("주간 정성 수집·승인 (C·D·E)")
+    st.subheader("공적 브레이크 · T2·논지·목표가 (선택)")
     st.caption(
-        "필수 게이트: T2 · 논지 · 목표가(E). "
-        "CECS(A)는 「③ 이번 달」에서 따로 업로드합니다(저장소 분리). "
-        "요청서 생성만으로 kr_alpha_exit_targets.yaml(PBR/목표가)은 삭제되지 않습니다. "
-        "요청서 1장 고정 후 승인 끝날 때까지 정량 재실행으로 final을 바꾸지 마세요. "
+        "선택 오버레이: T2 · 논지 · 목표가(E·실측 앵커만). "
+        "홈「다음 할 일」을 잠그지 않습니다. 증권사 목표가 SoT 승인 거부. "
+        "월간 CECS는 접힌 원장(스킵 기본 · 순위 무관). "
+        "요청서 생성만으로 kr_alpha_exit_targets.yaml은 삭제되지 않습니다. "
         "target_portfolio.csv 자동 변경 없음."
     )
     if focused:
@@ -65,6 +66,51 @@ def _render_weekly_qual(
     deep = subjects_from_portfolio_rows(ctx.portfolio_rows)
     proposal_tickers = [s.ticker for s in deep if s.ticker]
     waiting = waiting_target_subjects(ctx.portfolio_rows, root=ctx.root)
+
+    payload = load_weekly_suggestions(ctx.root, SUGGESTIONS_LANE_WEEKLY)
+    approved_map = dict((payload or {}).get("approved") or {})
+    domain_statuses = dict((payload or {}).get("domain_status") or {})
+    required_domains = WEEKLY_DOMAIN_KEYS
+    required_pending = sum(
+        1
+        for key in required_domains
+        if domain_statuses.get(key) == "ai_suggested"
+        and not approved_map.get(key, False)
+    )
+    board_on_top = bool(prefer_approve and payload and required_pending > 0)
+
+    def _render_approval_board() -> None:
+        if not payload:
+            return
+        st.markdown("#### 공적 브레이크 승인판 (선택)")
+        st.caption(
+            "T2·논지·목표가(실측) · CECS 스킵 · 증권사 SoT 거부 · "
+            "영역별 단독 승인 · target_portfolio.csv 불변"
+        )
+        approver = st.text_input(
+            "공통 승인자",
+            value="operator",
+            key="weekly_approver",
+        )
+        st.markdown("##### 선택 영역")
+        st.caption(f"승인 남음 {required_pending}영역 · T2 · 논지 · 목표가(E)")
+        if required_pending == 0 and any(approved_map.get(k) for k in required_domains):
+            st.success(
+                "선택 영역 승인 완료. 펼치면 승인 당시 보고서를 다시 볼 수 있습니다."
+            )
+        for domain in required_domains:
+            _render_domain_approval_card(
+                ctx,
+                payload,
+                domain=domain,
+                approved_map=approved_map,
+                pending_n=required_pending,
+                approver=approver,
+            )
+
+    if board_on_top:
+        _render_approval_board()
+        st.divider()
 
     _WQ_COLLECT = "요청서 생성·다운로드"
     _WQ_UPLOAD = "완성본 업로드"
@@ -96,7 +142,7 @@ def _render_weekly_qual(
 <div class="ap-panel">
   <div class="ap-panel-kicker">Step 1</div>
           <div class="ap-panel-title">요청서 생성·다운로드</div>
-  <p class="ap-panel-desc">C T2 · D 논지 · E 목표가 (+B 심층) — CECS는 월간 메뉴. 요청서 생성만으로 기존 PBR/목표가 YAML은 지워지지 않습니다.</p>
+  <p class="ap-panel-desc">C T2 · D 논지 · E 목표가 (+B 심층). CECS는 스킵 기본(접힌 원장). 요청서 생성만으로 기존 PBR/목표가 YAML은 지워지지 않습니다.</p>
 </div>
 """,
             unsafe_allow_html=True,
@@ -163,7 +209,7 @@ def _render_weekly_qual(
             if freeze_feature_enabled(ctx.root) and fr.active:
                 st.success(
                     f"생성됨: {report.path.name} · 제안 스냅샷 고정 "
-                    f"({len(deep)}종 · 필수 게이트 승인 시 해제)"
+                    f"({len(deep)}종 · 선택 브레이크 승인 시 해제)"
                 )
             else:
                 st.success(
@@ -245,7 +291,7 @@ def _render_weekly_qual(
 <div class="ap-panel">
   <div class="ap-panel-kicker">Step 3</div>
   <div class="ap-panel-title">목표가 대기 보충</div>
-  <p class="ap-panel-desc">제안 북 중 목표가 없는 종목만 E 전용. 이미 YAML에 있는 PBR/목표가는 유지 · CECS/T2/논지 유지 · target_portfolio.csv 불변.</p>
+  <p class="ap-panel-desc">제안 북 중 목표가 없는 종목만 E 전용. 실측 앵커(BPS·trailing PBR·52주) 우선 · 증권사 목표가는 참고만 · 이미 YAML에 있는 값은 유지 · target_portfolio.csv 불변.</p>
 </div>
 """,
             unsafe_allow_html=True,
@@ -352,50 +398,8 @@ def _render_weekly_qual(
                 except Exception as exc:
                     st.error(str(exc))
 
-    payload = load_weekly_suggestions(ctx.root, SUGGESTIONS_LANE_WEEKLY)
-    if not payload:
-        return
-
-    approved_map = dict(payload.get("approved") or {})
-    domain_statuses = dict(payload.get("domain_status") or {})
-    required_domains = WEEKLY_DOMAIN_KEYS
-
-    def _pending(keys: tuple[str, ...]) -> int:
-        return sum(
-            1
-            for key in keys
-            if domain_statuses.get(key) == "ai_suggested"
-            and not approved_map.get(key, False)
-        )
-
-    required_pending = _pending(required_domains)
-
-    st.markdown("#### 최종 확인·승인판 (이번 주)")
-    st.caption(
-        "필수 게이트(T2·논지·목표가)만 · CECS는 「이번 달」 · "
-        "영역별 단독 승인 · target_portfolio.csv 불변"
-    )
-    approver = st.text_input(
-        "공통 승인자",
-        value="operator",
-        key="weekly_approver",
-    )
-
-    st.markdown("##### 필수 게이트")
-    st.caption(
-        f"승인 남음 {required_pending}영역 · T2 · 논지 · 목표가(E)"
-    )
-    if required_pending == 0 and any(approved_map.get(k) for k in required_domains):
-        st.success("필수 게이트 승인 완료. 펼치면 승인 당시 보고서를 다시 볼 수 있습니다.")
-    for domain in required_domains:
-        _render_domain_approval_card(
-            ctx,
-            payload,
-            domain=domain,
-            approved_map=approved_map,
-            pending_n=required_pending,
-            approver=approver,
-        )
+    if payload and not board_on_top:
+        _render_approval_board()
 
 
 def _render_monthly_cecs(
@@ -415,16 +419,20 @@ def _render_monthly_cecs(
         parse_weekly_qual_markdown,
         persist_weekly_suggestions,
         subjects_from_cecs_df,
-        write_weekly_qual_report,
+        write_monthly_cecs_report,
     )
 
-    st.subheader("월간 CECS 수집·승인 (선택)")
+    st.subheader("월간 CECS 수집·승인 (선택 원장)")
     st.caption(
-        "저장 파일: monthly_cecs_suggestions.json · 주간 C/D/E와 분리 · "
-        "순위·편입 미반영(Ops A) · target_portfolio 불변"
+        "저장: monthly_cecs_suggestions.json · 주간 C/D/E와 분리 · "
+        "**순위·편입 미반영(Ops A)** · 원장 기록만 · 환원 순위는 score_sr SR4 · "
+        "AI는 execution만 · target_portfolio 불변"
     )
     if focused:
-        st.info("홈/체크리스트에서 월간 CECS로 연결되었습니다.")
+        st.info(
+            "월간 CECS 원장(스킵 기본)입니다. "
+            "승인해도 제안 종목·순위는 바뀌지 않습니다."
+        )
 
     cecs_path = ctx.root / "data" / "cecs_manual_scoring_template.csv"
     cecs_df = pd.read_csv(cecs_path, dtype=str) if cecs_path.exists() else pd.DataFrame()
@@ -458,10 +466,8 @@ def _render_monthly_cecs(
             use_container_width=True,
             disabled=not summary,
         ):
-            report = write_weekly_qual_report(
+            report = write_monthly_cecs_report(
                 summary_subjects=summary,
-                deep_subjects=summary[:6],
-                t2_event_ids=[],
                 docs_dir=ctx.root / "docs",
                 as_of=ctx.as_of,
                 input_paths=[
@@ -475,7 +481,7 @@ def _render_monthly_cecs(
             )
             st.session_state["monthly_cecs_md"] = report.markdown
             st.session_state["monthly_cecs_path"] = str(report.path)
-            st.success(f"생성됨: {report.path.name}")
+            st.success(f"생성됨: {report.path.name} (execution만 · 순위 무관)")
         md = st.session_state.get("monthly_cecs_md")
         path = st.session_state.get("monthly_cecs_path")
         if md:
@@ -490,10 +496,10 @@ def _render_monthly_cecs(
         _render_claude_prompt_panel(
             ctx.root,
             which="C",
-            title="클로드용 프롬프트 C (월간 CECS · 클릭해 복사)",
+            title="클로드용 프롬프트 C (월간 CECS 원장 · execution만)",
             caption=(
-                "「프롬프트 C 텍스트 복사」를 누른 뒤 클로드에 붙여넣고, "
-                "이어서 월간 CECS 요청서 Markdown을 붙이세요. A만 채우고 C/D/E는 손대지 않습니다."
+                "「프롬프트 C 텍스트 복사」후 클로드에 붙여넣고 월간 요청서를 붙이세요. "
+                "execution만 채움 · pension/purpose 유지 · 순위·편입 무관."
             ),
             key_prefix="monthly_cecs_prompt_c",
             expanded=bool(md),
@@ -650,6 +656,13 @@ def _render_domain_approval_card(
     approver: str,
     optional: bool = False,
 ) -> None:
+    from datetime import date as _date
+
+    from alpha_system.ui.services.weekly_domain_gates import (
+        approve_domain,
+        mark_sources_reviewed,
+    )
+
     status = (payload.get("domain_status") or {}).get(domain, "—")
     approved = bool(approved_map.get(domain))
     domain_label = {
@@ -668,18 +681,43 @@ def _render_domain_approval_card(
     ):
         if optional:
             st.info(
-                "Ops A: CECS 점수는 proposal 순위에 들어가지 않습니다. "
-                "승인해도 최종 선정 종목이 바뀌지 않습니다."
+                "Ops A: CECS는 **선택 원장**입니다. 승인해도 proposal 순위·편입이 바뀌지 않습니다. "
+                "환원 연속성 순위는 정량 score_sr(SR4). pension/purpose 잠정 50은 순위 무관."
             )
         if approved:
             meta = (payload.get("approved_meta") or {}).get(domain) or {}
             by = meta.get("approved_by") or "—"
             as_of_meta = meta.get("as_of") or payload.get("as_of") or "—"
-            st.success(f"승인·적용 완료 · 승인자 `{by}` · as_of {as_of_meta}")
+            skipped = bool((meta.get("applied") or {}).get("skipped")) if isinstance(meta.get("applied"), dict) else False
+            if skipped or status == "not_applicable":
+                st.success(
+                    f"목표가 게이트 충족(대기 없음) · system · as_of {as_of_meta} — "
+                    "제안 북 YAML 승인값 유지 · target_portfolio 불변"
+                )
+            else:
+                st.success(f"승인·적용 완료 · 승인자 `{by}` · as_of {as_of_meta}")
             st.caption("아래는 승인 당시 보고서입니다. 조회만 가능하며 재승인 버튼은 없습니다.")
             _render_domain_report(payload, domain)
             return
+        if status == "not_applicable":
+            st.success(
+                "대기 목표가 없습니다. 제안 북 전 종목이 이미 YAML에 승인되어 "
+                "이번 주 목표가 게이트는 자동 충족입니다."
+            )
+            return
         if status != "ai_suggested":
+            notes = (payload.get("domain_notes") or {}).get(domain) or []
+            if domain == "targets" and status == "empty" and not (
+                (payload.get("domain_failures") or {}).get(domain) or []
+            ):
+                st.success(
+                    "대기 목표가 없습니다(이미 YAML 승인). "
+                    "페이지를 새로고침하거나 완성본을 다시 업로드하면 게이트가 자동 충족됩니다."
+                )
+                if notes:
+                    for note in notes:
+                        st.caption(f"• {note}")
+                return
             st.warning(
                 "이 영역은 승인 가능한 제안이 없습니다. "
                 "파싱 실패 내용을 보완해 완성본을 다시 업로드하세요."
@@ -689,6 +727,10 @@ def _render_domain_approval_card(
                 with st.expander(f"파싱 실패 {len(failures)}건", expanded=False):
                     for failure in failures:
                         st.caption(f"• {failure}")
+            if notes:
+                with st.expander("참고", expanded=False):
+                    for note in notes:
+                        st.caption(f"• {note}")
             return
         keys = _domain_review_keys(payload, domain)
         _render_domain_report(payload, domain)
@@ -709,7 +751,10 @@ def _render_domain_approval_card(
             c3 = st.checkbox("논지 적용을 최종 확인합니다", key="weekly_th_c3")
             confirm = int(c1) + int(c2) + int(c3)
         elif domain == "targets":
-            st.info("승인해도 target_portfolio.csv는 변경하지 않습니다.")
+            st.info(
+                "승인해도 target_portfolio.csv는 변경하지 않습니다. "
+                "익절 장부(YAML)만 갱신 · 실측 앵커 우선(증권사 목표가≠자동 SoT)."
+            )
 
         if st.button(
             f"{domain_label}만 승인",
@@ -745,8 +790,9 @@ def _render_domain_report(payload: dict, domain: str) -> None:
     if domain == "cecs":
         items = payload.get("cecs") or []
         st.info(
-            f"CECS {len(items)}종 · execution / pension / purpose 순서입니다. "
-            "Ops A: 순위 미반영 · 점수 50은 AI가 점수를 비워 잠정 중립값인 경우가 포함됩니다."
+            f"CECS {len(items)}종 · **선택 원장** · execution / pension / purpose 순서. "
+            "Ops A: 순위·편입 미반영 · 환원 순위는 score_sr SR4. "
+            "점수 50은 잠정 중립(pension/purpose 또는 미확인 execution)인 경우가 포함됩니다."
         )
         for index, item in enumerate(items, 1):
             ticker = str(item.get("ticker") or "")
@@ -997,7 +1043,7 @@ def _render_data_refresh(ctx: DashboardContext) -> None:
         use_container_width=True,
     ):
         with st.spinner("PyKRX·DART 수집과 alpha_scores 재계산 중…"):
-            result = run_quant_snapshot_refresh(ctx.root, collect_scope="liquid")
+            result = run_quant_snapshot_refresh(ctx.root, collect_scope="holdings")
         journal_data_refresh(
             as_of=date.today(),
             ok=result.ok,

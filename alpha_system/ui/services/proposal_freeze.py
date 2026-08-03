@@ -140,7 +140,7 @@ def block_message(freeze: ProposalFreeze | None = None, *, root: Path | None = N
     return (
         f"주간 정성 창으로 정량 제안이 고정되어 있습니다 "
         f"(report {rid} · as_of {as_of}). "
-        f"필수 게이트(T2·논지·목표가) 승인 후 자동 해제됩니다. "
+        f"선택 공적 브레이크(T2·논지·목표가) 승인 후 자동 해제됩니다. "
         f"정량 재실행은 창이 열린 동안 차단됩니다."
     )
 
@@ -246,15 +246,28 @@ def maybe_release_after_required_gates(
     journal_path: Path | None = None,
     as_of: date | None = None,
 ) -> bool:
-    """Release when T2 · thesis · targets are all approved. CECS optional."""
+    """Release when T2 · thesis · targets gates are satisfied. CECS optional.
+
+    ``targets`` may be satisfied by explicit approval **or** ``not_applicable``
+    (제안 북 목표가가 이미 YAML에 있어 대기 E가 없는 주).
+    """
     approved = payload.get("approved") or {}
-    if not all(bool(approved.get(d)) for d in REQUIRED_GATE_DOMAINS):
+    status = payload.get("domain_status") or {}
+
+    def _ok(domain: str) -> bool:
+        if bool(approved.get(domain)):
+            return True
+        if domain == "targets" and str(status.get("targets") or "") == "not_applicable":
+            return True
+        return False
+
+    if not all(_ok(d) for d in REQUIRED_GATE_DOMAINS):
         return False
     if not is_freeze_active(root):
         return False
     release_freeze(
         root,
-        reason="required gates approved (t2·thesis·targets)",
+        reason="optional overlay approved (t2·thesis·targets)",
         journal_path=journal_path,
         as_of=as_of,
     )

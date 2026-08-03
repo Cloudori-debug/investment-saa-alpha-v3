@@ -140,6 +140,7 @@ portfolio:
   ops_cue_caption: "도달=절반 환금 · 탈락·타임캡=전량 · 읽기 전용"
   price_missing_signal_invalid: "데이터 없음 — 신호 무효 (가격 확인)"
   target_revalidate_required: "목표가 재검증 필요"
+  target_anchor_hint: "익절 YAML=실측 앵커만 신규 · 증권사·컨센서스 SoT 승인 거부 · 주간은 선택 브레이크"
   sector_cap_over: "섹터 합산 {bucket} {weight}% > 한도 {limit}% ({n}종: {tickers}) — 비중·편입 재검토"
   sector_cap_ok: "섹터 합산 한도 {limit}% 이내 (동일 섹터 ≤2종 · 2종 이상 시 합산 ≤{limit}%)"
   entry_journal_empty: "편입 저널 없음"
@@ -168,11 +169,7 @@ checklist:
   score_cutoff:
     title: "점수 컷오프(score_cutoff) 미확정"
     why: "적격 컷라인이 비어 있으면 편입·청산 기준을 확정할 수 없습니다"
-    todo: "체크리스트 처리 패널에서 상관 리포트 확인 후, 상위 N종 슬라이더로 점수 컷오프를 확정하세요"
-  cecs_final:
-    title: "CECS 검토(선택·순위 미반영)"
-    why: "운영안 A: CECS는 제안 순위에 들어가지 않습니다. final {final}/{total}은 참고 기록입니다"
-    todo: "필수 게이트는 T2·논지·목표가입니다. CECS는 여유 있을 때 결재함에서 검토하세요"
+    todo: "포트폴리오 › 절대 컷오프·편입 수에서 확정하세요"
   t3_history:
     title: "T3 PBR 이력 CSV 부재"
     why: "월간 저가 밴드 판정에 필요한 10년 PBR 이력이 없습니다"
@@ -180,11 +177,11 @@ checklist:
   go_live_blocked: "가동(go-live) 선언을 막았습니다. 미충족: {items}"
 
 cecs_scoring:
-  page_task: "후보(shortlist) 30종을 하나씩, 근거를 남기며 채점합니다."
+  page_task: "월간 CECS 원장(스킵 기본). 순위·편입에 반영되지 않습니다."
   ai_button_batch: "전체 배치 조사 요청서 생성"
   ai_batch_scope_unrated: "미채점 종목 전체"
   ai_batch_scope_all: "후보 30종 전체"
-  ai_warning: "AI 제안은 초안입니다. 종목별 출처 원문을 펼쳐 확인하고, 필요하면 점수·근거를 수정한 뒤 승인해야 final이 됩니다."
+  ai_warning: "AI 제안은 초안입니다. 출처 확인 후 승인해도 제안 순위는 바뀌지 않습니다."
   ai_provider_note: "외부 AI 도구(웹검색 가능)에 생성 파일을 붙여넣어 채운 뒤 완성된 마크다운 파일을 업로드하세요. 현재 앱은 자체 AI 연동이 없습니다."
   ai_saved: "배치 조사 요청서 저장됨: {path}"
   ai_download_location_note: "다운로드 버튼을 누르면 브라우저 설정에 따라 저장 위치 선택 창이 열리거나 기본 다운로드 폴더에 저장됩니다."
@@ -194,20 +191,20 @@ cecs_scoring:
   ai_source_review: "출처 링크를 펼쳐 원문 목록을 확인했습니다"
   ai_approve_one: "AI 제안 승인"
   ai_approve_batch: "출처 확인 완료 종목 일괄 승인"
-  ai_approved: "승인 완료 — final {final}/{total}"
+  ai_approved: "승인 완료 — final {final}/{total} (원장만 · 순위 무관)"
   execution_help: "최근 4개 분기 중 주주환원 이벤트가 있었던 분기 비율입니다. 4/4=1.00, 3/4=0.75, 2/4=0.50, 1/4=0.25, 0/4=0.00."
-  pension_help: "연기금 2분기 이상 증가=0.70~1.00, 보합=0.50, 감소=0.20~0.40, 미보유·보고 없음=0.50."
-  purpose_help: "대량보유보고 투자목적이 일반·단순투자=1.00, 경영참여=0.30, 보고 없음=0.50."
-  rationale_required: "채점 완료에는 execution·pension·purpose 근거 3개가 모두 필요합니다."
+  pension_help: "실투 범위: pension은 채우지 않음(스킵). 잠정 50만 허용."
+  purpose_help: "실투 범위: purpose는 채우지 않음(스킵). 잠정 50만 허용."
+  rationale_required: "execution 근거만 권장. pension/purpose는 스킵 기본."
   draft_saved: "임시 저장 완료 — draft 상태를 유지합니다."
   final_saved: "채점 완료 — final 저장 및 저널 기록 완료 ({final}/{total})."
 
 checklist_panel:
-  cecs_situation: "CECS 검토 {final}/{total} (선택·순위 미반영)"
   cutoff_situation: "score_cutoff 미확정"
-  cutoff_locked: "절대 컷오프는 포트폴리오에서 확정합니다 (CECS 완료 여부와 무관 · Ops A)."
+  cutoff_locked: "절대 컷오프는 포트폴리오에서 확정합니다 (CECS 무관 · Ops A)."
+  target_anchor_hint: "익절 YAML=실측 앵커만 신규 · 증권사·컨센서스 SoT 승인 거부 · 주간은 선택 브레이크"
   t3_situation: "KOSPI 시장 PBR 이력 CSV 없음"
-  cutoff_absolute_help: "절대 score_cutoff → eligibility → 편입 수(5~8) 순으로 확정합니다. 상대순위(상위 N종 수를 먼저 고르는) 방식은 쓰지 않습니다. 확정은 포트폴리오 화면에서만 합니다. total_score는 정량 100%(CECS 가중 0)."
+  cutoff_absolute_help: "절대 score_cutoff → eligibility → 편입 수(5~8) 순으로 확정합니다. 상관 리포트는 참고용이며 CECS와 무관합니다. 확정은 포트폴리오 화면에서만 합니다. total_score는 정량 100%(CECS 가중 0)."
   cutoff_confirm_1: "절대 컷오프와 경계 종목을 확인했습니다"
   cutoff_confirm_2: "이 값이 편입 eligibility와 향후 exit 판정에 연결됨을 이해하고 확정합니다"
 

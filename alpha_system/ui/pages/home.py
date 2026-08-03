@@ -216,18 +216,24 @@ def _style_trend_column(df: "pd.DataFrame", cols: str | list[str] = "추세"):
 
 
 def _render_today_line(ctx: DashboardContext, overview: HomeOverview, mom_n: int) -> None:
-    """Wireframe: one-line today cue (merged 후보·모멘텀 first)."""
+    """Wireframe: one-line today cue + primary next action."""
     action = overview.next_action
     n = overview.proposal_count or mom_n
-    bits = [f"오늘 종목 {n}종", "포트폴리오에서 교체 안내"]
-    if action is not None:
-        bits.append(action.title)
-    st.markdown(f"**오늘 할 일** — {' · '.join(bits)}")
-    if action is not None:
-        if st.button(action.cta_label, key="home_next_action", type="secondary"):
+    st.markdown(f"**오늘 할 일** — 종목 {n}종 · 포트폴리오에서 교체")
+    if action is None:
+        return
+    st.caption(action.reason)
+    if st.button(
+        action.cta_label,
+        key="home_next_action",
+        type="primary",
+        use_container_width=True,
+    ):
+        if action.key == "quant":
             st.session_state["_home_run_next_action"] = True
             st.rerun()
-
+        else:
+            navigate(action.page, focus=action.focus, prefill=action.prefill)
 
 def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
     """Colored badge card showing alpha 9:1 drift (equity vs 214980)."""
@@ -287,11 +293,11 @@ def _run_next_action_if_flagged(ctx: DashboardContext, overview: HomeOverview) -
         if is_freeze_active(ctx.root):
             st.error(
                 "주간 정성 창으로 제안이 고정되어 정량 재실행이 차단됩니다. "
-                "필수 게이트 승인 후 다시 시도하세요."
+                "선택 공적 브레이크 승인(또는 설정에서 잠금 off) 후 다시 시도하세요."
             )
             return
         with st.spinner("PyKRX·DART 수집과 alpha_scores 재계산 중…"):
-            result = run_quant_snapshot_refresh(ctx.root, collect_scope="liquid")
+            result = run_quant_snapshot_refresh(ctx.root, collect_scope="holdings")
         journal_data_refresh(
             as_of=date.today(),
             ok=result.ok,
@@ -366,12 +372,14 @@ def _render_decision_boards(ctx: DashboardContext) -> None:
 
     # ② Holdings analysis
     with st.container(border=True):
-        st.subheader(f"② 보유 분석 ({boards.n_held}종)")
+        n_book = boards.n_held + getattr(boards, "n_watch", 0)
+        st.subheader(f"② 보유·워치 분석 ({n_book}종)")
         st.caption(
-            "보유 자산 근거 · 추세·바늘·익절 · ① 조치의 뒷받침 · Review-only"
+            f"실보유 {boards.n_held} · 워치(수량0) {getattr(boards, 'n_watch', 0)} · "
+            "추세·바늘·익절 · ① 조치의 뒷받침 · Review-only"
         )
         if not boards.holdings:
-            st.caption("실보유 없음 — 포트폴리오에서 입력")
+            st.caption("등록된 알파 없음 — 포트폴리오에서 입력")
         else:
             st.dataframe(
                 _style_trend_column(
@@ -381,6 +389,12 @@ def _render_decision_boards(ctx: DashboardContext) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+            if getattr(boards, "n_watch", 0) > 0 and boards.n_held == 0:
+                st.info(
+                    "지금은 **워치(수량 0)** 만 등록되어 있습니다. "
+                    "포트폴리오 › 붙여넣기에서 `종목코드 수량` 을 넣으면 "
+                    "실보유·실%가 ①②에 반영됩니다."
+                )
             with st.expander("바늘·전략 대응표", expanded=False):
                 for code, label in BEARING_KO.items():
                     help_txt = BEARING_HELP_KO.get(code, "")
@@ -682,8 +696,8 @@ def render_home(ctx: DashboardContext) -> None:
                 f"({src.path}) {src.detail}",
                 unsafe_allow_html=True,
             )
-        st.markdown(
-            f"**정성 채점 검토(선택)** — 확정 {ctx.cecs_final_count} / {ctx.cecs_total}종 · 순위 미반영"
+        st.caption(
+            f"정성 원장(선택·스킵 기본) — final {ctx.cecs_final_count}/{ctx.cecs_total} · 순위 미반영"
         )
         st.markdown(
             f"**섹터 동료 표본 부족(시장 대체)** — {ctx.sector_peer_fallback_count}종"

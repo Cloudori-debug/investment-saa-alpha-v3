@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import date, datetime
 from pathlib import Path
 
@@ -75,11 +76,58 @@ def test_weekly_request_has_sections_a_to_e(tmp_path: Path) -> None:
     assert "숫자만" in md
     assert "48000" in md  # target_price example
     assert "0.75" in md  # pbr_max example
-    assert "CECS 3축 채점표" in md
+    assert "CECS 채점표" in md or "CECS 3축 채점표" in md
     assert "T2 확정 기준" in md
-    assert "C_T2_EVENTS` → `D_THESIS` → `E_TARGET_VALUATION` → `A_CECS_SUMMARY" in md
+    assert "실측 범위" in md
+    assert "system:weekly_neutral_hold" in md
+    assert "EXIT_TARGET_ANCHOR" in md or "실측 앵커" in md
+    assert "### pension" in md
+    # pension/purpose prefilled; execution still blank
+    assert "- 점수 제안(0-100): 50" in md
+    assert "C_T2_EVENTS` → `D_THESIS` → `E_TARGET_VALUATION`" in md
     assert list_entries(action_kind="WEEKLY_QUAL_REPORT_GENERATED")
     clear_entries()
+
+
+def test_monthly_cecs_report_execution_only(tmp_path: Path) -> None:
+    clear_entries()
+    from alpha_system.ui.services.weekly_qual_report import write_monthly_cecs_report
+
+    report = write_monthly_cecs_report(
+        summary_subjects=[
+            WeeklySubject("005830", "DB손해보험", "insurance"),
+            WeeklySubject("021240", "코웨이", "consumer"),
+        ],
+        docs_dir=tmp_path / "docs",
+        as_of=date(2026, 8, 3),
+        generated_at=datetime(2026, 8, 3, 12, 0, 0),
+        journal_path=tmp_path / "journal.jsonl",
+    )
+    md = report.markdown
+    assert report.path.name.startswith("monthly_cecs_report_")
+    assert "## A_CECS_SUMMARY" in md
+    assert "## C_T2_EVENTS" not in md
+    assert "## E_TARGET_VALUATION" not in md
+    assert "system:monthly_neutral_hold" in md
+    assert "순위" in md and ("미반영" in md or "무관" in md)
+    import re
+
+    assert len(re.findall(r"^## \[\d{6}\]", md, re.M)) == 2
+    assert "system:monthly_neutral_hold" in md
+    assert md.count("- 점수 제안(0-100): 50") == 4  # pension+purpose × 2
+    assert list_entries(action_kind="MONTHLY_CECS_REPORT_GENERATED")
+    clear_entries()
+
+
+def test_load_cde_prompts_mention_anchor_and_cecs_ledger() -> None:
+    root = Path(__file__).resolve().parents[1]
+    prompt_a = load_cde_copy_prompt(root, which="A")
+    prompt_b = load_cde_copy_prompt(root, which="B")
+    prompt_c = load_cde_copy_prompt(root, which="C")
+    assert "실측" in prompt_a or "앵커" in prompt_a or "BPS" in prompt_a
+    assert "실측" in prompt_b or "앵커" in prompt_b or "BPS" in prompt_b
+    assert "execution" in prompt_c.lower() or "execution만" in prompt_c
+    assert "Ops A" in prompt_c or "순위" in prompt_c
 
 
 def test_weekly_be_requires_deep_subjects(tmp_path: Path) -> None:
@@ -430,6 +478,51 @@ def test_apply_targets_rejects_ticker_not_in_final_snapshot(tmp_path: Path) -> N
             exit_targets_path=root / "data" / "kr_alpha_exit_targets.yaml",
             confirm_steps=2,
         )
+    clear_entries()
+
+
+def test_apply_targets_rejects_sell_side_sot(tmp_path: Path) -> None:
+    """QUAL_PUBLIC_OVERLAY: broker/consensus SoT must not write exit YAML."""
+    clear_entries()
+    root = tmp_path
+    (root / "data").mkdir()
+    (root / "data" / "target_portfolio.csv").write_text(
+        "ticker,asset_group,target_weight\n005830,kr_alpha,10\n", encoding="utf-8"
+    )
+    suggestions = {
+        "report_id": "WQR-sell-side",
+        "deep_tickers": ["005830"],
+        "targets": [
+            {
+                "ticker": "005830",
+                "pbr_max": 0.8,
+                "target_price": 120000,
+                "fundamental_reason": "KB증권 목표가 상향",
+                "rationale": "목표가 컨센서스 약 12만원",
+                "sources": ["https://example.com/broker"],
+            }
+        ],
+        "source_reviewed": {"targets": ["005830"]},
+        "approved": {k: False for k in ("cecs", "t2", "thesis", "targets")},
+        "domain_status": {"targets": "ai_suggested"},
+    }
+    import json
+
+    (root / "data" / "weekly_qual_suggestions.json").write_text(
+        json.dumps(suggestions, ensure_ascii=False), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="증권사·컨센서스"):
+        approve_domain(
+            root=root,
+            domain="targets",
+            approved_by="operator",
+            as_of=date(2026, 7, 18),
+            reviewed_keys=["005830"],
+            journal_path=tmp_path / "j.jsonl",
+            exit_targets_path=root / "data" / "kr_alpha_exit_targets.yaml",
+            confirm_steps=2,
+        )
+    assert not (root / "data" / "kr_alpha_exit_targets.yaml").exists()
     clear_entries()
 
 
@@ -987,3 +1080,53 @@ def test_targets_supplement_rejects_outside_waiting(tmp_path: Path) -> None:
             proposal_tickers=["021240"],
             waiting_tickers=["021240"],
         )
+
+
+def test_empty_targets_auto_not_applicable_gate(tmp_path: Path) -> None:
+    """When all proposal exits already exist, weekly targets gate auto-satisfies."""
+    clear_entries()
+    root = tmp_path
+    (root / "data").mkdir()
+    (root / "data" / "kr_alpha_exit_targets.yaml").write_text(
+        "tickers:\n  '005830':\n    valuation:\n      pbr_max: 1.0\n    target_price: 210000\n",
+        encoding="utf-8",
+    )
+    md = """# weekly
+- report_id: `WQR-empty-e`
+- as_of: `2026-07-31`
+- input_snapshot_hash: `abc`
+
+## C_T2_EVENTS
+### EVENT [commercial_code_enforcement_decrees]
+- fired: false
+- 근거: as_of 기준 관보 미확인
+- 출처:
+  - 확인 불가
+
+## D_THESIS
+### THESIS
+- damage: false
+- 근거: 제도 후퇴 없음
+- 출처:
+  - 확인 불가
+
+## E_TARGET_VALUATION
+### 대기 (채움 대상)
+(대기 종목 없음)
+"""
+    parsed = parse_weekly_qual_markdown(md)
+    assert parsed.domain_status["targets"] == "empty"
+    out = persist_weekly_suggestions(
+        root=root,
+        parsed=parsed,
+        report_name="empty_e.md",
+        as_of=date(2026, 7, 31),
+        locked_deep_tickers=["005830"],
+        lane="weekly",
+    )
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["domain_status"]["targets"] == "not_applicable"
+    assert data["approved"]["targets"] is True
+    assert (data.get("approved_meta") or {}).get("targets", {}).get("applied", {}).get(
+        "skipped"
+    ) is True

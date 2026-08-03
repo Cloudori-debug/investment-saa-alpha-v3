@@ -15,28 +15,33 @@ from alpha_system.ui.services.nav import (
     FOCUS_SCORES,
     FOCUS_T2,
     FOCUS_T3_DETAIL,
+    FOCUS_WEEKLY_APPROVE,
     FOCUS_WEEKLY_QUAL,
     consume_focus,
 )
 
 _TAB_QUANT = "① 숫자"
 _TAB_WEEKLY = "② 이번 주"
-_TAB_MONTHLY = "③ 이번 달"
-_TAB_LIVE = "④ 가동"
-_TABS = (_TAB_QUANT, _TAB_WEEKLY, _TAB_MONTHLY, _TAB_LIVE)
+_TAB_LIVE = "③ 가동"
+_TABS = (_TAB_QUANT, _TAB_WEEKLY, _TAB_LIVE)
 _SESSION_TAB = "approval_section"
 _LEGACY_TAB = {
     "정량·스코어": _TAB_QUANT,
     "주간 정성 승인": _TAB_WEEKLY,
     "가동·체크리스트": _TAB_LIVE,
-    "월간 CECS": _TAB_MONTHLY,
+    "① 숫자": _TAB_QUANT,
+    "② 이번 주": _TAB_WEEKLY,
+    "③ 이번 달": _TAB_LIVE,  # legacy monthly tab → 가동 (CECS는 접힌 원장)
+    "④ 가동": _TAB_LIVE,
+    "월간 CECS": _TAB_WEEKLY,  # deep-link opens weekly + expander
 }
 
 
 def render_approval(ctx: DashboardContext) -> None:
     focus = consume_focus()
 
-    weekly_focus = focus in {FOCUS_WEEKLY_QUAL, FOCUS_T2}
+    weekly_focus = focus in {FOCUS_WEEKLY_QUAL, FOCUS_T2, FOCUS_WEEKLY_APPROVE}
+    prefer_approve = focus == FOCUS_WEEKLY_APPROVE
     monthly_focus = focus in {FOCUS_MONTHLY_CECS, FOCUS_CECS_SCORE}
     quant_focus = focus in {FOCUS_DATA_REFRESH, FOCUS_SCORES, FOCUS_T3_DETAIL}
     live_focus = focus == FOCUS_GO_LIVE or (
@@ -50,10 +55,8 @@ def render_approval(ctx: DashboardContext) -> None:
     if focus:
         if quant_focus:
             st.session_state[_SESSION_TAB] = _TAB_QUANT
-        elif weekly_focus:
+        elif weekly_focus or monthly_focus:
             st.session_state[_SESSION_TAB] = _TAB_WEEKLY
-        elif monthly_focus:
-            st.session_state[_SESSION_TAB] = _TAB_MONTHLY
         elif live_focus:
             st.session_state[_SESSION_TAB] = _TAB_LIVE
     if st.session_state.get(_SESSION_TAB) not in _TABS:
@@ -63,8 +66,7 @@ def render_approval(ctx: DashboardContext) -> None:
         """
 <div class="ap-page-head">
   <p class="ap-page-lead">
-    확인 센터 — ①숫자 → ②이번 주(게이트) → ③이번 달(CECS 선택) → ④가동.
-    출처만 보고 영역별로 승인합니다. 제안 순위·target은 여기서 안 바꿉니다.
+    ①숫자 → ②공적 브레이크(선택) → ③가동. 순위·target은 여기서 안 바뀝니다.
   </p>
 </div>
 """,
@@ -89,49 +91,51 @@ def render_approval(ctx: DashboardContext) -> None:
     if section == _TAB_QUANT:
         _panel_quant(ctx, focus=focus)
     elif section == _TAB_WEEKLY:
-        _panel_weekly(ctx, focused=weekly_focus)
-    elif section == _TAB_MONTHLY:
-        _panel_monthly(ctx, focused=monthly_focus)
+        _panel_weekly(ctx, focused=weekly_focus, prefer_approve=prefer_approve)
+        _panel_monthly_folded(ctx, focused=monthly_focus)
     else:
         _panel_live(ctx, focus=focus, live_focus=live_focus)
 
 
-def _panel_weekly(ctx: DashboardContext, *, focused: bool) -> None:
+def _panel_weekly(
+    ctx: DashboardContext,
+    *,
+    focused: bool,
+    prefer_approve: bool = False,
+) -> None:
     st.markdown(
         """
 <div class="ap-panel">
   <div class="ap-panel-kicker">2 · 이번 주</div>
-  <div class="ap-panel-title">이번 주 확인</div>
+  <div class="ap-panel-title">공적 브레이크 (선택)</div>
   <p class="ap-panel-desc">
-    숫자 준비가 끝난 뒤. 요청서 → 조사본 업로드 → 출처 확인 → C/D/E 승인.
-    논지·목표가만 엔진이 씁니다. CECS는 「이번 달」에서 따로 올립니다.
+    요청서 → 업로드 → 출처 확인 → T2·논지·목표가(실측 앵커).
+    홈 필수 아님 · 증권사 SoT 금지 · CECS는 아래 접힌 원장(스킵).
   </p>
 </div>
 """,
         unsafe_allow_html=True,
     )
-    if focused:
+    if focused and prefer_approve:
+        st.info("승인할 영역이 있습니다 — 승인판이 위에 열려 있습니다.")
+    elif focused:
         st.info("오늘 할 일에서 연결됨 — 출처 확인 후 해당 영역만 승인하세요.")
-    events._render_weekly_qual(ctx, focused=focused)
-
-
-def _panel_monthly(ctx: DashboardContext, *, focused: bool) -> None:
-    st.markdown(
-        """
-<div class="ap-panel">
-  <div class="ap-panel-kicker">3 · 이번 달</div>
-  <div class="ap-panel-title">월간 CECS (선택)</div>
-  <p class="ap-panel-desc">
-    주간 C/D/E와 저장소가 분리됩니다. 여기 업로드는 주간 승인을 덮어쓰지 않습니다.
-    CECS는 순위·편입에 반영되지 않습니다 (Ops A).
-  </p>
-</div>
-""",
-        unsafe_allow_html=True,
+    events._render_weekly_qual(
+        ctx, focused=focused, prefer_approve=prefer_approve
     )
-    if focused:
-        st.info("월간 CECS 확인 — 출처 확인 후 CECS만 승인하세요.")
-    events._render_monthly_cecs(ctx, focused=focused)
+
+
+def _panel_monthly_folded(ctx: DashboardContext, *, focused: bool) -> None:
+    """CECS ledger — skipped by default (REAL_INVEST_SCOPE_CHECKLIST)."""
+    with st.expander(
+        "원장 · 월간 CECS (스킵 기본 · 순위·편입 무관)",
+        expanded=focused,
+    ):
+        st.caption(
+            "실투 루틴에서는 돌리지 않아도 됩니다. "
+            "환원 순위는 score_sr SR4 · 승인해도 제안 종목이 바뀌지 않습니다."
+        )
+        events._render_monthly_cecs(ctx, focused=focused)
 
 
 def _panel_quant(ctx: DashboardContext, *, focus: str | None) -> None:
@@ -181,7 +185,7 @@ def _panel_live(ctx: DashboardContext, *, focus: str | None, live_focus: bool) -
     st.markdown(
         """
 <div class="ap-panel">
-  <div class="ap-panel-kicker">4 · 가동</div>
+  <div class="ap-panel-kicker">3 · 가동</div>
   <div class="ap-panel-title">가동 확인</div>
   <p class="ap-panel-desc">
     숫자·이번 주 확인이 끝난 뒤. go-live와 읽기 전용 규칙만 봅니다.
