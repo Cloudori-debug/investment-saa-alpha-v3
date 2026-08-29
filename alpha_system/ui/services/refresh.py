@@ -32,6 +32,45 @@ def _format_refresh_error(exc: BaseException) -> str:
     return str(exc)
 
 
+def _sync_operational_prices_from_alpha_snapshot(root: Path) -> int:
+    """Copy close/mcap/tv20 from alpha snapshot into data/prices.csv. No KRX."""
+    import pandas as pd
+
+    snap_path = root / "alpha_portfolio" / "data" / "raw" / "price_snapshot.csv"
+    dest_path = root / "data" / "prices.csv"
+    if not snap_path.exists() or not dest_path.exists():
+        return 0
+    try:
+        snap = pd.read_csv(snap_path, dtype=str, keep_default_na=False)
+        dest = pd.read_csv(dest_path, dtype=str, keep_default_na=False)
+    except Exception:
+        return 0
+    if snap.empty or dest.empty or "ticker" not in snap.columns or "ticker" not in dest.columns:
+        return 0
+    snap["ticker"] = snap["ticker"].astype(str).str.zfill(6)
+    dest["ticker"] = dest["ticker"].astype(str).str.zfill(6)
+    by_t = snap.drop_duplicates("ticker", keep="last").set_index("ticker")
+    n = 0
+    for idx, row in dest.iterrows():
+        t = str(row["ticker"])
+        if t not in by_t.index:
+            continue
+        src = by_t.loc[t]
+        if "as_of" in src.index and str(src["as_of"]).strip():
+            dest.at[idx, "date"] = str(src["as_of"])[:10]
+        if "close" in src.index and str(src["close"]).strip():
+            dest.at[idx, "close"] = src["close"]
+        if "market_cap" in src.index and str(src["market_cap"]).strip():
+            dest.at[idx, "market_cap"] = src["market_cap"]
+        tv = src.get("avg_trading_value_20d")
+        if tv is not None and str(tv).strip():
+            dest.at[idx, "trading_value_20d"] = tv
+        n += 1
+    if n:
+        dest.to_csv(dest_path, index=False, encoding="utf-8-sig")
+    return n
+
+
 def run_data_refresh(data_dir: Path, *, scope: str = "holdings") -> RefreshResult:
     """
     Invoke existing PyKRX bulk collect (prices + fundamentals).
@@ -60,7 +99,7 @@ def run_data_refresh(data_dir: Path, *, scope: str = "holdings") -> RefreshResul
         )
 
     last_exc: BaseException | None = None
-    attempts = 3
+    attempts = 1
     for attempt in range(1, attempts + 1):
         try:
             result = run_pykrx_bulk_collect(
@@ -100,11 +139,10 @@ def run_quant_snapshot_refresh(
     *,
     collect_scope: str = "liquid",
 ) -> RefreshResult:
-    """One-click collection: operational data, then alpha quant snapshot.
+    """One KRX pass via alpha collect (liquid). Does not run holdings bulk first.
 
-    The subprocess isolates alpha_portfolio's local ``src`` package from the
-    dashboard's top-level ``src`` package. No target portfolio writer is called.
-    Blocked while weekly proposal freeze is active.
+    OHLCV uses Naver; KRX is market-wide cap/fundamentals only. No
+    target_portfolio writer. Blocked while weekly proposal freeze is active.
     """
     from alpha_system.ui.services.proposal_freeze import (
         assert_quant_refresh_allowed,
@@ -121,14 +159,6 @@ def run_quant_snapshot_refresh(
                 message=str(exc) or block_message(root=root),
                 detail={"blocked_by": "weekly_qual_proposal_freeze"},
             )
-
-    operational = run_data_refresh(root / "data", scope="holdings")
-    if not operational.ok:
-        return RefreshResult(
-            ok=False,
-            message=f"운용 데이터 갱신 실패: {operational.message}",
-            detail={"operational": operational.detail},
-        )
 
     script = root / "scripts" / "run_alpha_quant_snapshot.py"
     command = [
@@ -148,18 +178,20 @@ def run_quant_snapshot_refresh(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=1200,
+            timeout=1800,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return RefreshResult(
             ok=False,
             message=f"정량 스냅샷 실행 실패: {exc}",
-            detail={"operational": operational.detail, "error": str(exc)},
+            detail={"error": str(exc), "krx_pass": "single"},
         )
 
+    synced = _sync_operational_prices_from_alpha_snapshot(root)
     detail: dict[str, Any] = {
-        "operational": operational.detail,
+        "krx_pass": "single",
+        "operational_synced_rows": synced,
         "command": "run_alpha_quant_snapshot.py --collect --collect-scope "
         + collect_scope,
         "stdout": completed.stdout.strip(),

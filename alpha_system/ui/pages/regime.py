@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 
+from alpha_system.ui.services.background_job import job_is_busy
 from alpha_system.ui.services.context import DashboardContext
 from alpha_system.ui.services.judgment_snapshot import build_judgment_snapshot
 from alpha_system.ui.services.nav import (
@@ -102,64 +103,15 @@ def _render_analysis_refresh(ctx: DashboardContext) -> None:
             type="primary",
             key="regime_run_compass_analysis",
             use_container_width=True,
+            disabled=job_is_busy(ctx.root),
         ):
-            from alpha_system.ui.services.auto_journal import journal_data_refresh
-            from alpha_system.ui.services.refresh import run_compass_analysis
+            from alpha_system.ui.services.background_job import start_dashboard_job
 
-            with st.spinner(
-                copy_get(
-                    "regime_page",
-                    "refresh_spinner",
-                    default="나침반 분석 실행 중… 5~15분 걸릴 수 있습니다. 창을 닫지 마세요.",
-                )
-            ):
-                result = run_compass_analysis(ctx.root, run_mode="standard")
-            journal_data_refresh(
-                as_of=ctx.as_of,
-                ok=result.ok,
-                message=result.message,
-                detail=result.detail,
-            )
-            if result.ok:
-                ctx.runtime.touch_refresh("compass_analysis")
-                gate = str(result.detail.get("data_gate") or "").upper()
-                caption = " · ".join(
-                    x
-                    for x in [
-                        f"Data Gate: {gate}" if gate else "",
-                        f"Actual Buy Allowed: {result.detail.get('actual_buy_allowed')}"
-                        if result.detail.get("actual_buy_allowed") is not None
-                        else "",
-                        f"Health: {result.detail.get('health')}"
-                        if result.detail.get("health")
-                        else "",
-                        (
-                            f"as_of {result.detail.get('market_as_of')}"
-                            if result.detail.get("market_as_of")
-                            else ""
-                        ),
-                    ]
-                    if x
-                )
-                st.session_state["regime_analysis_flash"] = {
-                    "level": "warning" if gate == "RED" else "success",
-                    "message": result.message,
-                    "caption": caption,
-                }
-                st.rerun()
+            err = start_dashboard_job(ctx.root, "compass", run_mode="standard")
+            if err:
+                st.warning(err)
             else:
-                st.session_state["regime_analysis_flash"] = {
-                    "level": "error",
-                    "message": result.message,
-                    "caption": "",
-                }
-                st.error(result.message)
-                tail = result.detail.get("stdout_tail") or result.detail.get(
-                    "stderr_tail"
-                )
-                if tail:
-                    with st.expander("로그 일부"):
-                        st.code(str(tail))
+                st.rerun()
 
 
 def render_regime(ctx: DashboardContext) -> None:

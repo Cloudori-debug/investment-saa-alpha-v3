@@ -79,11 +79,11 @@ def resolve_run_config(run_mode: str | RunMode | None = None) -> RunModeConfig:
             run_ai_export=True,
             run_zip_bundle=True,
             run_full_diagnostics=True,
-            kosdaq_universe_sync=True,
+            kosdaq_universe_sync=False,
             flow_refresh_mode="full",
             pykrx_flow_refresh=True,
             alpha_v2_cache_reuse=False,
-            advisory_note="Deep refresh — full data and bundle generation.",
+            advisory_note="Deep refresh — KOSPI-only collect, full bundle generation.",
         )
     if mode == RunMode.BUNDLE_ONLY:
         return RunModeConfig(

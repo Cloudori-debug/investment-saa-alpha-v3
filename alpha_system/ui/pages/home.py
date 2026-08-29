@@ -1,4 +1,4 @@
-"""Alpha dashboard home — preparation, one action, result, folded operations."""
+"""Alpha dashboard home — today status, decision boards, compact ops."""
 
 from __future__ import annotations
 
@@ -15,18 +15,16 @@ from alpha_system.ui.services.home_pipeline import (
     build_home_overview,
 )
 from alpha_system.ui.services.judgment_copy import explain_tranche
-from alpha_system.ui.services.judgment_snapshot import (
-    build_judgment_snapshot,
-    next_judgment_hint,
-)
+from alpha_system.ui.services.judgment_snapshot import next_judgment_hint
+from alpha_system.ui.services.home_status import freshness_line, status_line
 from alpha_system.ui.services.nav import (
     FOCUS_DATA_REFRESH,
-    FOCUS_JOURNAL_DISC,
+    FOCUS_GO_LIVE,
     FOCUS_RULES_PREFIX,
     FOCUS_T3_DETAIL,
     FOCUS_WEEKLY_QUAL,
     PAGE_APPROVAL,
-    PAGE_JOURNAL,
+    PAGE_REGIME,
     navigate,
 )
 from alpha_system.ui.services.ui_copy import copy_get, format_tranche_label, tranche_display
@@ -145,49 +143,47 @@ def _open_stage(stage: PipelineStage) -> None:
     navigate(stage.page, focus=stage.focus, prefill=stage.prefill)
 
 
-def _render_system_judgment(ctx: DashboardContext) -> None:
-    """Compact 3-metric strip — matches sellable IA mock (not legacy card stack)."""
-    snap = build_judgment_snapshot(ctx)
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        copy_get("system_judgment", "row_regime", default="시장 레짐"),
-        snap.regime_label,
+def _render_status_strip(ctx: DashboardContext, overview: HomeOverview) -> None:
+    """가동/보유/오늘 할 일 — 관제탑 대신 한 줄."""
+    action = overview.next_action
+    line = status_line(
+        pre_launch=ctx.pre_launch,
+        held_n=int(ctx.held_kr_alpha or 0),
+        next_title=action.title if action is not None else None,
     )
-    c2.metric(
-        copy_get("system_judgment", "row_t3", default="T3"),
-        snap.t3_summary.split("·")[0].strip() if snap.t3_summary else "—",
-    )
-    c3.metric(
-        copy_get("system_judgment", "row_next", default="다음 판정"),
-        snap.next_judgment,
-    )
-    st.caption(
-        copy_get(
-            "system_judgment",
-            "caption",
-            default="자동 판정 · 승인 아님 · 조회·참고 · target 불변",
-        )
-    )
+    st.markdown(f"**오늘** — {line}")
+    st.caption("바젤 테마·시장 레짐은 사이드바「레짐」. 데이터 표는「확인」")
+    if action is not None:
+        from alpha_system.ui.services.background_job import job_is_busy
+
+        if st.button(
+            action.cta_label,
+            key="home_next_action",
+            type="primary",
+            disabled=job_is_busy(ctx.root),
+        ):
+            st.session_state["_home_run_next_action"] = True
+            st.rerun()
 
 
-def _render_preparation(overview: HomeOverview) -> None:
-    cols = st.columns(len(overview.preparation))
-    for col, item in zip(cols, overview.preparation):
-        with col:
-            level = "ok" if item.status == "ok" else (
-                "warn" if item.status == "warn" else "muted"
-            )
-            label = {
-                "ok": "준비",
-                "warn": "확인 필요",
-                "missing": "미수집",
-            }.get(item.status, item.status)
-            st.markdown(
-                f'<div class="{status_card_class(level)}">'
-                f"<strong>{item.title}</strong> — {label}<br/>"
-                f"<small>{item.summary}</small></div>",
-                unsafe_allow_html=True,
-            )
+def _render_data_line(ctx: DashboardContext) -> None:
+    line, attention = freshness_line(ctx.source_status or [], ctx.as_of)
+    level = "warn" if attention else "ok"
+    tone = "확인 필요" if attention else "정상"
+    st.markdown(
+        f'<div class="{status_card_class(level)}">'
+        f'<span class="alpha-badge-{level}">{tone}</span> '
+        f"<strong>데이터</strong> — {line}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    cols = st.columns(2)
+    with cols[0]:
+        if st.button("데이터 갱신", key="home_data_refresh", use_container_width=True):
+            navigate(PAGE_APPROVAL, focus=FOCUS_DATA_REFRESH)
+    with cols[1]:
+        if st.button("레짐 보기", key="home_to_regime", use_container_width=True):
+            navigate(PAGE_REGIME)
 
 
 def _style_trend_column(df: "pd.DataFrame", cols: str | list[str] = "추세"):
@@ -215,20 +211,6 @@ def _style_trend_column(df: "pd.DataFrame", cols: str | list[str] = "추세"):
         return df
 
 
-def _render_today_line(ctx: DashboardContext, overview: HomeOverview, mom_n: int) -> None:
-    """Wireframe: one-line today cue (merged 후보·모멘텀 first)."""
-    action = overview.next_action
-    n = overview.proposal_count or mom_n
-    bits = [f"오늘 종목 {n}종", "포트폴리오에서 교체 안내"]
-    if action is not None:
-        bits.append(action.title)
-    st.markdown(f"**오늘 할 일** — {' · '.join(bits)}")
-    if action is not None:
-        if st.button(action.cta_label, key="home_next_action", type="secondary"):
-            st.session_state["_home_run_next_action"] = True
-            st.rerun()
-
-
 def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
     """Colored badge card showing alpha 9:1 drift (equity vs 214980)."""
     from alpha_system.ui.services.alpha_book_ops import (
@@ -240,7 +222,6 @@ def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
     policy = load_alpha_book_ops(ctx.root)
     actual = build_alpha_actual_map(ctx.root, list(ctx.ops_portfolio_rows or []), policy)
     if not actual:
-        st.caption("알파 9:1 — 실보유 데이터 없음 · 포트폴리오에서 입력")
         return
     cash_pct = actual.get(policy.cash_ticker, (0.0, policy.cash_name))[0]
     equity_pct = max(0.0, 100.0 - cash_pct)
@@ -280,32 +261,13 @@ def _run_next_action_if_flagged(ctx: DashboardContext, overview: HomeOverview) -
     if action is None:
         return
     if action.key == "quant":
-        from alpha_system.ui.services.auto_journal import journal_data_refresh
-        from alpha_system.ui.services.proposal_freeze import is_freeze_active
-        from alpha_system.ui.services.refresh import run_quant_snapshot_refresh
+        from alpha_system.ui.services.background_job import start_dashboard_job
 
-        if is_freeze_active(ctx.root):
-            st.error(
-                "주간 정성 창으로 제안이 고정되어 정량 재실행이 차단됩니다. "
-                "필수 게이트 승인 후 다시 시도하세요."
-            )
-            return
-        with st.spinner("PyKRX·DART 수집과 alpha_scores 재계산 중…"):
-            result = run_quant_snapshot_refresh(ctx.root, collect_scope="liquid")
-        journal_data_refresh(
-            as_of=date.today(),
-            ok=result.ok,
-            message=result.message,
-            detail=result.detail,
-        )
-        if result.ok:
-            ctx.runtime.touch_refresh("alpha_quant_snapshot")
-            ctx.runtime.save(ctx.root / "data" / "alpha_dashboard_runtime.json")
-            st.success(result.message)
+        err = start_dashboard_job(ctx.root, "quant", collect_scope="liquid")
+        if err:
+            st.error(err)
+        else:
             st.rerun()
-        st.error(result.message)
-        with st.expander("실패 상세"):
-            st.json(result.detail)
         return
     navigate(action.page, focus=action.focus, prefill=action.prefill)
 
@@ -416,6 +378,8 @@ def _render_monthly_rebal(ctx: DashboardContext) -> None:
     from alpha_system.ui.services.nav import PAGE_PORTFOLIO, PAGE_REGIME
 
     board = build_monthly_rebal_board(ctx)
+    if not board.do_now_count:
+        return
     tone_cls = {
         "ok": "alpha-badge-ok",
         "warn": "alpha-badge-warn",
@@ -473,25 +437,24 @@ def _render_monthly_rebal(ctx: DashboardContext) -> None:
 
 
 def _render_holdings_cues(ctx: DashboardContext) -> None:
-    """Review-only: exit cues from proposal_book only (no holdings consulting)."""
+    """제안 북 익절 — 짧게. 실보유 컨설팅 아님."""
     from alpha_system.ui.services.ops_exit_signal import actionable_ops_signals
     from alpha_system.ui.services.portfolio_widgets import navigate_to_portfolio
 
     items = actionable_ops_signals(list(ctx.portfolio_rows or []))
+    held_n = int(ctx.held_kr_alpha or 0)
+    if not items:
+        return
 
+    show = items[:3]
+    extra = len(items) - len(show)
     with st.container(border=True):
-        st.subheader("익절 점검")
+        st.subheader("익절 권고")
         st.caption(
-            "제안 북 기준만 · 실보유 컨설팅 없음 · 읽기 전용 권고 · 자동 매도 없음 · "
-            "줄이기 / 환금(절반) / 전량(타임캡·테제)"
+            "제안 북 기준입니다. 실보유 컨설팅이 아니며 자동 매도 없습니다."
+            + (" · 지금 실보유 없음" if held_n <= 0 else "")
         )
-        if not items:
-            st.markdown(
-                '<div class="alpha-empty-queue"><strong>줄이기·환금·전량 없음 — 유지</strong></div>',
-                unsafe_allow_html=True,
-            )
-            return
-        for row in items:
+        for row in show:
             badge_cls = {
                 "exit_full": "alpha-badge-danger",
                 "cash_half": "alpha-badge-warn",
@@ -504,13 +467,14 @@ def _render_holdings_cues(ctx: DashboardContext) -> None:
                 st.markdown(
                     f'<div class="alpha-action-item">'
                     f'<span class="{badge_cls}">{row.ops_signal_label}</span> '
-                    f"<strong>{row.name} ({row.ticker})</strong><br/>"
-                    f"{row.ops_signal_detail}</div>",
+                    f"<strong>{row.name}</strong> — {row.ops_signal_detail}</div>",
                     unsafe_allow_html=True,
                 )
             with cols[1]:
-                if st.button("→", key=f"home_exit_{row.ticker}", help="제안 북으로"):
+                if st.button("열기", key=f"home_exit_{row.ticker}", help="제안 북"):
                     navigate_to_portfolio(row.ticker)
+        if extra > 0:
+            st.caption(f"외 {extra}건은 포트폴리오 제안 북에서 봅니다.")
 
 
 def _render_tranche_card(
@@ -565,8 +529,68 @@ def _render_tranche_card(
             st.code(judgment.raw_detail)
 
 
+def _render_capital_lock(ctx: DashboardContext, blocker: PipelineStage | None) -> None:
+    """가동 전엔 한 문장. 가동 후에만 트랜치·액션 큐."""
+    if ctx.pre_launch:
+        st.markdown(
+            f'<div class="{status_card_class("muted")}">'
+            "<strong>자본 집행</strong> — 잠김<br/>"
+            "<small>T1~T4 트랜치는 가동 선언 전까지 트리거를 보지 않습니다. "
+            "Core 순위·목표 포트는 그대로입니다.</small></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("가동(go-live) 안내", key="home_to_golive"):
+            navigate(PAGE_APPROVAL, focus=FOCUS_GO_LIVE)
+        return
+
+    with st.expander("자본 집행 · 트랜치", expanded=False):
+        st.caption("가동 후 자본을 언제 넣을지. 자동주문 없음.")
+        if ctx.action_queue:
+            st.markdown("#### 액션 큐")
+            for item in ctx.action_queue:
+                badge = {
+                    "danger": "alpha-badge-danger",
+                    "warn": "alpha-badge-warn",
+                    "info": "alpha-badge-ok",
+                }.get(item.severity.value, "alpha-badge-warn")
+                cols = st.columns([5, 1])
+                with cols[0]:
+                    sev = {
+                        "danger": "긴급",
+                        "warn": "주의",
+                        "info": "안내",
+                    }.get(item.severity.value, "주의")
+                    st.markdown(
+                        f'<div class="alpha-action-item"><span class="{badge}">'
+                        f"{sev}</span> <strong>{item.title}</strong>"
+                        f"<br/>{item.detail}</div>",
+                        unsafe_allow_html=True,
+                    )
+                with cols[1]:
+                    if st.button("열기", key=f"aq_{item.key}"):
+                        open_panel(item.key)
+            render_active_panel(ctx)
+        else:
+            st.caption(f"집행 할 일 없음 — 다음 판정: {next_judgment_hint(ctx)}")
+
+        st.markdown("#### 트랜치")
+        statuses = list(ctx.entry_eval.statuses)
+        for row in range(0, len(statuses), 2):
+            cols = st.columns(2)
+            for j, col in enumerate(cols):
+                idx = row + j
+                if idx >= len(statuses):
+                    break
+                with col:
+                    _render_tranche_card(ctx, statuses[idx], blocker=blocker)
+        days_left = (ctx.window_end - ctx.as_of).days
+        st.caption(
+            f"논지 창 종료일 {ctx.window_end.isoformat()} — 남은 일수 D-{max(0, days_left)}"
+        )
+
+
 def render_home(ctx: DashboardContext) -> None:
-    """의사결정 홈: ① 비중 → ② 보유 분석 → ③ 제안 분석."""
+    """오늘 판단 홈: 상태 한 줄 → ① 비중 → 익절 짧게 → 데이터 한 줄."""
     frozen = ctx.runtime.effective_thesis_damage()
     past_window = ctx.as_of >= ctx.window_end
     overview = build_home_overview(ctx)
@@ -589,103 +613,13 @@ def render_home(ctx: DashboardContext) -> None:
             unsafe_allow_html=True,
         )
 
-    _render_today_line(ctx, overview, overview.proposal_count or 0)
-    _render_alpha_ratio_bar(ctx)
+    _render_status_strip(ctx, overview)
+    if int(ctx.held_kr_alpha or 0) > 0:
+        _render_alpha_ratio_bar(ctx)
     _run_next_action_if_flagged(ctx, overview)
 
-    # Primary IA: glance → holdings evidence → proposal evidence
     _render_decision_boards(ctx)
-
+    _render_holdings_cues(ctx)
     _render_monthly_rebal(ctx)
-    with st.expander("바젤·건전성 테마 시계열 (Review-only)", expanded=False):
-        from alpha_system.ui.services.basel_theme_widgets import render_basel_theme_board
-
-        render_basel_theme_board(ctx, key_prefix="home_basel")
-
-    with st.expander("접힌 운용 · 레짐 · 익절 · 자동 준비 · 트랜치", expanded=False):
-        st.caption(
-            "첫 화면: ① 비중 → ② 보유 분석 → ③ 제안 분석. "
-            "아래는 레짐·익절 백업·트랜치·데이터 상태."
-        )
-        _render_system_judgment(ctx)
-        st.caption("익절 상세 백업 — ① 조치 열과 동일 신호")
-        _render_holdings_cues(ctx)
-        st.markdown("#### 자동 준비")
-        _render_preparation(overview)
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("집행률", f"{ctx.execution_rate_pct or 0}%")
-        m2.metric(
-            "제안/보유/목표",
-            f"{overview.proposal_count} / {ctx.held_kr_alpha} / {ctx.target_kr_alpha}",
-        )
-        with m3:
-            st.metric("재량 이탈 누적", ctx.discretionary_count)
-            if st.button("재량 이탈 보기", key="home_disc"):
-                navigate(PAGE_JOURNAL, focus=FOCUS_JOURNAL_DISC)
-
-        if not ctx.pre_launch:
-            st.markdown("#### 액션 큐")
-            if ctx.action_queue:
-                for item in ctx.action_queue:
-                    badge = {
-                        "danger": "alpha-badge-danger",
-                        "warn": "alpha-badge-warn",
-                        "info": "alpha-badge-ok",
-                    }.get(item.severity.value, "alpha-badge-warn")
-                    cols = st.columns([5, 1])
-                    with cols[0]:
-                        sev = {
-                            "danger": "긴급",
-                            "warn": "주의",
-                            "info": "안내",
-                        }.get(item.severity.value, "주의")
-                        st.markdown(
-                            f'<div class="alpha-action-item"><span class="{badge}">'
-                            f"{sev}</span> <strong>{item.title}</strong>"
-                            f"<br/>{item.detail}</div>",
-                            unsafe_allow_html=True,
-                        )
-                    with cols[1]:
-                        if st.button("열기", key=f"aq_{item.key}"):
-                            open_panel(item.key)
-            else:
-                st.caption(f"오늘 할 일 없음 — 다음 판정: {next_judgment_hint(ctx)}")
-            render_active_panel(ctx)
-
-        st.markdown("#### 트랜치")
-        statuses = list(ctx.entry_eval.statuses)
-        for row in range(0, len(statuses), 2):
-            cols = st.columns(2)
-            for j, col in enumerate(cols):
-                idx = row + j
-                if idx >= len(statuses):
-                    break
-                with col:
-                    _render_tranche_card(ctx, statuses[idx], blocker=blocker)
-
-        days_left = (ctx.window_end - ctx.as_of).days
-        st.caption(
-            f"논지 창 종료일 {ctx.window_end.isoformat()} — 남은 일수 D-{max(0, days_left)}"
-        )
-
-        st.markdown("#### 데이터 상세")
-        for src in ctx.source_status:
-            stale_badge = (
-                '<span class="alpha-badge-danger">갱신 필요</span>'
-                if src.stale
-                else '<span class="alpha-badge-ok">정상</span>'
-            )
-            as_of_s = src.as_of.isoformat() if src.as_of else "—"
-            st.markdown(
-                f"**{src.label}** {stale_badge} — as_of {as_of_s} "
-                f"({src.path}) {src.detail}",
-                unsafe_allow_html=True,
-            )
-        st.markdown(
-            f"**정성 채점 검토(선택)** — 확정 {ctx.cecs_final_count} / {ctx.cecs_total}종 · 순위 미반영"
-        )
-        st.markdown(
-            f"**섹터 동료 표본 부족(시장 대체)** — {ctx.sector_peer_fallback_count}종"
-        )
-        st.markdown(f"**섹터 게이트 통과** — {ctx.gate_pass_count}종")
+    _render_data_line(ctx)
+    _render_capital_lock(ctx, blocker)

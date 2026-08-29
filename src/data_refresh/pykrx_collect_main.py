@@ -12,7 +12,7 @@ from src.data_refresh.pykrx_client import KrxCredentialsError
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="PyKRX KOSPI+KOSDAQ 일괄 수집 (universe + prices + fundamentals)"
+        description="PyKRX KOSPI 일괄 수집 (universe + prices + fundamentals)"
     )
     root = Path(__file__).resolve().parents[2]
     parser.add_argument("--data-dir", type=Path, default=root / "data")
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--kosdaq-sync-only",
         action="store_true",
-        help="KOSDAQ universe만 동기화 + liquid 가격 bootstrap (KOSPI 유지)",
+        help="KOSDAQ 동기화는 비활성(KOSPI-only). 호출 시 leftover 행만 제거",
     )
     parser.add_argument(
         "--scope",

@@ -9,9 +9,9 @@ import streamlit as st
 
 from alpha_system.journal import append_record
 from alpha_system.ui.services.auto_journal import journal_data_refresh, journal_go_live_blocked
+from alpha_system.ui.services.background_job import job_is_busy
 from alpha_system.ui.services.context import DashboardContext
 from alpha_system.ui.services.go_live_gate import block_go_live_reasons
-from alpha_system.ui.services.refresh import run_quant_snapshot_refresh
 from alpha_system.ui.services.runtime_state import RuntimeState
 from alpha_system.ui.services.ui_copy import copy_get
 
@@ -982,8 +982,8 @@ def _render_go_live(ctx: DashboardContext, *, expand: bool = False) -> None:
 
 def _render_data_refresh(ctx: DashboardContext) -> None:
     st.caption(
-        "정량 전체 갱신 한 번으로 운용 데이터와 alpha_scores를 함께 갱신합니다. "
-        "이 PC에서 실행되며 수 분 걸릴 수 있습니다."
+        "정량 전체 갱신은 KRX를 한 번만 칩니다. 종목 시세는 네이버, 시총·PER은 시장 단위입니다. "
+        "이 PC에서 실행되며 유동 종목 수에 따라 10분 안팎 걸릴 수 있습니다."
     )
     for src in ctx.source_status:
         rec = f"권장 {src.recommended_days}일" if src.recommended_days else "수동"
@@ -995,28 +995,12 @@ def _render_data_refresh(ctx: DashboardContext) -> None:
         type="primary",
         key="btn_quant_snapshot_refresh",
         use_container_width=True,
+        disabled=job_is_busy(ctx.root),
     ):
-        with st.spinner("PyKRX·DART 수집과 alpha_scores 재계산 중…"):
-            result = run_quant_snapshot_refresh(ctx.root, collect_scope="liquid")
-        journal_data_refresh(
-            as_of=date.today(),
-            ok=result.ok,
-            message=result.message,
-            detail=result.detail,
-        )
-        if result.ok:
-            ctx.runtime.touch_refresh("alpha_quant_snapshot")
-            ctx.runtime.save(ctx.root / "data" / "alpha_dashboard_runtime.json")
-            st.success(result.message)
-            provenance = result.detail.get("provenance") or {}
-            if provenance:
-                st.caption(
-                    f"run_id {provenance.get('run_id', '—')} · "
-                    f"scored {provenance.get('scored_rows', '—')} · "
-                    f"as_of {provenance.get('as_of', '—')}"
-                )
-            st.rerun()
+        from alpha_system.ui.services.background_job import start_dashboard_job
+
+        err = start_dashboard_job(ctx.root, "quant", collect_scope="liquid")
+        if err:
+            st.warning(err)
         else:
-            st.error(result.message)
-            with st.expander("실패 상세"):
-                st.json(result.detail)
+            st.rerun()

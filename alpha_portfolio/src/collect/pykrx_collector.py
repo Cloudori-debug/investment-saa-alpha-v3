@@ -14,6 +14,13 @@ from src.loaders import load_fundamentals, load_positions, load_target_portfolio
 
 Scope = Literal["holdings", "liquid", "all"]
 Market = Literal["KOSPI", "KOSDAQ"]
+SCREEN_MARKETS: tuple[str, ...] = ("KOSPI",)
+
+
+def _screen_markets(markets: list | None) -> list[str]:
+    wanted = {m.upper() for m in SCREEN_MARKETS}
+    out = [str(m).upper() for m in (markets or list(SCREEN_MARKETS)) if str(m).upper() in wanted]
+    return out or list(SCREEN_MARKETS)
 
 
 @dataclass
@@ -128,8 +135,8 @@ def _build_snapshot_row(
         tv_col = _col(cap_hist, "거래대금", "trading_value")
         if tv_col is not None:
             avg20 = float(tv_col.astype(float).tail(20).mean())
-        elif close_s is not None and vol_s is not None:
-            avg20 = float((close_s.astype(float) * vol_s.astype(float)).tail(20).mean())
+    if avg20 == 0.0 and close_s is not None and vol_s is not None and len(close_s):
+        avg20 = float((close_s.astype(float) * vol_s.astype(float)).tail(20).mean())
 
     return {
         "ticker": ticker,
@@ -152,16 +159,25 @@ def fetch_price_snapshots(
     tickers: list[str],
     as_of: str,
     *,
-    sleep_sec: float = 0.12,
+    sleep_sec: float = 0.25,
+    krx_pause_sec: float = 0.8,
+    fetch_cap_history: bool = False,
+    cap_today_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
+    """OHLCV는 네이버(수정주가). KRX 시총은 당일 스냅샷 1회. 종목별 시총 이력은 기본 생략."""
     compact_end = to_compact(as_of)
     compact_start = to_compact(lookback_start(as_of, 400))
-    cap_today_df = None
-    try:
-        cap_today_df = stock.get_market_cap_by_ticker(compact_end, market="ALL")
+    if cap_today_df is None:
+        try:
+            cap_today_df = stock.get_market_cap_by_ticker(compact_end, market="KOSPI")
+            cap_today_df.index = cap_today_df.index.map(normalize_ticker)
+        except Exception:
+            cap_today_df = None
+        if krx_pause_sec:
+            time.sleep(krx_pause_sec)
+    elif not cap_today_df.empty:
+        cap_today_df = cap_today_df.copy()
         cap_today_df.index = cap_today_df.index.map(normalize_ticker)
-    except Exception:
-        pass
 
     rows: list[dict] = []
     for i, ticker in enumerate(tickers):
@@ -170,11 +186,16 @@ def fetch_price_snapshots(
             if ohlcv is None or ohlcv.empty:
                 continue
             cap_hist = None
-            try:
-                cap_hist = stock.get_market_cap(compact_start, compact_end, ticker)
-            except Exception:
-                pass
-            cap_today = cap_today_df.loc[ticker] if cap_today_df is not None and ticker in cap_today_df.index else None
+            if fetch_cap_history:
+                try:
+                    cap_hist = stock.get_market_cap(compact_start, compact_end, ticker)
+                except Exception:
+                    pass
+            cap_today = (
+                cap_today_df.loc[ticker]
+                if cap_today_df is not None and ticker in cap_today_df.index
+                else None
+            )
             rows.append(_build_snapshot_row(ticker, as_of, ohlcv, cap_hist, cap_today))
         except Exception:
             continue
@@ -211,6 +232,8 @@ def filter_liquid_by_cap(
         (universe["is_etf"].astype(str).str.lower() != "true")
         & (universe["is_spac"].astype(str).str.lower() != "true")
     ].copy()
+    if "market" in common.columns:
+        common = common[common["market"].astype(str).str.upper().isin(SCREEN_MARKETS)]
     if common.empty:
         return []
 
@@ -286,7 +309,7 @@ def enrich_fundamentals_per_pbr(
         return 0, per_pbr_map
     compact = to_compact(as_of)
     updated = 0
-    for market in ("KOSPI", "KOSDAQ"):
+    for market in SCREEN_MARKETS:
         try:
             fdf = stock.get_market_fundamental(compact, market=market)
         except Exception:
@@ -330,8 +353,9 @@ def run_collect(
     cfg = load_yaml(paths["config"] / "collect.yaml").get("collect", {})
     gate_cfg = load_yaml(paths["config"] / "universe_gate.yaml").get("gate", {})
     scope = scope or cfg.get("scope", "holdings")  # type: ignore[assignment]
-    markets = cfg.get("markets", ["KOSPI", "KOSDAQ"])
-    sleep_sec = float(cfg.get("sleep_sec", 0.12))
+    markets = _screen_markets(cfg.get("markets"))
+    sleep_sec = float(cfg.get("sleep_sec", 0.25))
+    krx_pause_sec = float(cfg.get("krx_pause_sec", 0.8))
     max_tickers = int(cfg.get("max_tickers", 0))
     enrich = bool(cfg.get("enrich_per_pbr", True))
     liquid_cfg = cfg.get("liquid", {})
@@ -347,13 +371,17 @@ def run_collect(
 
         universe = fetch_universe(stock, as_of_date, markets)
         universe.to_csv(universe_path, index=False, encoding="utf-8-sig")
+        if krx_pause_sec:
+            time.sleep(krx_pause_sec)
 
         cap_today_df = None
         try:
-            cap_today_df = stock.get_market_cap_by_ticker(to_compact(as_of_date), market="ALL")
+            cap_today_df = stock.get_market_cap_by_ticker(to_compact(as_of_date), market="KOSPI")
             cap_today_df.index = cap_today_df.index.map(normalize_ticker)
         except Exception:
             pass
+        if krx_pause_sec:
+            time.sleep(krx_pause_sec)
 
         tickers = select_tickers(
             universe,
@@ -367,7 +395,15 @@ def run_collect(
         if not tickers:
             warnings.append("수집 대상 ticker 없음 — positions/fundamentals 확인")
 
-        snapshot = fetch_price_snapshots(stock, tickers, as_of_date, sleep_sec=sleep_sec)
+        snapshot = fetch_price_snapshots(
+            stock,
+            tickers,
+            as_of_date,
+            sleep_sec=sleep_sec,
+            krx_pause_sec=krx_pause_sec,
+            fetch_cap_history=bool(cfg.get("fetch_cap_history", False)),
+            cap_today_df=cap_today_df,
+        )
         if snapshot.empty:
             raise RuntimeError("price_snapshot 수집 0건")
         snapshot.to_csv(snapshot_path, index=False, encoding="utf-8-sig")

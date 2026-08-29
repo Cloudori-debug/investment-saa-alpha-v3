@@ -39,6 +39,14 @@ def test_is_etf_name():
     assert not _is_etf_name("코웨이")
 
 
+def test_screen_markets_kospi_only():
+    from src.collect.pykrx_collector import _screen_markets
+
+    assert _screen_markets(["KOSPI", "KOSDAQ"]) == ["KOSPI"]
+    assert _screen_markets(None) == ["KOSPI"]
+    assert _screen_markets(["KOSDAQ"]) == ["KOSPI"]
+
+
 def test_compute_price_metrics():
     closes = pd.Series([100, 110, 120, 130, 140, 150] * 30, dtype=float)
     m = _compute_price_metrics(closes)
@@ -114,6 +122,15 @@ def test_filter_liquid_by_cap():
     assert out == ["021240"]
 
 
+def test_snapshot_avg20_from_ohlcv_when_cap_hist_missing():
+    ohlcv = pd.DataFrame(
+        {"종가": [100.0, 110.0, 120.0], "거래량": [10.0, 20.0, 30.0]}
+    )
+    row = _build_snapshot_row("005930", "2026-08-28", ohlcv, cap_hist=None, cap_today=None)
+    assert row["avg_trading_value_20d"] == 120.0 * 30.0
+
+
+@patch("src.collect.pykrx_collector.time.sleep", lambda *_a, **_k: None)
 @patch("src.collect.pykrx_collector.import_stock")
 def test_run_collect_mock(mock_import, tmp_path):
     from src.collect.pykrx_collector import run_collect
@@ -149,3 +166,4 @@ def test_run_collect_mock(mock_import, tmp_path):
     result = run_collect(tmp_path, as_of="2026-06-17", scope="holdings")
     assert result.snapshot_count == 1
     assert (paths["raw"] / "price_snapshot.csv").exists()
+    stock.get_market_cap.assert_not_called()

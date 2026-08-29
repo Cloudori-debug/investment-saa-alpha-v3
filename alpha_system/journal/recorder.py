@@ -60,6 +60,24 @@ def configure_journal_path(path: Path | None) -> None:
     _DEFAULT_PATH = path
 
 
+def _new_entry_id() -> str:
+    """Unique across process restarts — sequential J000001 is reused and dropped on hydrate."""
+    n = next(_counter)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    return f"J{stamp}-{n:04d}"
+
+
+def _row_fingerprint(rec: "JournalRecord") -> tuple[str, str, str, str, str, str]:
+    return (
+        rec.entry_id,
+        rec.recorded_at,
+        rec.action_kind,
+        rec.as_of,
+        rec.subject,
+        rec.rationale,
+    )
+
+
 def _require_discretionary(action_kind: str, discretionary_reason: Optional[str]) -> None:
     if action_kind in {"WARN_DISCRETIONARY", "exit_warn_discretionary"}:
         if not discretionary_reason or not str(discretionary_reason).strip():
@@ -88,9 +106,8 @@ def append_record(
     _require_discretionary(action_kind, discretionary_reason)
     as_of_s = as_of.isoformat() if isinstance(as_of, date) else str(as_of)
     with _lock:
-        n = next(_counter)
         record = JournalRecord(
-            entry_id=f"J{n:06d}",
+            entry_id=_new_entry_id(),
             recorded_at=datetime.now(timezone.utc).isoformat(),
             action_kind=action_kind,
             as_of=as_of_s,
@@ -155,8 +172,10 @@ def list_discretionary_warnings() -> list[JournalRecord]:
 
 def clear_entries() -> None:
     """Test helper only — not part of production API surface."""
+    global _HYDRATED_PATH
     with _lock:
         _ENTRIES.clear()
+        _HYDRATED_PATH = None
 
 
 def load_jsonl(path: Path) -> list[JournalRecord]:
@@ -186,15 +205,14 @@ def load_jsonl(path: Path) -> list[JournalRecord]:
 
 
 def ensure_journal_hydrated(path: Path) -> None:
-    """Load JSONL into memory once per path (append-only UI reads/writes)."""
+    """Load JSONL into memory. Duplicate entry_id keeps distinct timestamps."""
     global _HYDRATED_PATH
     configure_journal_path(path)
-    if _HYDRATED_PATH == path:
-        return
     with _lock:
-        existing_ids = {e.entry_id for e in _ENTRIES}
+        seen = {_row_fingerprint(e) for e in _ENTRIES}
         for rec in load_jsonl(path):
-            if rec.entry_id not in existing_ids:
+            fp = _row_fingerprint(rec)
+            if fp not in seen:
                 _ENTRIES.append(rec)
-                existing_ids.add(rec.entry_id)
+                seen.add(fp)
         _HYDRATED_PATH = path

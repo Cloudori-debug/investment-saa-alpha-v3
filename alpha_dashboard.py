@@ -18,6 +18,7 @@ import streamlit as st
 
 from alpha_system.ui.pages import approval, home, journal, portfolio, regime, settings
 from alpha_system.ui.services.context import load_context
+from alpha_system.ui.services.job_sidebar import render_job_sidebar
 from alpha_system.ui.services.nav import (
     PAGE_APPROVAL,
     PAGE_HOME,
@@ -78,11 +79,15 @@ try:
 except Exception:
     _waiting = 0
 
+st.session_state["_dashboard_root"] = str(ROOT)
+
 with st.sidebar:
     page = render_primary_nav(
         PRIMARY_PAGES,
         approval_badge=_waiting if _waiting else None,
     )
+    st.markdown("---")
+    render_job_sidebar()
     st.markdown("---")
     st.toggle(
         "컴팩트 모드 (모바일 1열)",

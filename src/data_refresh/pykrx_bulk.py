@@ -19,6 +19,9 @@ from src.data_refresh.universe_sync import UNIVERSE_COLUMNS
 
 Scope = Literal["all", "liquid", "holdings"]
 
+# Alpha screen + bulk collect: KOSPI only (no KOSDAQ KRX calls).
+SCREEN_MARKETS: tuple[str, ...] = ("KOSPI",)
+
 
 @dataclass
 class BulkCollectResult:
@@ -190,8 +193,10 @@ def _merge_universe_frames(
     kospi_df: pd.DataFrame,
     kosdaq_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Keep non-KOSDAQ rows from existing, replace KOSPI/KOSDAQ from fresh fetch."""
-    parts = [kospi_df, kosdaq_df]
+    """Replace KOSPI from fresh fetch. KOSDAQ is not screened; drop leftover rows."""
+    parts = [kospi_df]
+    if kosdaq_df is not None and not kosdaq_df.empty and "KOSDAQ" in SCREEN_MARKETS:
+        parts.append(kosdaq_df)
     if existing is not None and not existing.empty:
         ex = existing.copy()
         ex["ticker"] = ex["ticker"].map(_normalize_ticker)
@@ -258,75 +263,37 @@ def run_kosdaq_universe_sync(
     merge_existing: bool = True,
     bootstrap_prices: bool = True,
 ) -> KosdaqSyncResult:
-    """Sync KOSDAQ common stocks into universe.csv and bootstrap liquid KOSDAQ prices."""
-    stock = import_pykrx_stock(data_dir)
-    as_of_date = resolve_trading_date(stock, as_of)
-    warnings: list[str] = []
+    """No-op for KRX: alpha screen is KOSPI-only. Strips leftover KOSDAQ rows."""
+    del merge_existing, bootstrap_prices
+    from datetime import date as _date
 
-    kosdaq_df = fetch_kosdaq_universe(stock, as_of_date)
+    as_of_date = (as_of or _date.today().isoformat())[:10]
+    warnings = ["KOSDAQ 동기화 생략 — 알파 스크린은 KOSPI만 조회"]
     universe_path = data_dir / "universe.csv"
-    existing = (
-        pd.read_csv(universe_path, dtype=str, keep_default_na=False)
-        if merge_existing and universe_path.exists()
-        else None
-    )
-    if existing is not None and not existing.empty:
-        kospi_existing = existing[existing.get("market", "KOSPI").astype(str).str.upper() == "KOSPI"]
-    else:
-        kospi_existing = pd.DataFrame(columns=UNIVERSE_COLUMNS)
-
-    universe_df = _merge_universe_frames(existing, kospi_existing, kosdaq_df)
-    universe_df = normalize_universe_defaults(universe_df)
-    universe_df = universe_df[UNIVERSE_COLUMNS]
-    universe_path.parent.mkdir(parents=True, exist_ok=True)
-    universe_df.to_csv(universe_path, index=False, encoding="utf-8-sig")
-
-    kosdaq_prices_count = 0
-    if bootstrap_prices:
-        compact = to_compact_date(as_of_date)
-        cap_kosdaq = stock.get_market_cap(compact, market="KOSDAQ")
-        prices_df = quick_prices_from_cap_snapshot(cap_kosdaq, as_of_date)
-        kosdaq_prices_count = len(prices_df)
-        prices_path = data_dir / "prices.csv"
-        if not prices_df.empty:
-            if prices_path.exists():
-                from src.data_refresh.price_store import merge_prices_dataframes
-
-                old = pd.read_csv(prices_path, dtype=str, keep_default_na=False)
-                kosdaq_tickers = set(prices_df["ticker"].astype(str))
-                old = old[~old["ticker"].astype(str).isin(kosdaq_tickers)]
-                merged = merge_prices_dataframes(old, prices_df.astype(str))
-                merged.to_csv(prices_path, index=False, encoding="utf-8-sig")
-            else:
-                prices_df.to_csv(prices_path, index=False, encoding="utf-8-sig")
-
-        fund_path = data_dir / "fundamentals.csv"
-        fund_kosdaq = fetch_fundamentals_bulk(stock, as_of_date, market="KOSDAQ")
-        if not fund_kosdaq.empty:
-            if fund_path.exists() and merge_existing:
-                old_f = pd.read_csv(fund_path, dtype=str, keep_default_na=False)
-                old_f["ticker"] = old_f["ticker"].map(_normalize_ticker)
-                fund_kosdaq["ticker"] = fund_kosdaq["ticker"].map(_normalize_ticker)
-                merged_f = pd.concat(
-                    [old_f[~old_f["ticker"].isin(fund_kosdaq["ticker"])], fund_kosdaq],
-                    ignore_index=True,
-                )
-                merged_f = normalize_fundamentals_pit(merged_f)
-                merged_f.to_csv(fund_path, index=False, encoding="utf-8-sig")
-            else:
-                fund_kosdaq = normalize_fundamentals_pit(fund_kosdaq)
-                fund_kosdaq.to_csv(fund_path, index=False, encoding="utf-8-sig")
+    total = 0
+    if universe_path.exists():
+        try:
+            existing = pd.read_csv(universe_path, dtype=str, keep_default_na=False)
+        except Exception:
+            existing = pd.DataFrame()
+        if not existing.empty and "market" in existing.columns:
+            kept = existing[existing["market"].astype(str).str.upper() != "KOSDAQ"]
+            dropped = len(existing) - len(kept)
+            if dropped:
+                kept.to_csv(universe_path, index=False, encoding="utf-8-sig")
+                warnings.append(f"universe.csv에서 KOSDAQ {dropped}행 제거")
+            total = len(kept)
         else:
-            warnings.append("KOSDAQ fundamentals bulk fetch 빈 결과")
-
-    kosdaq_n = int((universe_df["market"].astype(str).str.upper() == "KOSDAQ").sum())
+            total = len(existing)
     return KosdaqSyncResult(
         as_of=as_of_date,
-        kosdaq_universe_count=kosdaq_n,
-        kosdaq_prices_count=kosdaq_prices_count,
-        total_universe_count=len(universe_df),
+        kosdaq_universe_count=0,
+        kosdaq_prices_count=0,
+        total_universe_count=total,
         warnings=warnings,
     )
+
+
 
 
 def _load_liquidity_config(data_dir: Path) -> dict[str, float]:
@@ -354,6 +321,8 @@ def select_tickers_for_prices(
         & (universe_df["is_preferred"] == "false")
         & (universe_df["is_etf_etn"] == "false")
     ].copy()
+    if "market" in common.columns:
+        common = common[common["market"].astype(str).str.upper().isin(SCREEN_MARKETS)]
     tickers = common["ticker"].tolist()
 
     if scope == "holdings":
@@ -448,32 +417,53 @@ def build_price_row(
     }
 
 
+def _turnover_from_ohlcv(ohlcv: pd.DataFrame) -> pd.DataFrame | None:
+    if ohlcv is None or ohlcv.empty:
+        return None
+    close = ohlcv["종가"] if "종가" in ohlcv.columns else ohlcv.get("close")
+    vol = ohlcv["거래량"] if "거래량" in ohlcv.columns else ohlcv.get("volume")
+    if close is None or vol is None:
+        return None
+    return pd.DataFrame({"거래대금": close.astype(float) * vol.astype(float)}, index=ohlcv.index)
+
+
 def fetch_prices_for_tickers(
     stock: Any,
     tickers: list[str],
     as_of: str,
     *,
     ticker_markets: dict[str, str] | None = None,
-    sleep_sec: float = 0.15,
+    sleep_sec: float = 0.25,
+    krx_pause_sec: float = 0.8,
+    fetch_cap_history: bool = False,
+    cap_by_market: dict[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     compact_end = to_compact_date(as_of)
     compact_start = to_compact_date(lookback_start(as_of, 400))
-    cap_by_market: dict[str, pd.DataFrame] = {}
-    for market in {"KOSPI", "KOSDAQ"}:
-        try:
-            cap_df = stock.get_market_cap(compact_end, market=market)
-            cap_df.index = cap_df.index.map(_normalize_ticker)
-            cap_by_market[market] = cap_df
-        except Exception:
-            cap_by_market[market] = pd.DataFrame()
+    if cap_by_market is None:
+        cap_by_market = {}
+        for market in SCREEN_MARKETS:
+            try:
+                cap_df = stock.get_market_cap(compact_end, market=market)
+                cap_df.index = cap_df.index.map(_normalize_ticker)
+                cap_by_market[market] = cap_df
+            except Exception:
+                cap_by_market[market] = pd.DataFrame()
+            if krx_pause_sec:
+                time.sleep(krx_pause_sec)
 
     rows: list[dict] = []
     for i, ticker in enumerate(tickers):
         market = (ticker_markets or {}).get(ticker, "KOSPI").upper()
+        if market not in SCREEN_MARKETS:
+            continue
         cap_today_df = cap_by_market.get(market, pd.DataFrame())
         try:
             ohlcv = stock.get_market_ohlcv(compact_start, compact_end, ticker)
-            cap_hist = stock.get_market_cap(compact_start, compact_end, ticker)
+            if fetch_cap_history:
+                cap_hist = stock.get_market_cap(compact_start, compact_end, ticker)
+            else:
+                cap_hist = _turnover_from_ohlcv(ohlcv)
             cap_today = cap_today_df.loc[ticker] if ticker in cap_today_df.index else None
             rows.append(build_price_row(ticker, as_of, ohlcv, cap_hist, cap_today))
         except Exception:
@@ -542,7 +532,8 @@ def run_pykrx_bulk_collect(
     as_of: str | None = None,
     scope: Scope = "liquid",
     max_tickers: int | None = None,
-    sleep_sec: float = 0.15,
+    sleep_sec: float = 0.25,
+    krx_pause_sec: float = 0.8,
     merge_existing_universe: bool = True,
     write_history: bool = True,
     enrich_dart: bool = True,
@@ -552,19 +543,23 @@ def run_pykrx_bulk_collect(
     warnings: list[str] = []
 
     universe_new_kospi = fetch_kospi_universe(stock, as_of_date)
-    universe_new_kosdaq = fetch_kosdaq_universe(stock, as_of_date)
     universe_path = data_dir / "universe.csv"
     existing = pd.read_csv(universe_path, dtype=str, keep_default_na=False) if merge_existing_universe and universe_path.exists() else None
-    universe_df = _merge_universe_frames(existing, universe_new_kospi, universe_new_kosdaq)
+    universe_df = _merge_universe_frames(existing, universe_new_kospi, pd.DataFrame())
     universe_df = normalize_universe_defaults(universe_df)
+    if "market" in universe_df.columns:
+        universe_df = universe_df[universe_df["market"].astype(str).str.upper().isin(SCREEN_MARKETS)]
     universe_df = universe_df[UNIVERSE_COLUMNS]
     universe_path.parent.mkdir(parents=True, exist_ok=True)
     universe_df.to_csv(universe_path, index=False, encoding="utf-8-sig")
 
     compact = to_compact_date(as_of_date)
+    if krx_pause_sec:
+        time.sleep(krx_pause_sec)
     cap_kospi = stock.get_market_cap(compact, market="KOSPI")
-    cap_kosdaq = stock.get_market_cap(compact, market="KOSDAQ")
-    cap_snapshot = pd.concat([cap_kospi, cap_kosdaq])
+    cap_kospi.index = cap_kospi.index.map(_normalize_ticker)
+    cap_snapshot = cap_kospi
+    cap_by_market = {"KOSPI": cap_kospi}
     ticker_markets = {
         _normalize_ticker(str(r["ticker"])): str(r.get("market", "KOSPI")).upper()
         for _, r in universe_df.iterrows()
@@ -577,7 +572,13 @@ def run_pykrx_bulk_collect(
         prices_df = pd.DataFrame()
     else:
         prices_df = fetch_prices_for_tickers(
-            stock, tickers, as_of_date, ticker_markets=ticker_markets, sleep_sec=sleep_sec
+            stock,
+            tickers,
+            as_of_date,
+            ticker_markets=ticker_markets,
+            sleep_sec=sleep_sec,
+            krx_pause_sec=krx_pause_sec,
+            cap_by_market=cap_by_market,
         )
 
     prices_path = data_dir / "prices.csv"
@@ -595,8 +596,7 @@ def run_pykrx_bulk_collect(
 
     fund_path = data_dir / "fundamentals.csv"
     fund_kospi = fetch_fundamentals_bulk(stock, as_of_date, market="KOSPI")
-    fund_kosdaq = fetch_fundamentals_bulk(stock, as_of_date, market="KOSDAQ")
-    fund_df = pd.concat([fund_kospi, fund_kosdaq], ignore_index=True) if not fund_kosdaq.empty else fund_kospi
+    fund_df = fund_kospi
     if not fund_df.empty:
         if fund_path.exists() and merge_existing_universe:
             old = pd.read_csv(fund_path, dtype=str, keep_default_na=False)

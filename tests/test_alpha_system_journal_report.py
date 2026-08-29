@@ -12,6 +12,7 @@ from alpha_system.journal import (
     JournalValidationError,
     append_record,
     clear_entries,
+    ensure_journal_hydrated,
     list_discretionary_warnings,
     list_entries,
 )
@@ -61,6 +62,27 @@ def test_append_only_and_rationale_field(tmp_path: Path) -> None:
     assert len(lines) == 2
     # no update/delete API — file only grows
     assert len(list_entries()) == 2
+    assert "-" in r1.entry_id
+
+
+def test_hydrate_keeps_rows_that_reuse_entry_id(tmp_path: Path) -> None:
+    path = tmp_path / "journal.jsonl"
+    path.write_text(
+        '{"entry_id":"J000001","recorded_at":"2026-07-25T03:54:13+00:00",'
+        '"action_kind":"DATA_REFRESH_OK","as_of":"2026-07-25","subject":"*",'
+        '"rationale":"old","discretionary_reason":null,'
+        '"trigger_snapshot":{},"score_snapshot":{},"payload":{}}\n'
+        '{"entry_id":"J000001","recorded_at":"2026-08-28T12:00:00+00:00",'
+        '"action_kind":"DATA_REFRESH_OK","as_of":"2026-08-28","subject":"*",'
+        '"rationale":"new","discretionary_reason":null,'
+        '"trigger_snapshot":{},"score_snapshot":{},"payload":{}}\n',
+        encoding="utf-8",
+    )
+    clear_entries()
+    ensure_journal_hydrated(path)
+    rows = list_entries()
+    assert len(rows) == 2
+    assert {r.rationale for r in rows} == {"old", "new"}
 
 
 def test_warn_discretionary_requires_reason() -> None:
