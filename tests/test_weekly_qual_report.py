@@ -987,3 +987,34 @@ def test_targets_supplement_rejects_outside_waiting(tmp_path: Path) -> None:
             proposal_tickers=["021240"],
             waiting_tickers=["021240"],
         )
+
+
+def test_targets_supplement_prefills_quant_draft() -> None:
+    from alpha_system.ui.services.weekly_qual_report import (
+        build_targets_supplement_markdown,
+    )
+
+    md = build_targets_supplement_markdown(
+        waiting_subjects=[WeeklySubject("021240", "코웨이", "consumer")],
+        proposal_tickers=["021240"],
+        as_of=date(2026, 8, 29),
+        generated_at=datetime(2026, 8, 29, 10, 0, 0),
+        report_id="WQR-E-quant",
+        quant_drafts={
+            "021240": {
+                "quant_ok": True,
+                "quant_pbr_draft": 2.15,
+                "quant_price_mid": 109000,
+                "quant_method": "정당P/B 60% + 섹터중앙 40%",
+                "quant_note": "r=9% g=4.0%",
+            }
+        },
+    )
+    block = md.split("### TARGET [021240]", 1)[1].split("###", 1)[0]
+    assert "pbr_max: 2.15" in block
+    assert "target_price: 109000" in block
+    assert "pbr_max: _____" not in block
+    parsed = parse_weekly_qual_markdown("# x\n\n## E_TARGET_VALUATION\n" + md.split("## E_TARGET_VALUATION", 1)[1])
+    assert parsed.targets and parsed.targets[0].ticker == "021240"
+    assert parsed.targets[0].pbr_max == 2.15
+

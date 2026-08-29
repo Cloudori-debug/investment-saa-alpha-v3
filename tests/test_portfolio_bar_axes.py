@@ -93,3 +93,17 @@ def test_price_loss_clamps_fill_and_shows_negative_text():
     html = render_price_bar_html(row)
     assert "손실" in html
     assert "-12.5%" in html
+
+
+def test_quant_caption_on_screen_pending() -> None:
+    row = _row(weight=10.0, progress=None, has_target=False)
+    row.target_gap_kind = "screen_pending"
+    row.extra = {
+        "quant_ok": True,
+        "quant_pbr_draft": 1.70,
+        "quant_price_mid": 45000,
+    }
+    html = render_price_bar_html(row)
+    assert "정량초안" in html
+    assert "1.70" in html
+    assert "45,000원" in html

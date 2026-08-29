@@ -44,6 +44,7 @@ def _render_weekly_qual(
         waiting_target_subjects,
         write_targets_supplement_report,
         write_weekly_qual_report,
+        quant_drafts_from_rows,
     )
 
     st.subheader("주간 정성 수집·승인 (C·D·E)")
@@ -130,6 +131,7 @@ def _render_weekly_qual(
                     ctx.root / "data" / "fundamentals.csv",
                 ],
                 existing_exit=load_exit_target_entries(ctx.root),
+                quant_drafts=quant_drafts_from_rows(ctx.portfolio_rows),
             )
             quant_run_id = None
             scores_sha = None
@@ -255,12 +257,21 @@ def _render_weekly_qual(
         elif not waiting:
             st.success("대기 후보 없음 — 제안 북 전 종목에 목표가 승인값이 있습니다.")
         else:
-            st.info(
-                "대기 "
-                + str(len(waiting))
-                + "종: "
-                + ", ".join(f"{s.ticker} {s.name}" for s in waiting)
-            )
+            drafts = quant_drafts_from_rows(ctx.portfolio_rows)
+            wait_bits = []
+            for s in waiting:
+                d = drafts.get(s.ticker) or {}
+                mid = d.get("quant_price_mid") if d.get("quant_ok") else None
+                if mid not in (None, ""):
+                    try:
+                        wait_bits.append(
+                            f"{s.ticker} {s.name} (초안 {int(round(float(mid))):,}원)"
+                        )
+                    except (TypeError, ValueError):
+                        wait_bits.append(f"{s.ticker} {s.name}")
+                else:
+                    wait_bits.append(f"{s.ticker} {s.name}")
+            st.info("대기 " + str(len(waiting)) + "종: " + ", ".join(wait_bits))
             if st.button(
                 "목표가 대기 보충 요청서 생성",
                 type="primary",
@@ -272,6 +283,7 @@ def _render_weekly_qual(
                     proposal_tickers=proposal_tickers,
                     docs_dir=ctx.root / "docs",
                     as_of=ctx.as_of,
+                    quant_drafts=quant_drafts_from_rows(ctx.portfolio_rows),
                 )
                 st.session_state["targets_supp_md"] = report.markdown
                 st.session_state["targets_supp_path"] = str(report.path)

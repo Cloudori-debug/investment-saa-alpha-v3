@@ -102,6 +102,7 @@ def test_worksheet_includes_suggestions_and_blank_targets(tmp_path: Path) -> Non
     df = pd.read_csv(path, dtype=str).fillna("")
     assert list(df.columns) == WORKSHEET_COLUMNS
     assert "suggested_roe_min" in df.columns and "suggested_pbr_max" in df.columns
+    assert "quant_pbr_draft" in df.columns and "quant_pbr_justified" in df.columns
     assert WORKSHEET_COLUMNS[:3] == ["ticker", "name", "목표상태"]
     assert len(df) >= 7
     for t in ["030200", "021240", "005830", "000660", "006040", "271560", "005440"]:

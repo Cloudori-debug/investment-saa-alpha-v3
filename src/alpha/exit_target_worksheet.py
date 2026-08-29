@@ -14,6 +14,11 @@ from typing import Any
 
 import pandas as pd
 
+from src.alpha.quant_target_estimate import (
+    estimate_from_maps,
+    enrich_ops_fund,
+    load_alpha_template_fundamentals,
+)
 from src.alpha.take_profit_thesis import assess_take_profit, load_exit_targets
 from src.csv_utils import write_dataframe_csv
 
@@ -46,6 +51,10 @@ WORKSHEET_COLUMNS = [
     "recent_buyback_disclosure",
     "suggested_roe_min",
     "suggested_pbr_max",
+    "quant_pbr_justified",
+    "quant_pbr_draft",
+    "quant_price_mid",
+    "quant_method",
     "target_roe_min",
     "target_pbr_max",
     "target_payout_min",
@@ -251,6 +260,28 @@ def _position_weights(data_dir: Path) -> dict[str, float]:
     }
 
 
+def _price_lookup(data_dir: Path) -> dict[str, float]:
+    px = _read_csv(data_dir / "prices.csv")
+    if px.empty or "ticker" not in px.columns:
+        return {}
+    work = px.copy()
+    work["ticker"] = work["ticker"].map(_norm_ticker)
+    close_col = "close" if "close" in work.columns else ("price" if "price" in work.columns else None)
+    if close_col is None:
+        return {}
+    if "date" in work.columns:
+        work["date"] = pd.to_datetime(work["date"], errors="coerce")
+        work = work.sort_values("date").groupby("ticker", as_index=False).tail(1)
+    else:
+        work = work.drop_duplicates(subset=["ticker"], keep="last")
+    out: dict[str, float] = {}
+    for _, r in work.iterrows():
+        val = _to_float(r.get(close_col))
+        if val is not None:
+            out[str(r["ticker"])] = val
+    return out
+
+
 def _has_existing_target(exit_cfg: dict[str, Any], ticker: str) -> bool:
     tickers = exit_cfg.get("tickers") or {}
     raw = tickers.get(_norm_ticker(ticker)) or tickers.get(ticker) or {}
@@ -309,12 +340,15 @@ def build_exit_target_worksheet(
         if extra:
             kr = pd.concat([kr, pd.DataFrame(extra)], ignore_index=True)
 
-    fund = _latest_fundamentals(_read_csv(data_dir / "fundamentals.csv"))
+    fund_all = _read_csv(data_dir / "fundamentals.csv")
+    fund = _latest_fundamentals(fund_all)
     fund_by = {str(r["ticker"]): r for _, r in fund.iterrows()} if not fund.empty else {}
     scores = _score_lookup(output_dir)
     buybacks = _buyback_lookup(output_dir)
     payouts = _payout_lookup(data_dir)
     weights = _position_weights(data_dir)
+    prices = _price_lookup(data_dir)
+    alpha_by = load_alpha_template_fundamentals(data_dir.parent)
     exit_cfg = load_exit_targets(data_dir / "kr_alpha_exit_targets.yaml")
 
     rows: list[dict[str, Any]] = []
@@ -330,6 +364,24 @@ def build_exit_target_worksheet(
         roe_v = _series_get(f, "roe")
         pbr_v = _series_get(f, "pbr")
         suggestion = suggest_exit_targets(role, roe_v, pbr_v)
+        ops = f.to_dict() if f is not None else {}
+        enriched = enrich_ops_fund(
+            t,
+            ops,
+            history=fund_all,
+            alpha_row=alpha_by.get(t),
+        )
+        payout_v = payouts.get(t, "") if payouts.get(t) is not None and not (
+            isinstance(payouts.get(t), float) and pd.isna(payouts.get(t))
+        ) else ""
+        if payout_v not in (None, ""):
+            enriched["payout_ratio"] = payout_v
+        est = estimate_from_maps(
+            t,
+            fund=enriched,
+            price=prices.get(t),
+            peer=enriched.get("sector_pbr_median"),
+        )
         rows.append(
             {
                 "ticker": t,
@@ -341,9 +393,7 @@ def build_exit_target_worksheet(
                 "roe": roe_v,
                 "pbr": pbr_v,
                 "dividend_yield": _series_get(f, "dividend_yield"),
-                "payout_ratio": payouts.get(t, "") if payouts.get(t) is not None and not (
-                    isinstance(payouts.get(t), float) and pd.isna(payouts.get(t))
-                ) else "",
+                "payout_ratio": payout_v,
                 "valuation_score": sc.get("valuation_score", ""),
                 "momentum_score": sc.get("momentum_score", ""),
                 "recent_buyback_disclosure": buybacks.get(t, ""),
@@ -352,6 +402,10 @@ def build_exit_target_worksheet(
                 ),
                 "suggested_roe_min": suggestion["suggested_roe_min"],
                 "suggested_pbr_max": suggestion["suggested_pbr_max"],
+                "quant_pbr_justified": est.pbr_justified if est.ok else "",
+                "quant_pbr_draft": est.pbr_draft if est.ok else "",
+                "quant_price_mid": est.price_mid if est.ok else "",
+                "quant_method": est.method if est.ok else "",
                 "target_roe_min": "",
                 "target_pbr_max": "",
                 "target_payout_min": "",
@@ -397,6 +451,8 @@ def write_exit_target_worksheet(
         "> `target_*` 칸은 비움 — 사람이 `data/kr_alpha_exit_targets.yaml`에 직접 기입.",
         "> `suggested_*`는 role+ROE 2요인 **재현 정책 초안**(배수·버퍼 미검증). "
         "정답이 아니며 yaml/target_*에 자동 복사하지 않음.",
+        "> `quant_*`는 잔여이익 정당 P/B 초안(Ohlson/CFA/Damodaran, r=9%·g상한=4%). "
+        "문헌 개산이며 한국 최적값이 아님. yaml/target_*에 자동 복사하지 않음.",
         "",
     ]
     if banner:

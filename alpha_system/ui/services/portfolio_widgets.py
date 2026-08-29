@@ -30,6 +30,26 @@ def _fmt_price(v: Optional[float]) -> str:
     return f"{v:,.0f}"
 
 
+def _quant_caption_html(row: PortfolioRow) -> str:
+    extra = row.extra or {}
+    if not extra.get("quant_ok"):
+        return ""
+    pbr = extra.get("quant_pbr_draft")
+    mid = extra.get("quant_price_mid")
+    pbr_s = f"{float(pbr):.2f}" if pbr not in (None, "") else "—"
+    if mid not in (None, ""):
+        try:
+            mid_s = f"{int(round(float(mid))):,}원"
+        except (TypeError, ValueError):
+            mid_s = "—"
+    else:
+        mid_s = "—"
+    approved = " · 승인목표와 별개" if row.has_target else " · E 승인 전"
+    return (
+        f'<div class="pf-bar-caption">정량초안 P/B {pbr_s} · {mid_s}{approved}</div>'
+    )
+
+
 def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> str:
     """Price axis only — no weight/cap marker."""
     if not row.has_target:
@@ -44,6 +64,7 @@ def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> st
                 f'<div class="pf-missing pf-missing-legacy">'
                 f'<span class="alpha-badge-warn">{badge}</span> {msg}'
                 f"</div>"
+                f"{_quant_caption_html(row)}"
             )
         if row.target_gap_kind == "screen_pending":
             badge = copy_get("portfolio", "badge_screen", default="스크린")
@@ -56,6 +77,7 @@ def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> st
                 f'<div class="pf-missing pf-missing-legacy">'
                 f'<span class="alpha-badge-warn">{badge}</span> {msg}'
                 f"</div>"
+                f"{_quant_caption_html(row)}"
             )
         if row.target_gap_kind == "price_missing":
             msg = copy_get(
@@ -67,6 +89,7 @@ def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> st
                 f'<div class="pf-missing">'
                 f'<span class="alpha-badge-danger">데이터</span> {msg}'
                 f"</div>"
+                f"{_quant_caption_html(row)}"
             )
         badge = copy_get("portfolio", "badge_violation", default="위반")
         msg = copy_get(
@@ -78,6 +101,7 @@ def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> st
             f'<div class="pf-missing">'
             f'<span class="alpha-badge-danger">{badge}</span> {msg}'
             f"</div>"
+            f"{_quant_caption_html(row)}"
         )
 
     view = price_bar_view(row.price_progress_pct)
@@ -101,6 +125,7 @@ def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> st
         f'<div class="pf-bar-track pf-bar-price">'
         f'<div class="pf-bar-fill pf-fill-accent" style="width:{view.fill_pct:.1f}%"></div>'
         f"</div></div>"
+        f"{_quant_caption_html(row)}"
     )
 
 
@@ -251,6 +276,27 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
         + step_line
         + f"</div>"
     )
+    extra = row.extra or {}
+    quant_html = ""
+    if extra.get("quant_ok"):
+        pbr_j = extra.get("quant_pbr_justified")
+        pbr_d = extra.get("quant_pbr_draft")
+        mid = extra.get("quant_price_mid")
+        method = extra.get("quant_method") or ""
+        note = extra.get("quant_note") or ""
+        mid_s = "—"
+        if mid not in (None, ""):
+            try:
+                mid_s = f"{int(round(float(mid))):,}원"
+            except (TypeError, ValueError):
+                mid_s = "—"
+        j_s = f"{float(pbr_j):.2f}" if pbr_j not in (None, "") else "—"
+        d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
+        quant_html = _section(
+            "정량 초안 (E 승인 전)",
+            f'<div class="pf-sec-body">정당 P/B {j_s} · 초안 {d_s} · {mid_s}'
+            f"<br/>{method}<br/>{note}</div>",
+        )
     bars = render_price_bar_html(row, show_labels=True) + render_weight_bar_html(row, thin=False)
 
     sc = next((s for s in ctx.scoreboard_rows if s.ticker == row.ticker), None)
@@ -343,6 +389,7 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
         f"{_section('재채점 추이', trend_html)}"
         f"{_section('편입 근거', journal_html)}"
         f"{_section('정성 채점 하위지표', cecs_html)}"
+        f"{quant_html}"
         f"{modify_html}"
         f"</div>"
     )

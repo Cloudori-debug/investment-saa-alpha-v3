@@ -710,9 +710,14 @@ def _build_screen_portfolio(
         equal_equity_weights,
         load_alpha_book_ops,
     )
+    from src.alpha.quant_target_estimate import (
+        load_alpha_template_fundamentals,
+        quant_portfolio_extra,
+    )
 
     # root is not on cfg — use exit path parent.parent or default
     root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
+    alpha_fund_by = load_alpha_template_fundamentals(root_guess)
     policy = load_alpha_book_ops(root_guess)
     # Candidate count = sizing.target_names (portfolio UI / yaml). Do not
     # override with alpha_book_ops default (that file is 9:1 weight policy).
@@ -760,10 +765,23 @@ def _build_screen_portfolio(
         price_idx = work.drop_duplicates("ticker", keep="last").set_index("ticker")
 
     fund_by_ticker: dict[str, dict[str, Any]] = {}
+    fund_for_peers = fundamentals_df
     if not fundamentals_df.empty and "ticker" in fundamentals_df.columns:
         for _, fr in fundamentals_df.iterrows():
             t = str(fr.get("ticker", "")).zfill(6)
             fund_by_ticker[t] = fr.to_dict()
+        if "sector" not in fundamentals_df.columns:
+            smap = {
+                str(s.ticker).zfill(6): s.sector
+                for s in scores
+                if getattr(s, "sector", "")
+            }
+            if smap:
+                fund_for_peers = fundamentals_df.copy()
+                fund_for_peers["ticker"] = fund_for_peers["ticker"].astype(str).str.zfill(6)
+                fund_for_peers["sector"] = fund_for_peers["ticker"].map(
+                    lambda t: smap.get(str(t).zfill(6), "")
+                )
 
     rows: list[PortfolioRow] = []
     cap = float(cfg.sizing.market_value_cap) * 100.0
@@ -853,6 +871,17 @@ def _build_screen_portfolio(
 
         headroom = round(cap - weight, 2) if cap else None
         tone = classify_cap_tone(weight, cap)
+        sector = (
+            sc.sector if sc and sc.sector else str(fund_row.get("sector", "") or "")
+        )
+        qextra = quant_portfolio_extra(
+            ticker,
+            fund_row=fund_row,
+            price=cur_p,
+            sector=sector,
+            fundamentals_df=fund_for_peers,
+            alpha_row=alpha_fund_by.get(ticker),
+        )
         rows.append(
             PortfolioRow(
                 ticker=ticker,
@@ -874,7 +903,7 @@ def _build_screen_portfolio(
                 price_progress_pct=price_progress,
                 tranche_source="SCREEN",
                 total_score=sc.total_score if sc else item.weight_input,
-                sector=(sc.sector if sc and sc.sector else str(fund_row.get("sector", "") or "")),
+                sector=sector,
                 current_pbr=current_pbr,
                 pbr_max=pbr_max,
                 extra={
@@ -883,6 +912,7 @@ def _build_screen_portfolio(
                     "approved_as_of": approved_as_of,
                     "revalidate_required": revalidate_required,
                     "revalidate_reason": revalidate_reason,
+                    **qextra,
                 },
             )
         )
@@ -943,6 +973,14 @@ def _build_portfolio(
             exit_yaml = yaml.safe_load(handle) or {}
 
     formal_entry = _tickers_with_formal_entry()
+
+    from src.alpha.quant_target_estimate import (
+        load_alpha_template_fundamentals,
+        quant_portfolio_extra,
+    )
+
+    root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
+    alpha_fund_by = load_alpha_template_fundamentals(root_guess)
 
     fund_by_ticker: dict[str, dict[str, Any]] = {}
     if not fundamentals_df.empty and "ticker" in fundamentals_df.columns:
@@ -1033,6 +1071,15 @@ def _build_portfolio(
 
         tone = classify_cap_tone(weight, cap)
         sc = score_map.get(ticker)
+        sector = str(pos.get("sector", "") or (sc.sector if sc else ""))
+        qextra = quant_portfolio_extra(
+            ticker,
+            fund_row=fund_row,
+            price=cur_p,
+            sector=sector,
+            fundamentals_df=fundamentals_df,
+            alpha_row=alpha_fund_by.get(ticker),
+        )
         rows.append(
             PortfolioRow(
                 ticker=ticker,
@@ -1054,9 +1101,10 @@ def _build_portfolio(
                 price_progress_pct=price_progress,
                 tranche_source="T1",
                 total_score=sc.total_score if sc else None,
-                sector=str(pos.get("sector", "")),
+                sector=sector,
                 current_pbr=current_pbr,
                 pbr_max=pbr_max,
+                extra=qextra,
             )
         )
     rows.sort(key=lambda r: -r.weight_pct)

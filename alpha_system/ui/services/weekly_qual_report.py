@@ -30,6 +30,7 @@ from alpha_system.ui.services.cecs_ai_research import (
     ParsedResearchSuggestion,
     parse_cecs_ai_research_markdown,
 )
+from src.alpha.quant_target_estimate import markdown_target_fields
 
 SECTION_IDS = (
     "A_CECS_SUMMARY",
@@ -40,6 +41,31 @@ SECTION_IDS = (
 )
 
 DOMAIN_KEYS = ("cecs", "t2", "thesis", "targets")
+
+
+def quant_drafts_from_rows(rows: Sequence[Any] | None) -> dict[str, dict[str, Any]]:
+    """PortfolioRow.extra quant_* → request-form fill map. Empty if not ok."""
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows or ():
+        ticker = str(getattr(row, "ticker", "") or "").strip()
+        if ticker.isdigit():
+            ticker = ticker.zfill(6)
+        extra = getattr(row, "extra", None) or {}
+        if ticker and extra.get("quant_ok"):
+            out[ticker] = dict(extra)
+    return out
+
+
+def _e_target_fill_lines(
+    subject: WeeklySubject,
+    drafts: Mapping[str, Mapping[str, Any]] | None,
+) -> list[str]:
+    draft = (drafts or {}).get(subject.ticker)
+    return [
+        f"### TARGET [{subject.ticker}] {subject.name}",
+        *markdown_target_fields(draft),
+        "",
+    ]
 
 # Separate suggestion stores so monthly CECS upload cannot wipe weekly C/D/E.
 SUGGESTIONS_LANE_WEEKLY = "weekly"
@@ -133,6 +159,7 @@ def build_weekly_qual_markdown(
     report_id: str,
     input_snapshot_hash: str,
     existing_exit: Mapping[str, Mapping[str, Any]] | None = None,
+    quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     lines = [
         "# 주간 통합 정성 AI 요청서",
@@ -288,6 +315,7 @@ def build_weekly_qual_markdown(
             "`pbr_max`는 배수 숫자만(예: `0.75`), `target_price`는 원 단위 숫자만(예: `48000`).",
             "둘 중 최소 1개는 숫자. `배`/`원`/쉼표/범위(~)/증권사 주석은 근거 칸에만.",
             "**대기 종목:** `펀더멘털 사유`·`근거`·출처 URL≥1 필수. `_____`면 해당 종목 파싱 실패.",
+            "정량초안이 있으면 숫자가 미리 채워집니다(정당 P/B · E 승인 전 yaml 미기입). 수정 후 업로드하세요.",
             "",
         ]
     )
@@ -338,18 +366,7 @@ def build_weekly_qual_markdown(
             ]
         )
     for subject in waiting_e:
-        lines.extend(
-            [
-                f"### TARGET [{subject.ticker}] {subject.name}",
-                "- pbr_max: _____",
-                "- target_price: _____",
-                "- 펀더멘털 사유: _____",
-                "- 근거: _____",
-                "- 출처:",
-                "  - ",
-                "",
-            ]
-        )
+        lines.extend(_e_target_fill_lines(subject, quant_drafts))
     lines.extend(
         [
             "---",
@@ -390,6 +407,7 @@ def write_weekly_qual_report(
     input_paths: Sequence[Path] | None = None,
     journal_path: Path | None = None,
     existing_exit: Mapping[str, Mapping[str, Any]] | None = None,
+    quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> WeeklyQualReport:
     if not summary_subjects:
         raise ValueError("A_CECS_SUMMARY 대상이 없습니다.")
@@ -412,6 +430,7 @@ def write_weekly_qual_report(
         report_id=report_id,
         input_snapshot_hash=input_snapshot_hash,
         existing_exit=existing_exit,
+        quant_drafts=quant_drafts,
     )
     docs_dir.mkdir(parents=True, exist_ok=True)
     path = docs_dir / f"weekly_qual_report_{generated_at.strftime('%Y%m%d')}.md"
@@ -1399,6 +1418,7 @@ def build_targets_supplement_markdown(
     as_of: date,
     generated_at: datetime,
     report_id: str,
+    quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     """E-only request for waiting candidates (no A–D redo)."""
     subjects = tuple(_norm_subject(s) for s in waiting_subjects)
@@ -1417,6 +1437,7 @@ def build_targets_supplement_markdown(
         "",
         "이 파일은 **목표가(E)만** 채웁니다. CECS/T2/논지는 건드리지 마세요.",
         "대상은 현재 제안 북 중 목표가 미승인(대기) 종목뿐입니다.",
+        "정량초안이 있으면 pbr_max/target_price가 채워집니다. 문헌 정당P/B이며 E 승인 전 yaml에 안 들어갑니다.",
         "",
         "## 파서 계약 (업로드 필수 — 위반 시 거부)",
         "",
@@ -1445,18 +1466,7 @@ def build_targets_supplement_markdown(
         "",
     ]
     for subject in subjects:
-        lines.extend(
-            [
-                f"### TARGET [{subject.ticker}] {subject.name}",
-                "- pbr_max: _____",
-                "- target_price: _____",
-                "- 펀더멘털 사유: _____",
-                "- 근거: _____",
-                "- 출처:",
-                "  - ",
-                "",
-            ]
-        )
+        lines.extend(_e_target_fill_lines(subject, quant_drafts))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1468,6 +1478,7 @@ def write_targets_supplement_report(
     as_of: date | None = None,
     generated_at: datetime | None = None,
     journal_path: Path | None = None,
+    quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> WeeklyQualReport:
     if not waiting_subjects:
         raise ValueError("대기 후보(목표가 미승인)가 없습니다.")
@@ -1482,6 +1493,7 @@ def write_targets_supplement_report(
         as_of=as_of,
         generated_at=generated_at,
         report_id=report_id,
+        quant_drafts=quant_drafts,
     )
     docs_dir.mkdir(parents=True, exist_ok=True)
     path = docs_dir / f"weekly_qual_targets_supplement_{generated_at.strftime('%Y%m%d')}.md"
@@ -1634,6 +1646,7 @@ __all__ = [
     "load_exit_target_entries",
     "load_exit_target_tickers",
     "waiting_target_subjects",
+    "quant_drafts_from_rows",
     "build_targets_supplement_markdown",
     "write_targets_supplement_report",
     "load_cde_copy_prompt",
