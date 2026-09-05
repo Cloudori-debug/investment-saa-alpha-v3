@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -167,7 +168,8 @@ def run_pipeline(
         repo = Path(root or paths["project"]).resolve().parent
         passed = screening_universe
         if "gate_pass" in passed.columns:
-            passed = passed[passed["gate_pass"].astype(str).str.lower().isin({"true", "1"})]
+            gp = passed["gate_pass"].astype(str).str.lower().str.strip()
+            passed = passed[gp.isin({"true", "1", "1.0", "yes"})]
         tickers = [
             str(t).zfill(6) if str(t).isdigit() else str(t)
             for t in passed.get("ticker", [])
@@ -179,8 +181,8 @@ def run_pipeline(
             market=book,
         )
         screening_universe = apply_payout_sr4(screening_universe, sr4)
-    except Exception:
-        pass
+    except Exception as exc:
+        warnings.warn(f"OpenDART SR4 skipped: {exc}", RuntimeWarning)
     paths["input"].mkdir(parents=True, exist_ok=True)
     screening_universe.to_csv(paths["input"] / "screening_universe.csv", index=False, encoding="utf-8-sig")
 

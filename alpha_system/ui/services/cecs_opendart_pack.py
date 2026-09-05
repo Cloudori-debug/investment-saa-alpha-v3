@@ -8,12 +8,52 @@ from __future__ import annotations
 
 import re
 import json
+import sys
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
-from src.data_refresh.dart_client import DartCredentialsError, RateLimiter, get_dart_api_key
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@contextmanager
+def _repo_src_on_top() -> Iterator[None]:
+    """Prefer repo `src.data_refresh` over `alpha_portfolio/src`.
+
+    Quant snapshot inserts alpha_portfolio first, so a plain
+    `from src.data_refresh...` looks in the wrong package.
+    """
+    repo_s = str(_REPO_ROOT)
+    src_mod = sys.modules.get("src")
+    src_file = str(getattr(src_mod, "__file__", "") or "").replace("\\", "/")
+    wrong_pkg = src_mod is not None and "/alpha_portfolio/" in f"/{src_file}"
+    if not wrong_pkg:
+        inserted = sys.path[:1] != [repo_s]
+        if inserted:
+            sys.path.insert(0, repo_s)
+        try:
+            yield
+        finally:
+            if inserted and sys.path[:1] == [repo_s]:
+                sys.path.pop(0)
+        return
+    inserted = True
+    sys.path.insert(0, repo_s)
+    popped = {
+        key: sys.modules.pop(key)
+        for key in list(sys.modules)
+        if key == "src" or key.startswith("src.")
+    }
+    try:
+        yield
+    finally:
+        sys.modules.update(popped)
+        if sys.path[:1] == [repo_s]:
+            sys.path.pop(0)
+
+
 
 _NPS_MARKERS = ("국민연금", "국민연금공단", "nps")
 _PAYOUT_DIV = ("현금배당", "배당결정", "중간배당", "분기배당", "결산배당")
@@ -287,38 +327,42 @@ def collect_cecs_opendart_pack(
     notes: list[str] = []
     missing_key = False
     live_api = dart_get_fn is None
-
-    if dart_get_fn is None:
-        try:
-            get_dart_api_key(data_dir)
-        except DartCredentialsError:
-            missing_key = True
-            md = {
-                str(t).zfill(6): _missing_key_lines(as_of)
-                for t in tickers
-                if str(t).strip()
-            }
-            return CecsOpendartPack(
-                markdown_by_ticker=md,
-                ok_count=0,
-                missing_key=True,
-                notes=("Open DART API 키 없음",),
-                flags=(),
+    limiter = None
+    if live_api or corp_map is None:
+        with _repo_src_on_top():
+            from src.data_refresh.dart_client import (
+                DartCredentialsError,
+                RateLimiter,
+                dart_get,
+                get_dart_api_key,
             )
-        from src.data_refresh.dart_client import dart_get as _dart_get
+            from src.data_refresh.dart_corp_codes import build_ticker_corp_map
 
-        dart_get_fn = _dart_get
-
-    if corp_map is None:
-        from src.data_refresh.dart_corp_codes import build_ticker_corp_map
-
-        try:
-            corp_map = build_ticker_corp_map(data_dir, [str(t) for t in tickers])
-        except Exception as exc:
-            notes.append(f"corp_code 표 실패: {exc}")
-            corp_map = {}
-
-    limiter = RateLimiter(0.12) if live_api else None
+            if dart_get_fn is None:
+                try:
+                    get_dart_api_key(data_dir)
+                except DartCredentialsError:
+                    missing_key = True
+                    md = {
+                        str(t).zfill(6): _missing_key_lines(as_of)
+                        for t in tickers
+                        if str(t).strip()
+                    }
+                    return CecsOpendartPack(
+                        markdown_by_ticker=md,
+                        ok_count=0,
+                        missing_key=True,
+                        notes=("Open DART API 키 없음",),
+                        flags=(),
+                    )
+                dart_get_fn = dart_get
+            if corp_map is None:
+                try:
+                    corp_map = build_ticker_corp_map(data_dir, [str(t) for t in tickers])
+                except Exception as exc:
+                    notes.append(f"corp_code 표 실패: {exc}")
+                    corp_map = {}
+            limiter = RateLimiter(0.12) if live_api else None
     quarters = last_four_completed_quarters(as_of)
     lookback_start = date(quarters[0][0], (quarters[0][1] - 1) * 3 + 1, 1)
     bgn = lookback_start.strftime("%Y%m%d")
@@ -490,41 +534,46 @@ def collect_payout_sr4(
 
     live_api = dart_get_fn is None
     if missing:
-        if dart_get_fn is None:
-            data_dir = Path(root) / "data"
-            try:
-                get_dart_api_key(data_dir)
-            except DartCredentialsError:
-                return {k: dict(v) for k, v in cached.items() if k in set(wanted)}
-            from src.data_refresh.dart_client import dart_get as _dart_get
-
-            dart_get_fn = _dart_get
-        if corp_map is None:
+        with _repo_src_on_top():
+            from src.data_refresh.dart_client import (
+                DartCredentialsError,
+                RateLimiter,
+                dart_get,
+                get_dart_api_key,
+            )
             from src.data_refresh.dart_corp_codes import build_ticker_corp_map
 
-            try:
-                corp_map = build_ticker_corp_map(Path(root) / "data", missing)
-            except Exception:
-                corp_map = {}
-        limiter = RateLimiter(0.12) if live_api else None
-        quarters = last_four_completed_quarters(as_of)
-        lookback_start = date(quarters[0][0], (quarters[0][1] - 1) * 3 + 1, 1)
-        bgn = lookback_start.strftime("%Y%m%d")
-        end = as_of.strftime("%Y%m%d")
-        for ticker in missing:
-            corp = str((corp_map or {}).get(ticker) or "")
-            if not corp:
-                continue
-            try:
-                if limiter:
-                    limiter.wait()
-                events, hit = _payout_from_list(dart_get_fn, corp, bgn, end, quarters)
-            except Exception:
-                continue
-            cached[ticker] = {
-                "quarters_hit": int(hit),
-                "buyback_3y": any(e.get("kind") in {"buyback", "cancel"} for e in events),
-            }
+            if dart_get_fn is None:
+                data_dir = Path(root) / "data"
+                try:
+                    get_dart_api_key(data_dir)
+                except DartCredentialsError:
+                    return {k: dict(v) for k, v in cached.items() if k in set(wanted)}
+                dart_get_fn = dart_get
+            if corp_map is None:
+                try:
+                    corp_map = build_ticker_corp_map(Path(root) / "data", missing)
+                except Exception:
+                    corp_map = {}
+            limiter = RateLimiter(0.12) if live_api else None
+            quarters = last_four_completed_quarters(as_of)
+            lookback_start = date(quarters[0][0], (quarters[0][1] - 1) * 3 + 1, 1)
+            bgn = lookback_start.strftime("%Y%m%d")
+            end = as_of.strftime("%Y%m%d")
+            for ticker in missing:
+                corp = str((corp_map or {}).get(ticker) or "")
+                if not corp:
+                    continue
+                try:
+                    if limiter:
+                        limiter.wait()
+                    events, hit = _payout_from_list(dart_get_fn, corp, bgn, end, quarters)
+                except Exception:
+                    continue
+                cached[ticker] = {
+                    "quarters_hit": int(hit),
+                    "buyback_3y": any(e.get("kind") in {"buyback", "cancel"} for e in events),
+                }
         _save_payout_sr4_cache(path, window=window, as_of=as_of, rows=cached)
 
     return {k: dict(cached[k]) for k in wanted if k in cached}

@@ -112,7 +112,7 @@ def test_missing_key_does_not_scrape(monkeypatch, tmp_path: Path) -> None:
         raise DartCredentialsError("no key")
 
     monkeypatch.setattr(
-        "alpha_system.ui.services.cecs_opendart_pack.get_dart_api_key", boom
+        "src.data_refresh.dart_client.get_dart_api_key", boom
     )
     pack = collect_cecs_opendart_pack(
         tmp_path, ["005930"], as_of=date(2026, 8, 30)
@@ -278,4 +278,44 @@ def test_collect_payout_sr4_sets_quarters_and_buyback(tmp_path: Path) -> None:
         corp_map={"006040": "00123456"},
     )
     assert again["006040"]["quarters_hit"] == 2
+
+
+def test_payout_sr4_imports_dart_when_alpha_portfolio_src_is_first() -> None:
+    """Quant snapshot puts alpha_portfolio on sys.path[0]; OpenDART lives in repo src."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[1]
+    script = r"""
+import sys
+import tempfile
+from datetime import date
+from pathlib import Path
+repo = Path(%r)
+alpha = repo / "alpha_portfolio"
+sys.path[:0] = [str(alpha), str(repo)]
+import src  # noqa: F401 — alpha_portfolio src
+from alpha_system.ui.services.cecs_opendart_pack import collect_payout_sr4
+cache = Path(tempfile.mkdtemp()) / "sr4.json"
+rows = collect_payout_sr4(
+    repo,
+    ["006040"],
+    as_of=date(2026, 8, 30),
+    dart_get_fn=lambda *_a, **_k: {"list": []},
+    cache_path=cache,
+    corp_map={"006040": "00123456"},
+)
+assert "006040" in rows
+print("ok")
+""" % (str(repo),)
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "ok" in proc.stdout
+
 
