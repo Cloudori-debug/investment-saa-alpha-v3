@@ -47,7 +47,7 @@ def test_hard_rule_block_paths_present() -> None:
 
 
 def test_t2_candidate_sources_mapped_from_cecs(cfg) -> None:
-    sources = cfg.tranches["T2"].event_candidate_sources
+    sources = cfg.t2_event_candidate_sources()
     assert "disclosure_status" in sources
     assert "independent_catalyst_flag" in sources
 
@@ -61,9 +61,8 @@ def test_t4_pending_before_month_12(cfg) -> None:
             go_live_date=date(2026, 7, 16),
         ),
     )
-    t4 = next(s for s in ev.statuses if s.tranche_id == TrancheId.T4)
-    assert t4.state == TrancheState.PENDING
-    assert "12m" in t4.detail
+    assert ev.statuses == []
+    assert "capital_tranches_retired" in ev.warnings
 
 
 def test_t4_initial_only_when_t2_t3_unmet(cfg) -> None:
@@ -75,22 +74,7 @@ def test_t4_initial_only_when_t2_t3_unmet(cfg) -> None:
             go_live_date=date(2026, 7, 16),
         ),
     )
-    t4 = next(s for s in ev.statuses if s.tranche_id == TrancheId.T4)
-    assert t4.state == TrancheState.READY
-
-    ev2 = evaluate_entry(
-        cfg,
-        TriggerSnapshot(
-            as_of=date(2027, 7, 16),
-            system_started=True,
-            go_live_date=date(2026, 7, 16),
-            events_fired=frozenset({"ifrs18_domestic_adoption_schedule_confirmed"}),
-        ),
-    )
-    t4b = next(s for s in ev2.statuses if s.tranche_id == TrancheId.T4)
-    assert t4b.state == TrancheState.PENDING
-    assert "already met" in t4b.detail.lower()
-    assert t4b.trigger_met is False
+    assert ev.statuses == []
 
 
 def test_cecs_ignores_disclosure_and_independent() -> None:
@@ -142,7 +126,7 @@ def test_eligibility_cutoff_todo_does_not_invent(cfg) -> None:
 
 
 def test_cecs_missing_does_not_invent_neutral(cfg) -> None:
-    """No cecs value and no sub-scores → eligibility undecided, never a silent 0.5."""
+    """Ops A (CECS 가중 0): 팩터만으로 컷을 판정. CECS 숫자는 만들지 않음."""
     s = score_name(
         ticker="0001",
         score_q=80,
@@ -151,9 +135,27 @@ def test_cecs_missing_does_not_invent_neutral(cfg) -> None:
         score_r=50,
         system_cfg=cfg,
     )
+    assert s.factors["cecs"] != s.factors["cecs"]  # NaN, not 50
+    assert s.eligibility in (True, False)
+    assert "CECS" in s.eligibility_reason or "미반영" in s.eligibility_reason
+
+
+def test_cecs_missing_undecided_when_cecs_still_in_blend(cfg) -> None:
+    from alpha_system.scoring.factors import load_scoring_config
+
+    scfg = dict(load_scoring_config())
+    scfg["total_score_blend"] = {"factor_score_total": 0.7, "cecs": 0.3}
+    s = score_name(
+        ticker="0001",
+        score_q=80,
+        score_v=70,
+        score_sr=60,
+        score_r=50,
+        system_cfg=cfg,
+        scoring_cfg=scfg,
+    )
     assert s.eligibility is None
     assert "CECS" in s.eligibility_reason
-    assert s.factors["cecs"] != s.factors["cecs"]  # NaN, not 50
     with pytest.raises(ConfigTodoError):
         require_eligibility_decided(s)
 
@@ -178,8 +180,59 @@ def test_cecs_frame_uses_real_subs_only(cfg) -> None:
     )
     scored = {s.ticker: s for s in score_frame(df, cfg)}
     assert scored["0001"].factors["cecs"] == scored["0001"].factors["cecs"]  # not NaN
-    assert scored["0002"].eligibility is None
+    assert scored["0002"].eligibility is True
     assert scored["0002"].factors["cecs"] != scored["0002"].factors["cecs"]  # NaN
+
+
+def test_missing_quality_inputs_not_eligible(cfg) -> None:
+    s = score_name(
+        ticker="016380",
+        score_q=50.83,
+        score_v=90,
+        score_sr=50,
+        score_r=30,
+        quality_inputs_ok=False,
+        system_cfg=cfg,
+    )
+    assert s.eligibility is False
+    assert "품질 재료" in s.eligibility_reason
+    assert s.weight_input == 0.0
+
+
+def test_quality_floor_blocks_even_when_total_clears_cutoff(cfg) -> None:
+    s = score_name(
+        ticker="016380",
+        score_q=50.83,
+        score_v=90,
+        score_sr=50,
+        score_r=30,
+        quality_inputs_ok=True,
+        system_cfg=cfg,
+    )
+    assert s.eligibility is False
+    assert "품질 하한" in s.eligibility_reason
+
+
+def test_quality_and_cutoff_both_pass(cfg) -> None:
+    s = score_name(
+        ticker="006040",
+        score_q=60.39,
+        score_v=72,
+        score_sr=59,
+        score_r=31,
+        quality_inputs_ok=True,
+        system_cfg=cfg,
+    )
+    assert s.eligibility is True
+
+
+def test_quality_inputs_present_requires_roe() -> None:
+    from alpha_system.scoring.engine import quality_inputs_present
+
+    assert quality_inputs_present(roe=12.5) is True
+    assert quality_inputs_present(roe_3y_avg="8.1") is True
+    assert quality_inputs_present(roe="") is False
+    assert quality_inputs_present() is False
 
 
 def test_eligibility_absolute_cutoff_when_set(tmp_path: Path, cfg) -> None:

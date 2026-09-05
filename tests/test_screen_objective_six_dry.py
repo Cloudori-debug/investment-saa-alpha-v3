@@ -21,10 +21,11 @@ def _scores() -> pd.DataFrame:
                 "name": f"N{i}",
                 "gate_pass": True,
                 "gate_fail_reason": "",
-                "score_q": score,
+                "score_q": max(score, 60),
                 "score_v": score,
                 "score_sr": score,
                 "score_r": score,
+                "quality_inputs_ok": True,
                 "composite_raw": score,
                 # Must be ignored by policy B:
                 "incumbent_bonus": 1000 if i == 8 else 0,

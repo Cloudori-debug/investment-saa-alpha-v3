@@ -4,7 +4,14 @@ from typing import Any
 
 import pandas as pd
 
-from src.factors import score_momentum, score_quality, score_risk, score_shareholder, score_value
+from src.factors import (
+    quality_inputs_present,
+    score_momentum,
+    score_quality,
+    score_risk,
+    score_shareholder,
+    score_value,
+)
 from src.gate import run_gate
 
 
@@ -171,6 +178,7 @@ def run_screener(
 
     work = gated.copy()
     work["score_q"] = work.apply(lambda r: score_quality(r, work, scoring_cfg), axis=1).round(2)
+    work["quality_inputs_ok"] = work.apply(quality_inputs_present, axis=1)
     work["score_v"] = work.apply(lambda r: score_value(r, work, scoring_cfg), axis=1).round(2)
 
     sr_scores: list[float] = []
@@ -251,6 +259,8 @@ def run_screener(
     score_cols = [
         "ticker", "name", "sector", "gate_pass", "gate_fail_reason",
         "score_q", "score_v", "score_sr", "score_r", "score_m",
+        "quality_inputs_ok",
+        "execution_quarters_hit",
         "sr_execution", "sr_execution_provenance",
         "composite_raw", "composite_score", "incumbent_bonus",
         "grade", "role_suggested", "tier", "satellite_track",

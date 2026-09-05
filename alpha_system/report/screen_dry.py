@@ -10,8 +10,9 @@ from typing import Optional
 import pandas as pd
 
 from alpha_system.schema import AlphaSystemConfig, TrancheId
+from alpha_system.screen_book import resolve_quality_fundamentals_csv
 from alpha_system.scoring.cecs import CatalystInputs
-from alpha_system.scoring.engine import NameScore, score_name
+from alpha_system.scoring.engine import NameScore, quality_inputs_present, score_name
 from alpha_system.entry.scale_in import build_scale_in_plan, render_plan_markdown
 from alpha_system.sizing.allocate import allocate_tranche
 from alpha_system.sizing.sector_map import load_sector_groups
@@ -64,37 +65,35 @@ def build_screen_dry(
     template_count = len(prepared_cecs)
     final_count = int((prepared_cecs["status"] == "final").sum()) if template_count else 0
     sector_map = load_sector_groups(str((data_dir or Path("data")).resolve()))
+    fund_ok = _fund_quality_ok_map(data_dir)
 
-    candidates = prepared_cecs
-    if not allow_draft and not candidates.empty:
-        candidates = candidates[candidates["status"] == "final"].copy()
+    cecs_by: dict[str, pd.Series] = {}
+    if not prepared_cecs.empty:
+        work = prepared_cecs
+        if not allow_draft:
+            work = work[work["status"] == "final"].copy()
+        for _, row in work.iterrows():
+            cecs_by[str(row["ticker"])] = row
 
     report_rows: list[dict] = []
     model_scores: list[NameScore] = []
 
-    for _, cecs_row in candidates.iterrows():
-        ticker = cecs_row["ticker"]
-        score_hit = prepared_scores[prepared_scores["ticker"] == ticker]
-        if score_hit.empty:
-            report_rows.append(
-                _excluded_row(
-                    ticker=ticker,
-                    name=cecs_row["name"],
-                    status=cecs_row["status"],
-                    is_held=ticker in held,
-                    reason="팩터 스코어 없음",
-                )
-            )
-            continue
-
-        factor_row = score_hit.iloc[0]
+    for _, factor_row in prepared_scores.iterrows():
+        ticker = str(factor_row["ticker"])
+        cecs_row = cecs_by.get(ticker)
+        name = str(
+            (cecs_row["name"] if cecs_row is not None else "")
+            or factor_row.get("name")
+            or ticker
+        )
+        status = str(cecs_row["status"]) if cecs_row is not None else "final"
         if not _as_bool(factor_row.get("gate_pass")):
             reason = str(factor_row.get("gate_fail_reason") or "gate 미통과")
             report_rows.append(
                 _excluded_row(
                     ticker=ticker,
-                    name=cecs_row["name"] or str(factor_row.get("name") or ""),
-                    status=cecs_row["status"],
+                    name=name,
+                    status=status,
                     is_held=ticker in held,
                     reason=f"gate 미통과: {reason}",
                     gate_pass=False,
@@ -102,38 +101,29 @@ def build_screen_dry(
             )
             continue
 
-        cecs_value, cecs_inputs = _cecs_value_or_inputs(cecs_row)
-        if cecs_value is None and cecs_inputs is None:
-            report_rows.append(
-                _excluded_row(
-                    ticker=ticker,
-                    name=cecs_row["name"],
-                    status=cecs_row["status"],
-                    is_held=ticker in held,
-                    reason="CECS 미완 (computed 또는 3개 하위점수 필요)",
-                    gate_pass=True,
-                )
-            )
-            continue
+        cecs_value, cecs_inputs = (None, None)
+        if cecs_row is not None:
+            cecs_value, cecs_inputs = _cecs_value_or_inputs(cecs_row)
 
         try:
             scored = score_name(
                 ticker=ticker,
-                name=cecs_row["name"] or str(factor_row.get("name") or ""),
+                name=name,
                 score_q=_float_or_none(factor_row.get("score_q")),
                 score_v=_float_or_none(factor_row.get("score_v")),
                 score_sr=_float_or_none(factor_row.get("score_sr")),
                 score_r=_float_or_none(factor_row.get("score_r")),
                 cecs=cecs_value,
                 cecs_inputs=cecs_inputs,
+                quality_inputs_ok=_row_quality_ok(factor_row, ticker, fund_ok),
                 system_cfg=dry_cfg,
             )
         except (TypeError, ValueError) as exc:
             report_rows.append(
                 _excluded_row(
                     ticker=ticker,
-                    name=cecs_row["name"],
-                    status=cecs_row["status"],
+                    name=name,
+                    status=status,
                     is_held=ticker in held,
                     reason=f"스코어 계산 불가: {exc}",
                     gate_pass=True,
@@ -141,14 +131,14 @@ def build_screen_dry(
             )
             continue
 
-        sector = str(sector_map.get(ticker, "") or "")
+        sector = str(sector_map.get(ticker, "") or factor_row.get("sector") or "")
         scored.sector = sector
         model_scores.append(scored)
         report_rows.append(
             {
                 "ticker": ticker,
                 "name": scored.name,
-                "status": cecs_row["status"],
+                "status": status,
                 "is_held": ticker in held,
                 "gate_pass": True,
                 "total_score": scored.total_score,
@@ -163,12 +153,27 @@ def build_screen_dry(
         )
 
     eligible_count = sum(s.eligibility is True for s in model_scores)
+    from alpha_system.sizing.qual_overlay import load_qual_overlay, norm_ticker
+
+    overlay = load_qual_overlay((data_dir or Path("data")) / "qual_rank_overlay.json")
+    data_root = Path(data_dir or "data")
+    repo_root = data_root.parent if data_root.name == "data" else data_root
+    from alpha_system.sizing.target_gate import (
+        collect_above_justified_target_tickers_from_root,
+    )
+
+    above_target = collect_above_justified_target_tickers_from_root(
+        [s.ticker for s in model_scores],
+        repo_root,
+    )
     allocation = allocate_tranche(
         dry_cfg,
         tranche_id=TrancheId.T1,  # overridden full-book budget
         scores=model_scores,
         existing_weights={},
         tranche_budget=1.0,
+        overlay=overlay,
+        exclude_tickers=above_target,
     )
     selected = {
         a.ticker: a.incremental_weight
@@ -178,10 +183,14 @@ def build_screen_dry(
 
     for row in report_rows:
         ticker = row["ticker"]
-        if ticker in selected:
+        tk = norm_ticker(ticker)
+        if ticker in selected or tk in selected:
+            weight = selected.get(ticker, selected.get(tk))
             row["selected"] = True
-            row["dry_weight_pct"] = round(selected[ticker] * 100.0, 4)
+            row["dry_weight_pct"] = round(weight * 100.0, 4)
             row["reason"] = "선정: eligibility 통과 + sector 캡 + weight_input 상위"
+        elif tk in above_target:
+            row["reason"] = "탈락: 현재가≥혼합 목표가 (다음 적격 채움)"
         elif row["is_held"] and row["eligibility"] is not True:
             row["reason"] = f"탈락 보유: {row['reason']}"
         elif row["is_held"] and row["eligibility"] is True:
@@ -395,6 +404,48 @@ def _excluded_row(
         "dry_weight_pct": 0.0,
         "reason": reason,
     }
+
+
+def _fund_quality_ok_map(data_dir: Path | None) -> dict[str, bool] | None:
+    ops = data_dir or Path("data")
+    paths: list[Path] = []
+    alpha = resolve_quality_fundamentals_csv(ops)
+    if alpha is not None:
+        paths.append(alpha)
+    paths.append(ops / "fundamentals.csv")
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            frame = pd.read_csv(path, dtype=str)
+        except (OSError, ValueError):
+            continue
+        if frame.empty or "ticker" not in frame.columns:
+            continue
+        out: dict[str, bool] = {}
+        for _, row in frame.iterrows():
+            ticker = _ticker(row.get("ticker"))
+            if ticker:
+                out[ticker] = quality_inputs_present(
+                    roe=row.get("roe"), roe_3y_avg=row.get("roe_3y_avg")
+                )
+        return out
+    return None
+
+
+def _row_quality_ok(
+    factor_row: pd.Series, ticker: str, fund_ok: dict[str, bool] | None
+) -> bool | None:
+    if "quality_inputs_ok" in factor_row.index:
+        raw = factor_row.get("quality_inputs_ok")
+        text = "" if raw is None or (isinstance(raw, float) and pd.isna(raw)) else str(raw).strip()
+        if text and text.lower() not in {"nan", "none"}:
+            return _as_bool(raw)
+    if fund_ok is None:
+        return None
+    if ticker in fund_ok:
+        return fund_ok[ticker]
+    return None
 
 
 def _ticker(value: object) -> str:

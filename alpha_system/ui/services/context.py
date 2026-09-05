@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -11,7 +11,6 @@ import pandas as pd
 import yaml
 
 from alpha_system.entry.evaluate import TriggerSnapshot, evaluate_entry
-from alpha_system.entry.models import TrancheState
 from alpha_system.exit.evaluate import ExitSnapshot, PositionView, evaluate_exits
 from alpha_system.journal import ensure_journal_hydrated, list_discretionary_warnings, list_entries
 from alpha_system.loader import load_config
@@ -23,8 +22,18 @@ from alpha_system.swap.observe import SwapObserveInput, evaluate_swap_observe
 from alpha_system.ui.services.action_queue import ActionItem, build_action_queue
 from alpha_system.ui.services.data_freshness import SourceStatus, inspect_sources
 from alpha_system.ui.services.runtime_state import RuntimeState, sync_runtime_from_journal
-from alpha_system.ui.services.t3_pbr import T3PbrStatus, load_t3_pbr_status
+from alpha_system.ui.services.t3_pbr import T3PbrStatus
 from alpha_system.ui.services.ui_copy import copy_get
+from alpha_system.screen_book import (
+    DEFAULT_MARKET,
+    apply_book_config,
+    ensure_book_dirs,
+    operational_data_dir,
+    alpha_data_dir,
+    provenance_rel,
+    normalize_market,
+    resolve_quality_fundamentals_csv,
+)
 
 
 @dataclass
@@ -116,6 +125,7 @@ class DashboardContext:
     pre_launch: bool = True
     effective_go_live: Optional[date] = None
     checklist: Any = None
+    screen_market: str = "KOSPI"
 
 
 EVENT_LABELS = {
@@ -125,32 +135,42 @@ EVENT_LABELS = {
 }
 
 
-def _paths(root: Path) -> dict[str, Path]:
+def _paths(root: Path, market: str = "KOSPI") -> dict[str, Path]:
+    data = operational_data_dir(root, market)
+    alpha = alpha_data_dir(root, market)
     return {
         "journal": root / "data" / "alpha_system_journal.jsonl",
         "runtime": root / "data" / "alpha_dashboard_runtime.json",
         "dashboard_cfg": root / "alpha_system" / "config" / "dashboard.yaml",
         "system_cfg": root / "alpha_system" / "config" / "alpha_system.yaml",
-        "positions": root / "data" / "positions.csv",
-        "targets": root / "data" / "target_portfolio.csv",
-        "prices": root / "data" / "prices.csv",
-        "fundamentals": root / "data" / "fundamentals.csv",
+        "positions": data / "positions.csv",
+        "targets": data / "target_portfolio.csv",
+        "prices": data / "prices.csv",
+        "fundamentals": data / "fundamentals.csv",
         "cecs": root / "data" / "cecs_manual_scoring_template.csv",
-        "alpha_scores": root / "alpha_portfolio" / "data" / "output" / "alpha_scores.csv",
-        "sector_gate": root / "data" / "sector_coverage_gate_pass.json",
-        "exit_targets": root / "data" / "kr_alpha_exit_targets.yaml",
-        "quant_provenance": root / "data" / "alpha_quant_snapshot_provenance.json",
+        "alpha_scores": alpha / "output" / "alpha_scores.csv",
+        "sector_gate": data / "sector_coverage_gate_pass.json",
+        "exit_targets": data / "kr_alpha_exit_targets.yaml",
+        "quant_provenance": root / provenance_rel(market),
+        "overlay": data / "qual_rank_overlay.json",
     }
 
 
-def load_context(root: Path | None = None, *, as_of: date | None = None) -> DashboardContext:
+def load_context(
+    root: Path | None = None,
+    *,
+    as_of: date | None = None,
+    market: str | None = None,
+) -> DashboardContext:
     root = root or Path(__file__).resolve().parents[3]
-    paths = _paths(root)
+    screen_market = normalize_market(market or DEFAULT_MARKET)
+    ensure_book_dirs(root, screen_market)
+    paths = _paths(root, screen_market)
     as_of = as_of or date.today()
     ensure_journal_hydrated(paths["journal"])
     runtime = RuntimeState.load(paths["runtime"])
     runtime = sync_runtime_from_journal(runtime, paths["journal"])
-    cfg = load_config(paths["system_cfg"])
+    cfg = apply_book_config(load_config(paths["system_cfg"]), screen_market, root=root)
 
     effective_go_live = cfg.go_live_date or runtime.effective_go_live()
     pre_launch = effective_go_live is None
@@ -160,12 +180,14 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         cfg, root=root, go_live_date=effective_go_live, cecs_path=paths["cecs"]
     )
 
-    t3_band = cfg.tranches["T3"].valuation_band or {}
-    t3_pbr = load_t3_pbr_status(
-        root,
-        bottom_percentile=float(t3_band.get("bottom_percentile", 20)),
-        lookback_years=int(t3_band.get("lookback_years", 10)),
-        today=as_of,
+    t3_pbr = T3PbrStatus(
+        available=False,
+        current_pbr=None,
+        percentile_10y=None,
+        in_bottom_band=None,
+        bottom_pct=20.0,
+        as_of=None,
+        source_note="capital T3 retired",
     )
 
     snap = TriggerSnapshot(
@@ -174,7 +196,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         go_live_date=effective_go_live,
         events_fired=runtime.effective_events(),
         thesis_damage_flag=runtime.effective_thesis_damage(),
-        kospi_pbr_in_bottom_band=t3_pbr.in_bottom_band,
+        kospi_pbr_in_bottom_band=None,
         prior_states=runtime.prior_tranche_states(),
         prior_meta=runtime.prior_tranche_meta(),
     )
@@ -203,7 +225,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
     )
 
     scoreboard_rows, fallback_count = _build_scoreboard(
-        cfg, cecs_df, scores_df, fundamentals_df, kr_positions, data_dir=root / "data"
+        cfg, cecs_df, scores_df, fundamentals_df, kr_positions, data_dir=paths["positions"].parent
     )
 
     pos_views: list[PositionView] = []
@@ -244,12 +266,35 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
     source_status = inspect_sources(root, dashboard_cfg_path=paths["dashboard_cfg"], today=as_of)
     stale = [s for s in source_status if s.stale]
 
+    from src.alpha.price_ladder import load_lookback_lows
+    from alpha_system.sizing.target_gate import (
+        collect_above_justified_target_tickers_from_root,
+        ops_proposal_membership,
+    )
+
+    lookback_lows = load_lookback_lows(root, prices_df)
+
+    exit_yaml: dict[str, Any] = {}
+    if paths["exit_targets"].exists():
+        loaded = yaml.safe_load(paths["exit_targets"].read_text(encoding="utf-8")) or {}
+        if isinstance(loaded, dict):
+            exit_yaml = loaded
+    above_target = collect_above_justified_target_tickers_from_root(
+        [str(s.ticker) for s in scoreboard_rows],
+        root,
+        prices_df=prices_df,
+        fundamentals_df=fundamentals_df,
+        exit_yaml=exit_yaml,
+    )
     proposal_rows = _build_screen_portfolio(
         cfg,
         scoreboard_rows,
         prices_df,
         fundamentals_df,
         paths["exit_targets"],
+        lookback_lows=lookback_lows,
+        overlay_path=paths["overlay"],
+        exclude_tickers=above_target,
     )
     from alpha_system.ui.services.proposal_freeze import load_freeze, pin_proposal_rows
 
@@ -262,6 +307,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         prices_df,
         fundamentals_df,
         paths["exit_targets"],
+        lookback_lows=lookback_lows,
     )
     _enrich_ops_exit_signals(
         proposal_rows,
@@ -273,7 +319,11 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
     )
     _enrich_ops_exit_signals(
         ops_rows,
-        proposal_tickers={r.ticker for r in proposal_rows},
+        proposal_tickers=ops_proposal_membership(
+            [r.ticker for r in proposal_rows],
+            held_tickers=[r.ticker for r in ops_rows],
+            above_target=above_target,
+        ),
         fundamentals_df=fundamentals_df,
         exit_targets_path=paths["exit_targets"],
         check_proposal_membership=True,
@@ -352,25 +402,12 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
 
         gate_pass = int(json.loads(paths["sector_gate"].read_text(encoding="utf-8")).get("gate_pass", 0))
 
-    executed_weight = sum(
-        float(st.weight)
-        for st in entry_eval.statuses
-        if st.state in (TrancheState.EXECUTED, TrancheState.PARTIAL_EXECUTED)
-    )
-    execution_rate = round(executed_weight * 100, 1) if entry_eval.statuses else None
-
-    go_live = effective_go_live
-    t4_rules = cfg.tranches["T4"].hybrid_rules or {}
-    t4_months = int(t4_rules.get("months_after_go_live", 12))
-    if go_live is None:
-        t4_days = 0
-    else:
-        t4_anchor = go_live + timedelta(days=int(t4_months * 30.44))
-        t4_days = max(0, (t4_anchor - as_of).days)
+    execution_rate = None
+    t4_days = 0
 
     return DashboardContext(
         root=root,
-        data_dir=paths["journal"].parent,
+        data_dir=paths["positions"].parent,
         cfg=cfg,
         as_of=as_of,
         runtime=runtime,
@@ -398,6 +435,7 @@ def load_context(root: Path | None = None, *, as_of: date | None = None) -> Dash
         pre_launch=pre_launch,
         effective_go_live=effective_go_live,
         checklist=checklist,
+        screen_market=screen_market,
     )
 
 
@@ -443,8 +481,8 @@ def _build_scoreboard(
     *,
     data_dir: Path | None = None,
 ) -> tuple[list[ScoreboardRow], int]:
-    """Build scoreboard from alpha_scores.csv factors + CECS finals (same as dry CLI)."""
-    if cecs_df.empty:
+    """Build scoreboard from alpha_scores.csv. CECS overlay is optional (Ops A weight 0)."""
+    if scores_df.empty or "ticker" not in scores_df.columns:
         return [], 0
     held_set = (
         set(kr_positions["ticker"].astype(str).str.zfill(6))
@@ -453,42 +491,45 @@ def _build_scoreboard(
     )
     rows: list[ScoreboardRow] = []
     fallback_count = 0
-    scores_idx = _index_alpha_scores(scores_df)
-    del fundamentals_df  # factors come only from alpha_scores (dry parity)
     sector_map = load_sector_groups(str((data_dir or Path("data")).resolve())) if data_dir else {}
+    fund_ok = _fund_quality_index(
+        _quality_fund_for_gate(fundamentals_df, data_dir)
+    )
+    cecs_idx: dict[str, pd.Series] = {}
+    if not cecs_df.empty and "ticker" in cecs_df.columns:
+        for _, r in cecs_df.iterrows():
+            tk = str(r.get("ticker", "")).zfill(6)
+            if tk:
+                cecs_idx[tk] = r
 
-    for _, r in cecs_df.iterrows():
-        ticker = str(r.get("ticker", "")).zfill(6)
-        name = str(r.get("name", "") or "")
-        status = str(r.get("status", "draft") or "draft").strip().lower()
-        if status != "final" and cfg.scoring.score_cutoff is not None:
+    for _, factor in scores_df.iterrows():
+        ticker = str(factor.get("ticker", "")).zfill(6)
+        if not ticker:
             continue
-
-        factor = scores_idx.get(ticker)
-        q = v = sr = rr = None
-        gate_ok = False
-        if factor is not None:
-            q = _f(factor.get("score_q"))
-            v = _f(factor.get("score_v"))
-            sr = _f(factor.get("score_sr"))
-            rr = _f(factor.get("score_r"))
-            gate_ok = _as_bool(factor.get("gate_pass"), default=True)
-            if not name:
-                name = str(factor.get("name") or "")
-
-        cecs_val = _f(r.get("cecs_computed"))
+        name = str(factor.get("name") or "")
+        q = _f(factor.get("score_q"))
+        v = _f(factor.get("score_v"))
+        sr = _f(factor.get("score_sr"))
+        rr = _f(factor.get("score_r"))
+        gate_ok = _as_bool(factor.get("gate_pass"), default=True)
+        quality_ok = _quality_inputs_ok(factor, fund_ok)
+        cecs_row = cecs_idx.get(ticker)
+        status = "final"
+        cecs_val = None
         cecs_inputs = None
-        if cecs_val is None:
-            cecs_inputs = _cecs_inputs_from_row(r, ticker=ticker, name=name)
+        if cecs_row is not None:
+            status = str(cecs_row.get("status", "draft") or "draft").strip().lower()
+            if not name:
+                name = str(cecs_row.get("name") or "")
+            cecs_val = _f(cecs_row.get("cecs_computed"))
+            if cecs_val is None:
+                cecs_inputs = _cecs_inputs_from_row(
+                    cecs_row, ticker=ticker, name=name
+                )
 
         total: Optional[float] = None
         elig: Optional[bool] = None
-        # Match dry CLI: missing alpha_scores row or gate fail → not scored eligible.
-        if factor is None:
-            elig = False
-        elif not gate_ok:
-            elig = False
-        elif cecs_val is None and cecs_inputs is None:
+        if not gate_ok:
             elig = False
         else:
             try:
@@ -501,6 +542,7 @@ def _build_scoreboard(
                     score_r=rr,
                     cecs=cecs_val,
                     cecs_inputs=cecs_inputs,
+                    quality_inputs_ok=quality_ok,
                     system_cfg=cfg,
                 )
                 total = ns.total_score
@@ -511,19 +553,16 @@ def _build_scoreboard(
                 elig = False
 
         fb = False
-        if factor is not None and "sector_peer_fallback" in factor.index:
+        if "sector_peer_fallback" in factor.index:
             raw_fb = factor.get("sector_peer_fallback")
-            fb = bool(raw_fb) if pd.notna(raw_fb) else False
-        elif "sector_peer_fallback" in r.index:
-            raw_fb = r.get("sector_peer_fallback")
             fb = bool(raw_fb) if pd.notna(raw_fb) else False
         if fb:
             fallback_count += 1
-        sector = str(sector_map.get(ticker, "") or "")
+        sector = str(sector_map.get(ticker, "") or factor.get("sector") or "")
         rows.append(
             ScoreboardRow(
                 ticker=ticker,
-                name=name,
+                name=name or ticker,
                 total_score=total,
                 score_q=q,
                 score_v=v,
@@ -539,17 +578,6 @@ def _build_scoreboard(
         )
     rows.sort(key=lambda x: (x.total_score is None, -(x.total_score or 0)))
     return rows, fallback_count
-
-
-def _index_alpha_scores(scores_df: pd.DataFrame) -> dict[str, pd.Series]:
-    if scores_df.empty or "ticker" not in scores_df.columns:
-        return {}
-    out: dict[str, pd.Series] = {}
-    for _, row in scores_df.iterrows():
-        ticker = str(row.get("ticker", "")).zfill(6)
-        if ticker and ticker not in out:
-            out[ticker] = row
-    return out
 
 
 def _cecs_inputs_from_row(
@@ -609,6 +637,56 @@ def _fund(fund_idx: pd.DataFrame, ticker: str, col: str) -> Optional[float]:
     return _f(row.get(col))
 
 
+def _quality_fund_for_gate(
+    ops_fund: pd.DataFrame, data_dir: Path | None
+) -> pd.DataFrame:
+    """Prefer collect-time ROE over the ops ledger (ops often has empty ROE)."""
+    path = resolve_quality_fundamentals_csv(data_dir)
+    if path is not None and path.exists():
+        try:
+            alpha = pd.read_csv(path, dtype=str)
+        except (OSError, ValueError):
+            alpha = pd.DataFrame()
+        if not alpha.empty and "ticker" in alpha.columns:
+            return alpha
+    return ops_fund
+
+
+def _fund_quality_index(fundamentals_df: pd.DataFrame) -> dict[str, bool] | None:
+    """ticker → ROE present. None = no fundamentals file (do not assume missing)."""
+    if fundamentals_df is None or fundamentals_df.empty or "ticker" not in fundamentals_df.columns:
+        return None
+    out: dict[str, bool] = {}
+    for _, row in fundamentals_df.iterrows():
+        ticker = str(row.get("ticker", "")).zfill(6)
+        if not ticker:
+            continue
+        out[ticker] = _f(row.get("roe_3y_avg")) is not None or _f(row.get("roe")) is not None
+    return out
+
+
+def _blank_optional(val: Any) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, float) and pd.isna(val):
+        return True
+    return str(val).strip().lower() in {"", "nan", "none", "<na>"}
+
+
+def _quality_inputs_ok(
+    factor: pd.Series, fund_ok: dict[str, bool] | None
+) -> bool | None:
+    raw = factor.get("quality_inputs_ok") if "quality_inputs_ok" in factor.index else None
+    if not _blank_optional(raw):
+        return _as_bool(raw, default=False)
+    if fund_ok is None:
+        return None
+    ticker = str(factor.get("ticker", "")).zfill(6)
+    if ticker in fund_ok:
+        return fund_ok[ticker]
+    return None
+
+
 def _f(val) -> Optional[float]:
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
@@ -641,6 +719,7 @@ def _build_ops_portfolio(
     prices_df: pd.DataFrame,
     fundamentals_df: pd.DataFrame,
     exit_targets_path: Path,
+    lookback_lows: dict | None = None,
 ) -> list[PortfolioRow]:
     """Build ops_book from actual kr_alpha holdings (purchase weights)."""
     del total_value  # weights are sleeve-relative inside _build_portfolio
@@ -652,6 +731,7 @@ def _build_ops_portfolio(
         fundamentals_df,
         scores,
         exit_targets_path,
+        lookback_lows=lookback_lows,
     )
     for row in rows:
         row.extra = {**(row.extra or {}), "book": "ops"}
@@ -696,20 +776,27 @@ def _build_screen_portfolio(
     prices_df: pd.DataFrame,
     fundamentals_df: pd.DataFrame,
     exit_targets_path: Path,
+    lookback_lows: dict | None = None,
+    overlay_path: Path | None = None,
+    exclude_tickers: set[str] | None = None,
 ) -> list[PortfolioRow]:
     """Build proposal_book from screened eligible names only (Policy B).
 
     Purchase weights from positions.csv are intentionally excluded.
     Proposed weights come from allocate_tranche; target_portfolio.csv is not written.
+    Names already at/above justified take-profit are dropped (next eligible fills).
     """
     name_scores = _name_scores_from_board(scores)
     if not name_scores:
         return []
 
+    from alpha_system.sizing.qual_overlay import load_qual_overlay
+    from alpha_system.sizing.target_gate import collect_above_justified_target_tickers
     from alpha_system.ui.services.alpha_book_ops import (
         equal_equity_weights,
         load_alpha_book_ops,
     )
+    from src.alpha.price_ladder import attach_ladder_extra, load_lookback_lows
     from src.alpha.quant_target_estimate import (
         load_alpha_template_fundamentals,
         quant_portfolio_extra,
@@ -718,7 +805,27 @@ def _build_screen_portfolio(
     # root is not on cfg — use exit path parent.parent or default
     root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
     alpha_fund_by = load_alpha_template_fundamentals(root_guess)
+    if lookback_lows is None:
+        lookback_lows = load_lookback_lows(root_guess, prices_df)
     policy = load_alpha_book_ops(root_guess)
+    overlay = load_qual_overlay(
+        overlay_path
+        if overlay_path is not None
+        else (root_guess / "data" / "qual_rank_overlay.json")
+    )
+    exit_yaml: dict[str, Any] = {}
+    if exit_targets_path.exists():
+        with exit_targets_path.open(encoding="utf-8") as handle:
+            exit_yaml = yaml.safe_load(handle) or {}
+    gated = exclude_tickers
+    if gated is None:
+        gated = collect_above_justified_target_tickers(
+            [s.ticker for s in name_scores],
+            prices_df=prices_df,
+            fundamentals_df=fundamentals_df,
+            template_fund_by=alpha_fund_by,
+            exit_yaml=exit_yaml,
+        )
     # Candidate count = sizing.target_names (portfolio UI / yaml). Do not
     # override with alpha_book_ops default (that file is 9:1 weight policy).
     allocation = allocate_tranche(
@@ -727,6 +834,8 @@ def _build_screen_portfolio(
         scores=name_scores,
         existing_weights={},
         tranche_budget=float(policy.equity_share),
+        overlay=overlay,
+        exclude_tickers=gated,
     )
     selected = [
         item for item in allocation.allocated if item.incremental_weight > 0
@@ -750,10 +859,6 @@ def _build_screen_portfolio(
             for a in selected
         ]
     score_map = {str(s.ticker).zfill(6): s for s in scores}
-    exit_yaml: dict[str, Any] = {}
-    if exit_targets_path.exists():
-        with exit_targets_path.open(encoding="utf-8") as handle:
-            exit_yaml = yaml.safe_load(handle) or {}
 
     price_idx = pd.DataFrame()
     if not prices_df.empty and "ticker" in prices_df.columns:
@@ -808,12 +913,14 @@ def _build_screen_portfolio(
         pbr_max = None
         yaml_target_px = None
         approved_as_of = ""
+        approved_by = ""
         revalidate_required = False
         revalidate_reason = ""
         if isinstance(ticker_targets, dict):
             pbr_max = _f((ticker_targets.get("valuation") or {}).get("pbr_max"))
             yaml_target_px = _f(ticker_targets.get("target_price"))
             approved_as_of = str(ticker_targets.get("approved_as_of") or "").strip()
+            approved_by = str(ticker_targets.get("approved_by") or "").strip()
             revalidate_required = bool(ticker_targets.get("revalidate_required"))
             revalidate_reason = str(ticker_targets.get("revalidate_reason") or "").strip()
 
@@ -829,7 +936,7 @@ def _build_screen_portfolio(
             target_detail = copy_get(
                 "portfolio",
                 "target_missing_screen",
-                default="목표가 없음 — 다음 주 통합 보고서(E)까지 대기 · 편입 차단",
+                default="목표가 없음 — 제안 종목에서 정량초안 승인 · 편입 차단",
             )
         elif has_target and cur_p and current_pbr and current_pbr > 0 and pbr_max and pbr_max > 0:
             target_price = round(cur_p * (pbr_max / current_pbr), 0)
@@ -882,6 +989,33 @@ def _build_screen_portfolio(
             fundamentals_df=fund_for_peers,
             alpha_row=alpha_fund_by.get(ticker),
         )
+        extra = {
+            "book": "proposal",
+            "selection_policy": "B",
+            "approved_as_of": approved_as_of,
+            "approved_by": approved_by,
+            "revalidate_required": revalidate_required,
+            "revalidate_reason": revalidate_reason,
+            **qextra,
+        }
+        mix_px = qextra.get("quant_price_mid")
+        if yaml_target_px and mix_px not in (None, ""):
+            try:
+                mix_f = float(mix_px)
+                saved = float(yaml_target_px)
+                if mix_f > 0 and saved > 0 and abs(mix_f - saved) / max(mix_f, saved) > 0.15:
+                    target_detail = (
+                        f"{target_detail} · 지금 혼합 {mix_f:,.0f}원 (저장과 다름)"
+                    ).strip(" ·")
+            except (TypeError, ValueError):
+                pass
+        extra = attach_ladder_extra(
+            extra,
+            ticker=ticker,
+            current=cur_p,
+            target_price=target_price,
+            lookback_lows=lookback_lows,
+        )
         rows.append(
             PortfolioRow(
                 ticker=ticker,
@@ -906,14 +1040,7 @@ def _build_screen_portfolio(
                 sector=sector,
                 current_pbr=current_pbr,
                 pbr_max=pbr_max,
-                extra={
-                    "book": "proposal",
-                    "selection_policy": "B",
-                    "approved_as_of": approved_as_of,
-                    "revalidate_required": revalidate_required,
-                    "revalidate_reason": revalidate_reason,
-                    **qextra,
-                },
+                extra=extra,
             )
         )
     rows.sort(key=lambda r: (-(r.total_score or 0), -r.weight_pct, r.ticker))
@@ -955,6 +1082,7 @@ def _build_portfolio(
     fundamentals_df: pd.DataFrame,
     scores: list[ScoreboardRow],
     exit_targets_path: Path,
+    lookback_lows: dict | None = None,
 ) -> list[PortfolioRow]:
     """Legacy positions-based book (kept for tests; UI uses _build_screen_portfolio)."""
     if kr_positions.empty:
@@ -974,6 +1102,7 @@ def _build_portfolio(
 
     formal_entry = _tickers_with_formal_entry()
 
+    from src.alpha.price_ladder import attach_ladder_extra, load_lookback_lows
     from src.alpha.quant_target_estimate import (
         load_alpha_template_fundamentals,
         quant_portfolio_extra,
@@ -981,6 +1110,8 @@ def _build_portfolio(
 
     root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
     alpha_fund_by = load_alpha_template_fundamentals(root_guess)
+    if lookback_lows is None:
+        lookback_lows = load_lookback_lows(root_guess, prices_df)
 
     fund_by_ticker: dict[str, dict[str, Any]] = {}
     if not fundamentals_df.empty and "ticker" in fundamentals_df.columns:
@@ -1080,6 +1211,13 @@ def _build_portfolio(
             fundamentals_df=fundamentals_df,
             alpha_row=alpha_fund_by.get(ticker),
         )
+        extra = attach_ladder_extra(
+            qextra,
+            ticker=ticker,
+            current=cur_p,
+            target_price=target_price,
+            lookback_lows=lookback_lows,
+        )
         rows.append(
             PortfolioRow(
                 ticker=ticker,
@@ -1104,7 +1242,7 @@ def _build_portfolio(
                 sector=sector,
                 current_pbr=current_pbr,
                 pbr_max=pbr_max,
-                extra=qextra,
+                extra=extra,
             )
         )
     rows.sort(key=lambda r: -r.weight_pct)

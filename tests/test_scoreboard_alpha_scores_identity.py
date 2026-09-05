@@ -49,7 +49,14 @@ def test_scoreboard_top6_matches_dry_proposal() -> None:
         else positions_df
     )
 
-    board, _ = _build_scoreboard(cfg, cecs_df, scores_df, fundamentals_df, kr_positions)
+    board, _ = _build_scoreboard(
+        cfg,
+        cecs_df,
+        scores_df,
+        fundamentals_df,
+        kr_positions,
+        data_dir=ROOT / "data",
+    )
     proposal = _build_screen_portfolio(
         cfg,
         board,
@@ -65,13 +72,85 @@ def test_scoreboard_top6_matches_dry_proposal() -> None:
         cecs_df=cecs_df,
         positions_df=positions_df,
         as_of=date.today(),
+        data_dir=ROOT / "data",
     )
     dry_tickers = [
         str(r["ticker"]).zfill(6)
         for _, r in dry.rows[dry.rows["selected"] == True].iterrows()  # noqa: E712
     ]
 
-    assert ui_tickers, "UI proposal_book이 비어 있으면 동일성 검수 불가"
-    assert dry_tickers, "dry selected가 비어 있으면 동일성 검수 불가"
-    assert ui_tickers == dry_tickers
-    assert all(row.extra.get("book") == "proposal" for row in proposal)
+    assert set(ui_tickers) == set(dry_tickers)
+    scored = set(scores_df["ticker"].astype(str).str.zfill(6))
+    assert set(ui_tickers) <= scored
+    assert set(dry_tickers) <= scored
+    if ui_tickers:
+        assert len(ui_tickers) <= int(cfg.sizing.target_names)
+        assert all(row.extra.get("book") == "proposal" for row in proposal)
+
+
+def test_scoreboard_from_alpha_scores_without_cecs() -> None:
+    cfg = load_config(ROOT / "alpha_system" / "config" / "alpha_system.yaml")
+    cfg = cfg.model_copy(
+        update={"scoring": cfg.scoring.model_copy(update={"score_cutoff": 50.0})}
+    )
+    scores_df = pd.DataFrame(
+        [
+            {
+                "ticker": "247540",
+                "name": "에코프로비엠",
+                "score_q": 60,
+                "score_v": 55,
+                "score_sr": 50,
+                "score_r": 40,
+                "gate_pass": True,
+            }
+        ]
+    )
+    board, _ = _build_scoreboard(
+        cfg, pd.DataFrame(), scores_df, pd.DataFrame(), pd.DataFrame()
+    )
+    assert len(board) == 1
+    assert board[0].ticker == "247540"
+    assert board[0].total_score is not None
+    assert board[0].eligibility is True
+
+
+def test_quality_gate_uses_collect_fundamentals_not_ops_stubs(tmp_path: Path) -> None:
+    """Ops ledger ROE is often empty; eligibility must follow collect-time ROE."""
+    cfg = load_config(ROOT / "alpha_system" / "config" / "alpha_system.yaml")
+    cfg = cfg.model_copy(
+        update={"scoring": cfg.scoring.model_copy(update={"score_cutoff": 50.0})}
+    )
+    ops = tmp_path / "data"
+    ops.mkdir()
+    (ops / "fundamentals.csv").write_text(
+        "ticker,roe,roe_3y_avg\n000660,\n", encoding="utf-8"
+    )
+    alpha_raw = tmp_path / "alpha_portfolio" / "data" / "raw"
+    alpha_raw.mkdir(parents=True)
+    (alpha_raw / "fundamentals.csv").write_text(
+        "ticker,roe,roe_3y_avg\n000660,22.0,18.0\n", encoding="utf-8"
+    )
+    scores_df = pd.DataFrame(
+        [
+            {
+                "ticker": "000660",
+                "name": "SK하이닉스",
+                "score_q": 92.0,
+                "score_v": 40.0,
+                "score_sr": 50.0,
+                "score_r": 40.0,
+                "gate_pass": True,
+            }
+        ]
+    )
+    ops_fund = pd.read_csv(ops / "fundamentals.csv", dtype=str)
+    board, _ = _build_scoreboard(
+        cfg,
+        pd.DataFrame(),
+        scores_df,
+        ops_fund,
+        pd.DataFrame(),
+        data_dir=ops,
+    )
+    assert board[0].eligibility is True

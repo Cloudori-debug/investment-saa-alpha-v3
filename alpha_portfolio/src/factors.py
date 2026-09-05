@@ -16,6 +16,23 @@ def _sector_series(df: pd.DataFrame, sector: str, col: str) -> pd.Series:
     return df[col] if col in df.columns else pd.Series(dtype=float)
 
 
+def quality_inputs_present(row: pd.Series) -> bool:
+    """ROE exists so quality is judged, not filled with a silent 50."""
+    for col in ("roe_3y_avg", "roe"):
+        val = row.get(col)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            continue
+        text = str(val).strip()
+        if not text or text.lower() in {"nan", "none"}:
+            continue
+        try:
+            float(text)
+        except (TypeError, ValueError):
+            continue
+        return True
+    return False
+
+
 def score_quality(row: pd.Series, df: pd.DataFrame, cfg: dict[str, Any]) -> float:
     q_cfg = cfg.get("quality", {})
     weights = q_cfg.get("sub_weights", {}).get("default", {})

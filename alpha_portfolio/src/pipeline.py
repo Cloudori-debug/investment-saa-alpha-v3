@@ -84,23 +84,34 @@ def run_pipeline(
     as_of: date | None = None,
     collect_first: bool = False,
     collect_scope: str | None = None,
+    book: str = "KOSPI",
 ) -> PipelineResult:
-    paths = get_paths(root)
+    book = str(book or "KOSPI").upper()
+    paths = get_paths(root, book=book)
     _ensure_dirs(paths)
 
     if collect_first:
         from src.collect.pykrx_collector import run_collect
 
         as_of_str = as_of.isoformat() if as_of else None
-        run_collect(root, as_of=as_of_str, scope=collect_scope)  # type: ignore[arg-type]
+        run_collect(root, as_of=as_of_str, scope=collect_scope, book=book)  # type: ignore[arg-type]
 
     gate_cfg = load_yaml(paths["config"] / "universe_gate.yaml").get("gate", {})
+    if book == "KOSDAQ":
+        from src.collect.pykrx_collector import _KOSDAQ_CAP_MIN
+
+        gate_cfg = dict(gate_cfg)
+        gate_cfg["market_cap_min"] = float(_KOSDAQ_CAP_MIN)
     scoring_cfg = load_yaml(paths["config"] / "alpha_scoring.yaml")
     exit_cfg = load_yaml(paths["config"] / "alpha_exit_rules.yaml")
 
     positions_path = paths["raw"] / "positions.csv"
     if not positions_path.exists():
-        alt = Path(root or paths["project"]).parent / "data" / "positions.csv"
+        repo = Path(root or paths["project"]).resolve().parent
+        if book == "KOSDAQ":
+            alt = repo / "data" / "books" / "kosdaq" / "positions.csv"
+        else:
+            alt = repo / "data" / "positions.csv"
         if alt.exists():
             positions_path = alt
 
@@ -110,10 +121,24 @@ def run_pipeline(
 
     fundamentals = load_fundamentals(paths["raw"] / "fundamentals.csv")
     price_snapshot = load_price_snapshot(paths["raw"] / "price_snapshot.csv")
+    if not price_snapshot.empty and "market_cap" in price_snapshot.columns:
+        missing_cap = int(
+            pd.to_numeric(price_snapshot["market_cap"], errors="coerce").isna().sum()
+        )
+        if missing_cap == len(price_snapshot):
+            raise RuntimeError(
+                "price_snapshot 시가총액이 전부 비어 있습니다. "
+                "게이트가 전 종목을 low_market_cap으로 탈락시켜 점수가 비게 됩니다. "
+                "정량 갱신을 다시 실행하세요."
+            )
     shareholder = load_shareholder(paths["raw"] / "shareholder.csv")
     target = load_target_portfolio(paths["raw"] / "target_portfolio.csv")
     if target.empty:
-        alt = Path(root or paths["project"]).parent / "data" / "target_portfolio.csv"
+        repo = Path(root or paths["project"]).resolve().parent
+        if book == "KOSDAQ":
+            alt = repo / "data" / "books" / "kosdaq" / "target_portfolio.csv"
+        else:
+            alt = repo / "data" / "target_portfolio.csv"
         if alt.exists():
             target = load_target_portfolio(alt)
 
@@ -121,6 +146,9 @@ def run_pipeline(
     from src.sector_enrich import enrich_sectors
 
     merged = enrich_sectors(merged)
+    from src.collect.liquid_fundamentals import fill_sector_relative_multiples
+
+    merged = fill_sector_relative_multiples(merged)
     merged = _attach_flags(merged, load_stock_flags(paths["raw"] / "stock_flags.csv"))
     merged = _attach_park(merged, load_park_state(paths["state"] / "park_state.csv"))
 
@@ -130,6 +158,29 @@ def run_pipeline(
     from src.gate import run_gate
 
     screening_universe = run_gate(merged, gate_cfg)
+    try:
+        from alpha_system.ui.services.cecs_opendart_pack import (
+            apply_payout_sr4,
+            collect_payout_sr4,
+        )
+
+        repo = Path(root or paths["project"]).resolve().parent
+        passed = screening_universe
+        if "gate_pass" in passed.columns:
+            passed = passed[passed["gate_pass"].astype(str).str.lower().isin({"true", "1"})]
+        tickers = [
+            str(t).zfill(6) if str(t).isdigit() else str(t)
+            for t in passed.get("ticker", [])
+        ]
+        sr4 = collect_payout_sr4(
+            repo,
+            tickers,
+            as_of=as_of,
+            market=book,
+        )
+        screening_universe = apply_payout_sr4(screening_universe, sr4)
+    except Exception:
+        pass
     paths["input"].mkdir(parents=True, exist_ok=True)
     screening_universe.to_csv(paths["input"] / "screening_universe.csv", index=False, encoding="utf-8-sig")
 

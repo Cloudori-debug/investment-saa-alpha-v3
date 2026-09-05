@@ -54,6 +54,66 @@ def _blend_total(
     return round((factor_score_total * w_f + cecs * w_c) / denom, 4)
 
 
+def _quality_gate(
+    *,
+    score_q: Optional[float],
+    quality_inputs_ok: Optional[bool],
+    min_q: Optional[float],
+) -> Optional[str]:
+    """Return a fail reason, or None if quality does not block eligibility."""
+    if quality_inputs_ok is False:
+        return "품질 재료 없음 — 판정 불가"
+    if min_q is None or score_q is None:
+        return None
+    if float(score_q) < float(min_q):
+        return f"품질 하한 미달: score_q={score_q} < {min_q}"
+    return None
+
+
+def quality_inputs_present(*, roe: Any = None, roe_3y_avg: Any = None) -> bool:
+    """True when a numeric ROE exists (quality can be judged)."""
+    for val in (roe_3y_avg, roe):
+        if val is None:
+            continue
+        if isinstance(val, float) and pd.isna(val):
+            continue
+        text = str(val).strip()
+        if not text or text.lower() in {"nan", "none"}:
+            continue
+        try:
+            float(text)
+        except (TypeError, ValueError):
+            continue
+        return True
+    return False
+
+
+def _cutoff_eligibility(
+    *,
+    total: float,
+    cutoff: Optional[float],
+    score_q: Optional[float],
+    quality_inputs_ok: Optional[bool],
+    min_q: Optional[float],
+    reason_ok: str,
+    reason_low: str,
+) -> tuple[Optional[bool], str, float]:
+    blocked = _quality_gate(
+        score_q=score_q, quality_inputs_ok=quality_inputs_ok, min_q=min_q
+    )
+    if blocked:
+        return False, blocked, 0.0
+    if cutoff is None:
+        return (
+            None,
+            "score_cutoff [TODO] unset — eligibility not decided (no silent default)",
+            total,
+        )
+    if total >= float(cutoff):
+        return True, reason_ok, total
+    return False, reason_low, 0.0
+
+
 def score_name(
     *,
     ticker: str,
@@ -66,6 +126,7 @@ def score_name(
     factor_score_total: Optional[float] = None,
     cecs_inputs: Optional[CatalystInputs] = None,
     cecs: Optional[float] = None,
+    quality_inputs_ok: Optional[bool] = None,
     system_cfg: AlphaSystemConfig,
     scoring_cfg: dict[str, Any] | None = None,
 ) -> NameScore:
@@ -91,10 +152,10 @@ def score_name(
         )
 
     cecs_subs: dict[str, float] = {}
-    if cecs is None and cecs_inputs is None:
-        # CECS unscored: neither a precomputed value nor sub-scores were given.
-        # Do NOT invent a neutral 0.5 — leave eligibility undecided, mirroring the
-        # score_cutoff [TODO] contract (never let an unverified name pass silently).
+    blend = dict(scfg.get("total_score_blend") or {})
+    cecs_blend_w = float(blend.get("cecs", 0.0) or 0.0)
+    if cecs is None and cecs_inputs is None and cecs_blend_w > 1e-12:
+        # CECS still in the blend: do not invent a silent 0.5.
         factors = {
             "score_q": float(score_q) if score_q is not None else float("nan"),
             "score_v": float(score_v) if score_v is not None else float("nan"),
@@ -110,11 +171,46 @@ def score_name(
             factors=factors,
             total_score=provisional,
             eligibility=None,
-            # provisional; sizing must call require_eligibility_decided
             weight_input=provisional,
             eligibility_reason=(
                 "CECS unscored — eligibility not decided (no silent default)"
             ),
+            cecs_subs=cecs_subs,
+        )
+    if cecs is None and cecs_inputs is None:
+        # Ops A: CECS weight 0 — rank from factors only; cutoff still applies.
+        total = round(float(factor_score_total), 4)
+        factors = {
+            "score_q": float(score_q) if score_q is not None else float("nan"),
+            "score_v": float(score_v) if score_v is not None else float("nan"),
+            "score_sr": float(score_sr) if score_sr is not None else float("nan"),
+            "score_r": float(score_r) if score_r is not None else float("nan"),
+            "cecs": float("nan"),
+            "factor_score_total": float(factor_score_total),
+        }
+        cutoff = system_cfg.scoring.score_cutoff
+        min_q = getattr(system_cfg.scoring, "quality_min_score", None)
+        eligibility, reason, weight_input = _cutoff_eligibility(
+            total=total,
+            cutoff=cutoff,
+            score_q=score_q,
+            quality_inputs_ok=quality_inputs_ok,
+            min_q=min_q,
+            reason_ok=(
+                f"eligible: total_score={total} >= cutoff={cutoff} (Ops A, CECS 미반영)"
+            ),
+            reason_low=(
+                f"ineligible: total_score={total} < cutoff={cutoff} (Ops A, CECS 미반영)"
+            ),
+        )
+        return NameScore(
+            ticker=ticker,
+            name=name,
+            factors=factors,
+            total_score=total,
+            eligibility=eligibility,
+            weight_input=weight_input,
+            eligibility_reason=reason,
             cecs_subs=cecs_subs,
         )
 
@@ -162,18 +258,16 @@ def score_name(
     )
 
     cutoff = system_cfg.scoring.score_cutoff
-    if cutoff is None:
-        eligibility: Optional[bool] = None
-        reason = "score_cutoff [TODO] unset — eligibility not decided (no silent default)"
-        weight_input = total  # provisional; sizing must call require_eligibility_decided
-    elif total >= float(cutoff):
-        eligibility = True
-        reason = f"eligible: total_score={total} >= cutoff={cutoff}"
-        weight_input = total
-    else:
-        eligibility = False
-        reason = f"ineligible: total_score={total} < cutoff={cutoff}"
-        weight_input = 0.0
+    min_q = getattr(system_cfg.scoring, "quality_min_score", None)
+    eligibility, reason, weight_input = _cutoff_eligibility(
+        total=total,
+        cutoff=cutoff,
+        score_q=score_q,
+        quality_inputs_ok=quality_inputs_ok,
+        min_q=min_q,
+        reason_ok=f"eligible: total_score={total} >= cutoff={cutoff}",
+        reason_low=f"ineligible: total_score={total} < cutoff={cutoff}",
+    )
 
     return NameScore(
         ticker=ticker,
@@ -234,6 +328,7 @@ def score_frame(
                 factor_score_total=float(fst) if fst is not None and pd.notna(fst) else None,
                 cecs_inputs=inputs,
                 cecs=float(cecs_val) if cecs_val is not None else None,
+                quality_inputs_ok=_opt_bool(raw, "quality_inputs_ok"),
                 system_cfg=system_cfg,
                 scoring_cfg=scfg,
             )
@@ -245,6 +340,19 @@ def _opt_float(row: pd.Series, col: str) -> Optional[float]:
     if col not in row.index or row.get(col) is None or pd.isna(row.get(col)):
         return None
     return float(row.get(col))
+
+
+def _opt_bool(row: pd.Series, col: str) -> Optional[bool]:
+    if col not in row.index or row.get(col) is None or pd.isna(row.get(col)):
+        return None
+    text = str(row.get(col)).strip().lower()
+    if not text:
+        return None
+    if text in {"1", "true", "t", "yes", "y"}:
+        return True
+    if text in {"0", "false", "f", "no", "n"}:
+        return False
+    return None
 
 
 # CECS sub-scores that are actually blended (T2-mapped subs are excluded from scoring).

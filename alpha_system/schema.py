@@ -65,6 +65,8 @@ class CapitalConfig(BaseModel):
 
 
 class TrancheConfig(BaseModel):
+    """Legacy capital-tranche block. Empty in live yaml (retired)."""
+
     model_config = ConfigDict(extra="forbid")
 
     weight: float = Field(..., gt=0.0, le=1.0)
@@ -73,10 +75,18 @@ class TrancheConfig(BaseModel):
     display_name: str = ""
     short_desc: str = ""
     event_ids: list[str] = Field(default_factory=list)
-    # Former CECS score inputs remapped as T2 candidate sources (not auto-triggers)
     event_candidate_sources: list[str] = Field(default_factory=list)
     valuation_band: Optional[dict[str, Any]] = None
     hybrid_rules: Optional[dict[str, Any]] = None
+
+
+class QualGatesConfig(BaseModel):
+    """Weekly qualitative T2 event list — not capital tranches."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    t2_event_ids: list[str] = Field(default_factory=list)
+    event_candidate_sources: list[str] = Field(default_factory=list)
 
 
 class HardRulesConfig(BaseModel):
@@ -106,10 +116,10 @@ class UniverseConfig(BaseModel):
             )
         if self.boundary_mode == "shareholder_return_broad":
             markets = [str(m).upper() for m in self.include_markets]
-            if markets != ["KOSPI"]:
+            if markets not in (["KOSPI"], ["KOSDAQ"]):
                 raise ValueError(
-                    "universe.include_markets is locked to [KOSPI] under B안 "
-                    "(+ universe_filter.yaml Gate). Got "
+                    "universe.include_markets must be a single market "
+                    "[KOSPI] or [KOSDAQ] (never mixed). Got "
                     f"{self.include_markets}."
                 )
         return self
@@ -119,15 +129,17 @@ class ScoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     score_cutoff: Optional[float] = None
+    # Hold-book floor: missing quality inputs fail eligibility (not a silent 50).
+    quality_min_score: float = Field(55.0, ge=0.0, le=100.0)
     rescore_triggers: list[str] = Field(default_factory=list)
 
 
 class SizingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Alpha book ops: 5~9 (policy default 9 = equity slots in 9:1 book).
+    # KOSPI book: 5~9. KOSDAQ satellite book: 3 (sector cap 1).
     # Not unlocked to 30 — theme correlation means more names ≠ less thesis risk.
-    target_names: int = Field(..., ge=5, le=9)
+    target_names: int = Field(..., ge=3, le=9)
     initial_weight_cap: float = Field(..., gt=0.0, le=1.0)
     market_value_cap: float = Field(..., gt=0.0, le=1.0)
     # Post-cutoff concentration: max names per normalized sector_group.
@@ -192,7 +204,8 @@ class AlphaSystemConfig(BaseModel):
     purpose: str = "absolute_return_catalyst_bet"
     thesis_window: ThesisWindowConfig
     capital: CapitalConfig
-    tranches: dict[str, TrancheConfig]
+    tranches: dict[str, TrancheConfig] = Field(default_factory=dict)
+    qual_gates: QualGatesConfig = Field(default_factory=QualGatesConfig)
     hard_rules: HardRulesConfig
     thesis_damage_event_ids: list[str] = Field(default_factory=list)
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
@@ -200,7 +213,7 @@ class AlphaSystemConfig(BaseModel):
     sizing: SizingConfig = Field(default_factory=SizingConfig)
     exit: ExitConfig = Field(default_factory=ExitConfig)
     benchmark: Optional[str] = None
-    # T4 12-month rule anchor
+    # Ops declaration (checklist). Not a capital-tranche unlock.
     go_live_date: Optional[date] = None
     swap_rule: SwapRuleConfig = Field(default_factory=SwapRuleConfig)
     thesis_background: ThesisBackgroundConfig = Field(
@@ -220,34 +233,36 @@ class AlphaSystemConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tranches(self) -> AlphaSystemConfig:
+        """Live config has no capital tranches. Leftover backups still must be 4×25%."""
+        if not self.tranches:
+            return self
         expected = {t.value for t in TRANCHE_ORDER}
         keys = set(self.tranches.keys())
         if keys != expected:
             raise ValueError(
-                f"tranches must be exactly {sorted(expected)}, got {sorted(keys)}"
+                f"tranches must be empty (retired) or exactly {sorted(expected)}, "
+                f"got {sorted(keys)}"
             )
         weights = [self.tranches[t.value].weight for t in TRANCHE_ORDER]
         if any(abs(w - 0.25) > 1e-9 for w in weights):
             raise ValueError(
-                "each tranche weight is locked at 0.25 (4-way equal split)."
+                "each leftover tranche weight is locked at 0.25 (4-way equal split)."
             )
         if abs(sum(weights) - 1.0) > 1e-9:
             raise ValueError("tranche weights must sum to 1.0")
-
-        type_map = {
-            TrancheId.T1: TriggerType.TIME,
-            TrancheId.T2: TriggerType.EVENT,
-            TrancheId.T3: TriggerType.PRICE,
-            TrancheId.T4: TriggerType.HYBRID,
-        }
-        for tid, expected_type in type_map.items():
-            actual = self.tranches[tid.value].trigger_type
-            if actual != expected_type:
-                raise ValueError(
-                    f"{tid.value}.trigger_type must be {expected_type.value}, "
-                    f"got {actual.value}"
-                )
         return self
+
+    def t2_event_ids(self) -> list[str]:
+        if self.qual_gates.t2_event_ids:
+            return list(self.qual_gates.t2_event_ids)
+        t2 = self.tranches.get("T2")
+        return list(t2.event_ids) if t2 is not None else []
+
+    def t2_event_candidate_sources(self) -> list[str]:
+        if self.qual_gates.event_candidate_sources:
+            return list(self.qual_gates.event_candidate_sources)
+        t2 = self.tranches.get("T2")
+        return list(t2.event_candidate_sources) if t2 is not None else []
 
     def todo_fields(self) -> list[str]:
         """Unset [TODO] knobs — structure present, values deferred."""
@@ -266,8 +281,6 @@ class AlphaSystemConfig(BaseModel):
             pending.append("exit.window_end_portfolio_action")
         if self.go_live_date is None:
             pending.append("go_live_date")
-        # Confirmed trigger package (2026-07-16) — not TODO:
-        # T2 event_ids, T3 valuation_band, T4 hybrid_rules, rescore_triggers
         return pending
 
     def require(self, field_path: str) -> None:

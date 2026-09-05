@@ -26,7 +26,10 @@ factor_score_weights:
   score_r: 0.10
 
 # eligibility / weight_input 최종 점수 = blend(factor_score_total, cecs)
-# Ops A (2026-07-25): CECS는 순위 입력에서 제외(가중 0). 정성은 T2·논지·목표가 게이트만.
+# 적격: 품질 ROE 재료 필수 · quality_min_score(alpha_system.yaml, 기본 55). 빈값→50 통과 금지.
+# Ops A (2026-07-25): CECS는 순위 입력에서 제외(가중 0). 정성은 T2·논지 게이트
+# + 제안 종목 화면 목표가(exit YAML 자동) + OpenDART 종목 게이트. 점수에 안 섞음.
+# + 신평·공공 게이트(data/qual_rank_overlay.json, OpenDART 자동). 점수에 안 섞음.
 # 이전 검토값 0.70/0.30 — docs/ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md
 total_score_blend:
   factor_score_total: 1.0
