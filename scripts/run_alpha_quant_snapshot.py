@@ -48,22 +48,34 @@ def run_quant_snapshot(
     collect: bool,
     collect_scope: str | None,
     refresh_t3_pbr: bool,
+    market: str = "KOSPI",
 ) -> dict:
     from alpha_system.ui.services.proposal_freeze import assert_quant_refresh_allowed
+    from alpha_system.screen_book import (
+        alpha_data_dir,
+        ensure_book_dirs,
+        is_kosdaq,
+        normalize_market,
+        provenance_rel,
+    )
 
     assert_quant_refresh_allowed(root)
+    market = normalize_market(market)
+    ensure_book_dirs(root, market)
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     alpha_root = root / "alpha_portfolio"
-    scores_path = alpha_root / "data" / "output" / "alpha_scores.csv"
-    provenance_path = root / "data" / "alpha_quant_snapshot_provenance.json"
+    alpha_data = alpha_data_dir(root, market)
+    scores_path = alpha_data / "output" / "alpha_scores.csv"
+    provenance_path = root / provenance_rel(market)
+    ops = root / "data" if not is_kosdaq(market) else root / "data" / "books" / "kosdaq"
 
     inputs = [
-        root / "data" / "fundamentals.csv",
-        root / "data" / "prices.csv",
-        root / "data" / "positions.csv",
-        alpha_root / "data" / "raw" / "fundamentals.csv",
-        alpha_root / "data" / "raw" / "price_snapshot.csv",
+        ops / "fundamentals.csv",
+        ops / "prices.csv",
+        ops / "positions.csv",
+        alpha_data / "raw" / "fundamentals.csv",
+        alpha_data / "raw" / "price_snapshot.csv",
         root / "data" / "cecs_manual_scoring_template.csv",
     ]
     before_hash = _input_hash(inputs)
@@ -79,6 +91,8 @@ def run_quant_snapshot(
         as_of=as_of,
         collect_first=collect,
         collect_scope=collect_scope,
+        book=market,
+        enrich_watch_dart=True,
     )
 
     t3_detail = None
@@ -101,13 +115,17 @@ def run_quant_snapshot(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "collect": collect,
         "collect_scope": collect_scope,
+        "market": market,
         "input_hash_before": before_hash,
         "input_hash_after": after_hash,
         "scores_path": str(scores_path.relative_to(root)).replace("\\", "/"),
+        "provenance_path": str(provenance_path.relative_to(root)).replace("\\", "/"),
         "scores_sha256": _sha256_file(scores_path),
         "scored_rows": int(len(result.scores)),
         "gate_pass": int(result.scores["gate_pass"].sum()) if not result.scores.empty else 0,
         "candidates": int(len(result.candidates)),
+        "watch_dart_requested": int(getattr(result, "watch_dart_requested", 0) or 0),
+        "watch_dart_enriched": int(getattr(result, "watch_dart_enriched", 0) or 0),
         "target_portfolio_written": False,
         "t3_pbr_refresh": t3_detail,
         "sources": {
@@ -150,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--refresh-t3-pbr", action="store_true")
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument(
+        "--market",
+        choices=["KOSPI", "KOSDAQ"],
+        default="KOSPI",
+        help="Independent screen book. Never mix in one collect.",
+    )
     args = parser.parse_args(argv)
 
     as_of = date.fromisoformat(args.as_of) if args.as_of else date.today()
@@ -161,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
             collect=collect,
             collect_scope=args.collect_scope if collect else None,
             refresh_t3_pbr=bool(args.refresh_t3_pbr),
+            market=str(args.market or "KOSPI"),
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -171,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"scored     : {provenance['scored_rows']}")
     print(f"gate_pass  : {provenance['gate_pass']}")
     print(f"scores     : {provenance['scores_path']}")
-    print(f"provenance : data/alpha_quant_snapshot_provenance.json")
+    print(f"provenance : {provenance.get('provenance_path')}")
     print("target_portfolio.csv: NOT written")
     return 0
 

@@ -201,6 +201,7 @@ def compute_metrics(rows: list[dict[str, Any]], meta: ReportMeta) -> dict[str, f
         "fcf": fcf,
         "operating_cash_flow": ocf,
         "net_income": net_income,
+        "net_income_prior": prior_net,
         "earnings_yoy": earnings_yoy,
     }
 

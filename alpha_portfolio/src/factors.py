@@ -16,9 +16,57 @@ def _sector_series(df: pd.DataFrame, sector: str, col: str) -> pd.Series:
     return df[col] if col in df.columns else pd.Series(dtype=float)
 
 
+_FINANCIAL_SECTOR_MARKERS = (
+    "은행",
+    "보험",
+    "증권",
+    "금융",
+    "financial",
+    "insurance",
+    "broker",
+)
+
+
+def _is_liquid_stub(row: pd.Series) -> bool:
+    src = str(row.get("source") or "").strip().lower()
+    verified = str(row.get("verified") or "").strip().lower()
+    return src == "liquid_stub" or verified == "stub"
+
+
+def _use_trailing_roe_only(row: pd.Series) -> bool:
+    """Stub KRX and watch-pool DART are single-period — ignore dummy 3y ROE."""
+    if _is_liquid_stub(row):
+        return True
+    return str(row.get("source") or "").strip().lower() == "opendart_watch"
+
+
+def _financial_like(row: pd.Series) -> bool:
+    if _truthy(row.get("is_financial")):
+        return True
+    blob = " ".join(
+        str(row.get(col) or "")
+        for col in ("sector", "sector_group", "krx_sector", "internal_sector")
+    ).lower()
+    return any(marker.lower() in blob for marker in _FINANCIAL_SECTOR_MARKERS)
+
+
+def _numeric_present(val: Any) -> bool:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return False
+    text = str(val).strip()
+    if not text or text.lower() in {"nan", "none"}:
+        return False
+    try:
+        float(text)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def quality_inputs_present(row: pd.Series) -> bool:
     """ROE exists so quality is judged, not filled with a silent 50."""
-    for col in ("roe_3y_avg", "roe"):
+    cols = ("roe",) if _use_trailing_roe_only(row) else ("roe_3y_avg", "roe")
+    for col in cols:
         val = row.get(col)
         if val is None or (isinstance(val, float) and pd.isna(val)):
             continue
@@ -36,20 +84,27 @@ def quality_inputs_present(row: pd.Series) -> bool:
 def score_quality(row: pd.Series, df: pd.DataFrame, cfg: dict[str, Any]) -> float:
     q_cfg = cfg.get("quality", {})
     weights = q_cfg.get("sub_weights", {}).get("default", {})
-    if bool(row.get("is_holding")):
+    if _truthy(row.get("is_holding")):
         weights = q_cfg.get("sub_weights", {}).get("holding", weights)
 
     roe_cfg = q_cfg.get("roe_linear", {})
-    roe_val = row.get("roe_3y_avg")
-    if roe_val is None or pd.isna(roe_val):
+    stub = _is_liquid_stub(row)
+    if _use_trailing_roe_only(row):
+        # Trailing KRX/DART ROE only. Stub files used to carry dummy 3y=10 / debt=80.
         roe_val = row.get("roe")
+    else:
+        roe_val = row.get("roe_3y_avg")
+        if roe_val is None or pd.isna(roe_val):
+            roe_val = row.get("roe")
     q1 = linear_score(roe_val, roe_cfg.get("low", 5), roe_cfg.get("high", 20))
 
     sector = str(row.get("sector", ""))
     q2 = percentile_score(row.get("opm"), _sector_series(df, sector, "opm"))
 
     debt_cfg = q_cfg.get("debt_linear", {})
-    if bool(row.get("is_financial")):
+    if _financial_like(row):
+        q3 = 50.0
+    elif stub and not _numeric_present(row.get("debt_ratio")):
         q3 = 50.0
     else:
         q3 = linear_score(

@@ -34,6 +34,8 @@ class PipelineResult:
     target_draft: pd.DataFrame | None = None
     target_changes: pd.DataFrame | None = None
     replace_pairs: pd.DataFrame | None = None
+    watch_dart_enriched: int = 0
+    watch_dart_requested: int = 0
     matrix_warnings: list[str] | None = None
     tier_allocation: dict | None = None
 
@@ -86,6 +88,7 @@ def run_pipeline(
     collect_first: bool = False,
     collect_scope: str | None = None,
     book: str = "KOSPI",
+    enrich_watch_dart: bool = False,
 ) -> PipelineResult:
     book = str(book or "KOSPI").upper()
     paths = get_paths(root, book=book)
@@ -147,9 +150,13 @@ def run_pipeline(
     from src.sector_enrich import enrich_sectors
 
     merged = enrich_sectors(merged)
-    from src.collect.liquid_fundamentals import fill_sector_relative_multiples
+    from src.collect.liquid_fundamentals import (
+        fill_sector_relative_multiples,
+        strip_stub_quality_placeholders,
+    )
 
     merged = fill_sector_relative_multiples(merged)
+    merged = strip_stub_quality_placeholders(merged)
     merged = _attach_flags(merged, load_stock_flags(paths["raw"] / "stock_flags.csv"))
     merged = _attach_park(merged, load_park_state(paths["state"] / "park_state.csv"))
 
@@ -159,34 +166,56 @@ def run_pipeline(
     from src.gate import run_gate
 
     screening_universe = run_gate(merged, gate_cfg)
-    try:
-        from alpha_system.ui.services.cecs_opendart_pack import (
-            apply_payout_sr4,
-            collect_payout_sr4,
-        )
-
-        repo = Path(root or paths["project"]).resolve().parent
-        passed = screening_universe
-        if "gate_pass" in passed.columns:
-            gp = passed["gate_pass"].astype(str).str.lower().str.strip()
-            passed = passed[gp.isin({"true", "1", "1.0", "yes"})]
-        tickers = [
-            str(t).zfill(6) if str(t).isdigit() else str(t)
-            for t in passed.get("ticker", [])
-        ]
-        sr4 = collect_payout_sr4(
-            repo,
-            tickers,
-            as_of=as_of,
-            market=book,
-        )
-        screening_universe = apply_payout_sr4(screening_universe, sr4)
-    except Exception as exc:
-        warnings.warn(f"OpenDART SR4 skipped: {exc}", RuntimeWarning)
     paths["input"].mkdir(parents=True, exist_ok=True)
-    screening_universe.to_csv(paths["input"] / "screening_universe.csv", index=False, encoding="utf-8-sig")
+    scores, candidates = run_screener(
+        screening_universe, gate_cfg, scoring_cfg, kr_alpha_weight=kr_alpha_weight
+    )
+    repo = Path(root or paths["project"]).resolve().parent
+    dart_requested = 0
+    dart_filled = 0
+    if enrich_watch_dart:
+        try:
+            from alpha_system.screen_book import watch_max
+            from alpha_system.ui.services.cecs_opendart_pack import (
+                apply_payout_sr4,
+                collect_payout_sr4,
+            )
+            from alpha_system.ui.services.watch_dart_fundamentals import (
+                apply_watch_dart_rows,
+                collect_watch_dart_financials,
+                persist_watch_dart_to_fundamentals,
+                watch_depth_tickers,
+            )
 
-    scores, candidates = run_screener(screening_universe, gate_cfg, scoring_cfg, kr_alpha_weight=kr_alpha_weight)
+            depth = watch_depth_tickers(scores, market=book, depth=watch_max(book))
+            dart_requested = len(depth)
+            filled, dart_info = collect_watch_dart_financials(
+                depth,
+                as_of=as_of or date.today(),
+                root=repo,
+            )
+            dart_filled = int(dart_info.filled)
+            if filled:
+                screening_universe = apply_watch_dart_rows(screening_universe, filled)
+                persist_watch_dart_to_fundamentals(paths["raw"] / "fundamentals.csv", filled)
+            if dart_info.errors:
+                warnings.warn(
+                    "OpenDART 관찰 풀 재무: " + "; ".join(dart_info.errors[:8]),
+                    RuntimeWarning,
+                )
+            sr4 = collect_payout_sr4(
+                repo,
+                depth,
+                as_of=as_of,
+                market=book,
+            )
+            screening_universe = apply_payout_sr4(screening_universe, sr4)
+            scores, candidates = run_screener(
+                screening_universe, gate_cfg, scoring_cfg, kr_alpha_weight=kr_alpha_weight
+            )
+        except Exception as exc:
+            warnings.warn(f"OpenDART 관찰 풀 보강 skipped: {exc}", RuntimeWarning)
+    screening_universe.to_csv(paths["input"] / "screening_universe.csv", index=False, encoding="utf-8-sig")
 
     exit_review = run_exit_review(
         merged,
@@ -269,4 +298,6 @@ def run_pipeline(
         replace_pairs=replace_pairs,
         matrix_warnings=matrix_warnings,
         tier_allocation=tier_allocation,
+        watch_dart_enriched=dart_filled,
+        watch_dart_requested=dart_requested,
     )

@@ -226,9 +226,8 @@ def run_screener(
     work["satellite_track"] = satellite_flags
     work["composite_core"] = composites_core
     work["composite_satellite"] = composites_sat
-    work["composite_raw"] = [
-        cs if st and cs >= cc else cc for cc, cs, st in zip(composites_core, composites_sat, satellite_flags, strict=True)
-    ]
+    # Ops A / Core: rank on Q/V/SR/R only. Satellite momentum stays a flag, not the score.
+    work["composite_raw"] = composites_core
     bonus = float(scoring_cfg.get("incumbent_bonus", 3))
     work["incumbent_bonus"] = work["is_held"].map(lambda h: bonus if h else 0.0)
     work["composite_score"] = (work["composite_raw"] + work["incumbent_bonus"]).clip(upper=100).round(2)

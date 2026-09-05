@@ -168,10 +168,10 @@ def sync_liquid_fundamentals_stubs(
                 "as_of": as_of,
                 "fiscal_year": fiscal_year,
                 "sector": sector,
-                "roe": 10.0,
-                "roe_3y_avg": 10.0,
+                "roe": "",
+                "roe_3y_avg": "",
                 "opm": "",
-                "debt_ratio": 80.0,
+                "debt_ratio": "",
                 "is_financial": "false",
                 "is_holding": "false",
                 "per": per,
@@ -200,3 +200,75 @@ def sync_liquid_fundamentals_stubs(
     if not template.empty:
         template.to_csv(template_path, index=False, encoding="utf-8-sig")
     return len(new_rows), template_path if template_path.exists() else None
+
+
+def fill_sector_relative_multiples(df: pd.DataFrame) -> pd.DataFrame:
+    """Same-day sector median PER/PBR. Needs ≥3 names with a positive multiple."""
+    if df is None or df.empty or "pbr" not in df.columns:
+        return df
+    work = df.copy()
+    key = "sector"
+    if "sector_group" in work.columns and work["sector_group"].astype(str).str.strip().ne("").any():
+        key = "sector_group"
+    if key not in work.columns:
+        return work
+    grp = work[key].astype(str).str.strip().replace({"nan": "", "None": "", "unknown": ""})
+    pbr = pd.to_numeric(work["pbr"], errors="coerce")
+    pbr = pbr.where(pbr > 0)
+    counts = pbr.groupby(grp).transform("count")
+    med = pbr.groupby(grp).transform("median")
+    work["sector_pbr_median"] = med.where((counts >= 3) & grp.ne(""))
+    if "per" in work.columns:
+        per = pd.to_numeric(work["per"], errors="coerce")
+        per = per.where(per > 0)
+        pc = per.groupby(grp).transform("count")
+        pmed = per.groupby(grp).transform("median")
+        work["sector_per_median"] = pmed.where((pc >= 3) & grp.ne(""))
+    return work
+
+
+def strip_stub_quality_placeholders(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop dummy 3y ROE / debt on liquid_stub rows so Q uses trailing KRX ROE."""
+    if df is None or df.empty:
+        return df
+    work = df.copy()
+    src = work["source"].astype(str).str.strip().str.lower() if "source" in work.columns else ""
+    verified = (
+        work["verified"].astype(str).str.strip().str.lower()
+        if "verified" in work.columns
+        else ""
+    )
+    stub = (src == "liquid_stub") | (verified == "stub")
+    if not isinstance(stub, pd.Series):
+        return work
+    dart_watch = src == "opendart_watch" if isinstance(src, pd.Series) else False
+    drop_3y = stub | dart_watch if isinstance(dart_watch, pd.Series) else stub
+    if not stub.any() and not (isinstance(dart_watch, pd.Series) and dart_watch.any()):
+        return work
+    if "roe_3y_avg" in work.columns:
+        work.loc[drop_3y, "roe_3y_avg"] = pd.NA
+    if "debt_ratio" in work.columns:
+        work.loc[stub, "debt_ratio"] = pd.NA
+    if "is_financial" in work.columns:
+        blob = pd.Series("", index=work.index)
+        for col in ("sector", "sector_group", "krx_sector", "internal_sector"):
+            if col in work.columns:
+                blob = blob + " " + work[col].astype(str)
+        blob = blob.str.lower()
+        markers = ("은행", "보험", "증권", "금융", "financial", "insurance", "broker")
+        fin = False
+        for marker in markers:
+            fin = fin | blob.str.contains(marker, regex=False)
+        work.loc[stub & fin, "is_financial"] = True
+    return work
+
+
+def write_sector_relative_multiples(path: Path) -> int:
+    if not path.exists():
+        return 0
+    df = load_fundamentals(path)
+    if df.empty:
+        return 0
+    out = fill_sector_relative_multiples(df)
+    out.to_csv(path, index=False, encoding="utf-8-sig")
+    return int(out["sector_pbr_median"].notna().sum()) if "sector_pbr_median" in out.columns else 0

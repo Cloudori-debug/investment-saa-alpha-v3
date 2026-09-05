@@ -10,9 +10,11 @@ collect:
   liquid:
     include_holdings: true   # positions/target/fundamentals 항상 union
     max_tickers: 400         # Gate 1차 필터 후 상위 N (시총순)
+    # KOSDAQ collect overrides: cap 2,000억 · sector_top_n 4 · max 80
     sync_stub_fundamentals: true
     max_stub_rows: 150       # fundamentals에 추가할 stub 상한
     export_template: true    # fundamentals_liquid_template.csv
+    # OpenDART 재무(영업이익·부채·실적)는 전 종목이 아니라 관찰 풀(코스피 30 / 코스닥 10)만.
 
 # holdings = positions kr_alpha + fundamentals tickers + target kr_alpha
 # liquid   = Gate 시총 통과 전체 + holdings union → Replace 후보 풀 확대
