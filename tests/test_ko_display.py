@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from alpha_system.ui.services.ko_display import (
     action_kind_ko,
     format_discretionary_warning,
+    format_ineligibility_reason,
     reason_ko,
     subject_ko,
 )
@@ -34,5 +35,17 @@ def test_format_discretionary_warning_has_action_hint() -> None:
 
 def test_action_kind_and_subject() -> None:
     assert action_kind_ko("WARN_DISCRETIONARY") == "재량 이탈 경고"
+    assert action_kind_ko("QUAL_GATE") == "신평·공공 게이트"
+    assert action_kind_ko("KILLSWITCH_WATCH") == "공식 출처 탐색"
+    assert action_kind_ko("OPENDART_WATCH") == "제안 종목 OpenDART"
     assert "종목" in subject_ko("005930")
     assert "이벤트" in subject_ko("E")
+
+
+def test_format_ineligibility_reason_quality_floor() -> None:
+    assert format_ineligibility_reason(
+        "품질 하한 미달: score_q=50.83 < 55"
+    ) == "품질 하한 미달 (Q 50.8 < 55)"
+    assert format_ineligibility_reason("품질 재료 없음 — 판정 불가") == (
+        "품질 재료 없음 — 판정 불가"
+    )

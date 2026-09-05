@@ -92,6 +92,7 @@ class ScoreboardRow:
     status: str
     # Normalized concentration key (= sector_group from KRX mapping).
     sector: str = ""
+    eligibility_reason: str = ""
 
 
 @dataclass
@@ -126,6 +127,7 @@ class DashboardContext:
     effective_go_live: Optional[date] = None
     checklist: Any = None
     screen_market: str = "KOSPI"
+    proposal_blocked_rows: list[PortfolioRow] = field(default_factory=list)
 
 
 EVENT_LABELS = {
@@ -299,6 +301,22 @@ def load_context(
     from alpha_system.ui.services.proposal_freeze import load_freeze, pin_proposal_rows
 
     proposal_rows = pin_proposal_rows(proposal_rows, load_freeze(root))
+    blocked_scores = cutoff_passed_ineligible(
+        scoreboard_rows,
+        cutoff=cfg.scoring.score_cutoff,
+    )
+    already = {str(r.ticker).zfill(6) for r in proposal_rows}
+    blocked_scores = [
+        s for s in blocked_scores if str(s.ticker).zfill(6) not in already
+    ]
+    blocked_rows = _blocked_proposal_rows(
+        blocked_scores,
+        cfg=cfg,
+        prices_df=prices_df,
+        fundamentals_df=fundamentals_df,
+        lookback_lows=lookback_lows,
+        root=root,
+    )
     ops_rows = _build_ops_portfolio(
         cfg,
         kr_positions,
@@ -436,6 +454,7 @@ def load_context(
         effective_go_live=effective_go_live,
         checklist=checklist,
         screen_market=screen_market,
+        proposal_blocked_rows=blocked_rows,
     )
 
 
@@ -529,8 +548,10 @@ def _build_scoreboard(
 
         total: Optional[float] = None
         elig: Optional[bool] = None
+        elig_reason = ""
         if not gate_ok:
             elig = False
+            elig_reason = "유동성 게이트 미통과"
         else:
             try:
                 ns = score_name(
@@ -547,10 +568,12 @@ def _build_scoreboard(
                 )
                 total = ns.total_score
                 elig = ns.eligibility
+                elig_reason = str(ns.eligibility_reason or "")
                 cecs_val = _f((ns.factors or {}).get("cecs")) or cecs_val
             except Exception:
                 total = None
                 elig = False
+                elig_reason = "채점 실패"
 
         fb = False
         if "sector_peer_fallback" in factor.index:
@@ -574,6 +597,7 @@ def _build_scoreboard(
                 is_held=ticker in held_set,
                 status=status,
                 sector=sector,
+                eligibility_reason=elig_reason,
             )
         )
     rows.sort(key=lambda x: (x.total_score is None, -(x.total_score or 0)))
@@ -992,6 +1016,7 @@ def _build_screen_portfolio(
         extra = {
             "book": "proposal",
             "selection_policy": "B",
+            "proposal_eligible": True,
             "approved_as_of": approved_as_of,
             "approved_by": approved_by,
             "revalidate_required": revalidate_required,
@@ -1044,6 +1069,150 @@ def _build_screen_portfolio(
             )
         )
     rows.sort(key=lambda r: (-(r.total_score or 0), -r.weight_pct, r.ticker))
+    return rows
+
+
+def cutoff_passed_ineligible(
+    scores: Sequence[ScoreboardRow],
+    *,
+    cutoff: float | None,
+) -> list[ScoreboardRow]:
+    """High total_score names blocked by quality/gates, not by the score cutoff."""
+    if cutoff is None:
+        return []
+    bar = float(cutoff)
+    out: list[ScoreboardRow] = []
+    for row in scores:
+        if row.eligibility is True:
+            continue
+        if row.total_score is None:
+            continue
+        try:
+            score = float(row.total_score)
+        except (TypeError, ValueError):
+            continue
+        if score >= bar:
+            out.append(row)
+    out.sort(key=lambda r: (-float(r.total_score or 0), str(r.ticker)))
+    return out
+
+
+def _blocked_proposal_rows(
+    blocked: Sequence[ScoreboardRow],
+    *,
+    cfg: AlphaSystemConfig,
+    prices_df: pd.DataFrame,
+    fundamentals_df: pd.DataFrame,
+    lookback_lows: dict | None = None,
+    root: Path | None = None,
+) -> list[PortfolioRow]:
+    """Same proposal card shape, weight 0, with the ineligibility reason."""
+    from alpha_system.ui.services.ko_display import format_ineligibility_reason
+    from src.alpha.price_ladder import attach_ladder_extra
+    from src.alpha.quant_target_estimate import (
+        load_alpha_template_fundamentals,
+        quant_portfolio_extra,
+    )
+
+    if not blocked:
+        return []
+    cap = float(cfg.sizing.market_value_cap) * 100.0
+    min_q = getattr(cfg.scoring, "quality_min_score", None)
+    root_guess = Path(root) if root is not None else Path(".")
+    alpha_fund_by = load_alpha_template_fundamentals(root_guess)
+    price_idx = pd.DataFrame()
+    if not prices_df.empty and "ticker" in prices_df.columns:
+        work = prices_df.copy()
+        work["ticker"] = work["ticker"].astype(str).str.zfill(6)
+        if "date" in work.columns:
+            work = work.sort_values("date")
+        price_idx = work.drop_duplicates("ticker", keep="last").set_index("ticker")
+    fund_by_ticker: dict[str, dict[str, Any]] = {}
+    fund_for_peers = fundamentals_df
+    if not fundamentals_df.empty and "ticker" in fundamentals_df.columns:
+        for _, fr in fundamentals_df.iterrows():
+            t = str(fr.get("ticker", "")).zfill(6)
+            fund_by_ticker[t] = fr.to_dict()
+        if "sector" not in fundamentals_df.columns:
+            smap = {
+                str(s.ticker).zfill(6): s.sector
+                for s in blocked
+                if getattr(s, "sector", "")
+            }
+            if smap:
+                fund_for_peers = fundamentals_df.copy()
+                fund_for_peers["ticker"] = fund_for_peers["ticker"].astype(str).str.zfill(6)
+                fund_for_peers["sector"] = fund_for_peers["ticker"].map(
+                    lambda t: smap.get(str(t).zfill(6), "")
+                )
+
+    rows: list[PortfolioRow] = []
+    for sc in blocked:
+        ticker = str(sc.ticker).zfill(6)
+        cur_p = None
+        if not price_idx.empty and ticker in price_idx.index:
+            cur_p = _f(
+                price_idx.loc[ticker].get("close")
+                or price_idx.loc[ticker].get("price")
+            )
+        fund_row = fund_by_ticker.get(ticker, {})
+        current_pbr = _f(fund_row.get("pbr"))
+        sector = str(sc.sector or fund_row.get("sector") or "")
+        reason = format_ineligibility_reason(
+            sc.eligibility_reason,
+            score_q=sc.score_q,
+            min_q=min_q,
+        )
+        qextra = quant_portfolio_extra(
+            ticker,
+            fund_row=fund_row,
+            price=cur_p,
+            sector=sector,
+            fundamentals_df=fund_for_peers,
+            alpha_row=alpha_fund_by.get(ticker),
+        )
+        extra = {
+            "book": "proposal",
+            "selection_policy": "B",
+            "proposal_eligible": False,
+            "ineligible_reason": reason,
+            **qextra,
+        }
+        extra = attach_ladder_extra(
+            extra,
+            ticker=ticker,
+            current=cur_p,
+            target_price=None,
+            lookback_lows=lookback_lows or {},
+        )
+        rows.append(
+            PortfolioRow(
+                ticker=ticker,
+                name=sc.name or ticker,
+                weight_pct=0.0,
+                initial_weight_pct=0.0,
+                avg_price=None,
+                current_price=cur_p,
+                target_price=None,
+                target_progress=None,
+                remaining_upside_pct=None,
+                has_target=False,
+                target_detail=reason,
+                target_gap_kind="ineligible",
+                cap_pct=cap,
+                cap_headroom_pct=None,
+                cap_near=False,
+                cap_over=False,
+                price_progress_pct=None,
+                tranche_source="SCREEN",
+                total_score=sc.total_score,
+                sector=sector,
+                current_pbr=current_pbr,
+                pbr_max=None,
+                extra=extra,
+            )
+        )
+    rows.sort(key=lambda r: (-(r.total_score or 0), r.ticker))
     return rows
 
 

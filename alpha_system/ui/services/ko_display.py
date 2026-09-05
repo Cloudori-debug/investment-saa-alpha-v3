@@ -33,7 +33,8 @@ _ACTION_KIND_KO: dict[str, str] = {
     "CAP_OVER": "비중 한도 초과",
     "DATA_REFRESH_OK": "데이터 갱신 성공",
     "DATA_REFRESH_FAIL": "데이터 갱신 실패",
-    "QUANT_SNAPSHOT_OK": "정량 스냅샷 완료",
+    "KILLSWITCH_WATCH": "공식 출처 탐색",
+    "OPENDART_WATCH": "제안 종목 OpenDART",
     "T2_EVENT_RECORD": "T2 이벤트 기록",
     "T2_EVENT_CANCEL": "T2 이벤트 취소",
     "THESIS_DAMAGE_FLAG": "논지 훼손 표시",
@@ -56,6 +57,10 @@ _ACTION_KIND_KO: dict[str, str] = {
     "CHECKLIST_RECHECK": "체크리스트 재확인",
     "T3_HISTORY_REFRESH": "T3 PBR 이력 갱신",
     "ENTRY_JOURNAL": "편입 기록",
+    "QUAL_GATE": "신평·공공 게이트",
+    "QUAL_GATE_CLEAR": "신평·공공 게이트 해제",
+    "QUAL_SWAP": "정성 자리 교체",
+    "QUAL_SWAP_CLEAR": "정성 자리 교체 해제",
 }
 
 _SUBJECT_KO: dict[str, str] = {
@@ -146,3 +151,40 @@ def severity_ko(level: str | None) -> str:
     return {"danger": "긴급", "warn": "주의", "info": "안내"}.get(
         str(level or "").lower(), "안내"
     )
+
+
+def format_ineligibility_reason(
+    reason: str | None,
+    *,
+    score_q: float | None = None,
+    min_q: float | None = None,
+) -> str:
+    """Short operator line for why a high total_score is not in the live book."""
+    text = str(reason or "").strip()
+    q = score_q
+    bar = min_q
+    if q is None:
+        match = re.search(r"score_q\s*=\s*([0-9.]+)", text)
+        if match:
+            try:
+                q = float(match.group(1))
+            except ValueError:
+                q = None
+    if bar is None:
+        match = re.search(r"<\s*([0-9.]+)", text)
+        if match:
+            try:
+                bar = float(match.group(1))
+            except ValueError:
+                bar = None
+    if "품질 하한" in text:
+        q_s = f"{q:.1f}" if q is not None else "—"
+        bar_s = f"{bar:.0f}" if bar is not None else "55"
+        return f"품질 하한 미달 (Q {q_s} < {bar_s})"
+    if "품질 재료" in text:
+        return "품질 재료 없음 — 판정 불가"
+    if "ineligible:" in text and "cutoff" in text:
+        return "점수 컷 미달"
+    if text:
+        return text
+    return "부적격"

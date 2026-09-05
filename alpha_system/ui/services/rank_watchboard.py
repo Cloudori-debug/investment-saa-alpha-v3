@@ -46,6 +46,7 @@ class RankWatchRow:
     is_held: bool
     in_proposal: bool
     eligibility: Optional[bool]
+    eligibility_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,7 @@ class WatchTableRow:
     in_proposal: bool
     eligibility: Optional[bool]
     tone: str
+    judgment: str
     per: Optional[float]
     pbr: Optional[float]
     roe: Optional[float]
@@ -258,6 +260,7 @@ def build_rank_watchboard(
             is_held=_held(row),
             in_proposal=ticker in prop,
             eligibility=row.eligibility,
+            eligibility_reason=str(getattr(row, "eligibility_reason", "") or ""),
         )
 
     scored.sort(key=lambda x: (-x[1], _norm_ticker(x[0].ticker)))
@@ -423,6 +426,8 @@ def build_watch_table_rows(
     target_n: int = 6,
 ) -> tuple[WatchTableRow, ...]:
     """Join fundamentals + preview tone onto the observation board."""
+    from alpha_system.ui.services.ko_display import format_ineligibility_reason
+
     metrics = metrics or {}
     extra_by_ticker = extra_by_ticker or {}
     sector_labels = sector_labels or {}
@@ -444,6 +449,14 @@ def build_watch_table_rows(
             in_proposal=row.in_proposal,
         )
         sector = str(sector_labels.get(row.ticker) or row.sector or "").strip()
+        if row.eligibility is True:
+            judgment = "적격"
+        elif row.eligibility is False:
+            judgment = format_ineligibility_reason(
+                getattr(row, "eligibility_reason", "") or ""
+            )
+        else:
+            judgment = "—"
         out.append(
             WatchTableRow(
                 rank=row.rank,
@@ -455,6 +468,7 @@ def build_watch_table_rows(
                 in_proposal=row.in_proposal,
                 eligibility=row.eligibility,
                 tone=tone,
+                judgment=judgment,
                 per=_as_float(met.get("per")),
                 pbr=_as_float(met.get("pbr")),
                 roe=_as_float(met.get("roe")),

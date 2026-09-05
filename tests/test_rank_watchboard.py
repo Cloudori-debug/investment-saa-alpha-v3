@@ -178,6 +178,7 @@ def test_watch_table_rows_join_metrics_and_tone() -> None:
     assert table[0].target_price == 62000
     assert table[1].tone == TONE_WATCH
     assert table[1].target_price == 13000
+    assert "부적격" in table[1].judgment
 
 
 def test_unscored_names_stay_in_watch_pool() -> None:
