@@ -108,6 +108,22 @@ def run_quant_snapshot(
         except Exception as exc:  # network optional
             t3_detail = {"ok": False, "error": str(exc)}
 
+    ftc_detail = {"ok": False, "detail": "skipped"}
+    try:
+        from src.data_refresh.ftc_circular import refresh_ftc_circular
+
+        ftc_result = refresh_ftc_circular(root, today=as_of)
+        ftc_detail = {
+            "ok": bool(ftc_result.ok),
+            "tickers": int(len(ftc_result.tickers)),
+            "groups": int(ftc_result.groups),
+            "presentn_ym": ftc_result.presentn_ym,
+            "detail": ftc_result.detail,
+            "cache_path": ftc_result.cache_path,
+        }
+    except Exception as exc:
+        ftc_detail = {"ok": False, "error": str(exc)}
+
     after_hash = _input_hash(inputs + [scores_path])
     provenance = {
         "run_id": run_id,
@@ -126,11 +142,14 @@ def run_quant_snapshot(
         "candidates": int(len(result.candidates)),
         "watch_dart_requested": int(getattr(result, "watch_dart_requested", 0) or 0),
         "watch_dart_enriched": int(getattr(result, "watch_dart_enriched", 0) or 0),
+        "hakedaka_watch_rows": int(getattr(result, "hakedaka_watch_rows", 0) or 0),
         "target_portfolio_written": False,
         "t3_pbr_refresh": t3_detail,
+        "ftc_circular": ftc_detail,
         "sources": {
             "pykrx": "allowed",
             "dart": "allowed",
+            "ftc_opendata": "allowed",
             "fastjusik": "forbidden",
         },
     }

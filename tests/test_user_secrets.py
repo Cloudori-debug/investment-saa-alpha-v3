@@ -27,11 +27,16 @@ def test_save_and_load_secrets(tmp_path):
 def test_apply_secrets_to_env(tmp_path, monkeypatch):
     monkeypatch.delenv("DART_API_KEY", raising=False)
     monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("DATA_GO_KR_API_KEY", raising=False)
     data_dir = tmp_path / "data"
-    save_user_secrets(data_dir, UserSecrets(dart_api_key="abc", krx_id="id", krx_pw="pw"))
+    save_user_secrets(
+        data_dir,
+        UserSecrets(dart_api_key="abc", krx_id="id", krx_pw="pw", data_go_kr_api_key="ftc"),
+    )
     apply_secrets_to_env(data_dir, overwrite=True)
     assert os.environ["DART_API_KEY"] == "abc"
     assert os.environ["KRX_ID"] == "id"
+    assert os.environ["DATA_GO_KR_API_KEY"] == "ftc"
 
 
 def test_clear_secrets(tmp_path):

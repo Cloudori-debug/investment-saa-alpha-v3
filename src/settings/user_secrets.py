@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Any
 
 
-SECRET_KEYS = ("dart_api_key", "krx_id", "krx_pw", "fred_api_key", "kosis_api_key")
+SECRET_KEYS = (
+    "dart_api_key",
+    "krx_id",
+    "krx_pw",
+    "fred_api_key",
+    "kosis_api_key",
+    "data_go_kr_api_key",
+)
 
 
 @dataclass
@@ -18,6 +25,7 @@ class UserSecrets:
     krx_pw: str = ""
     fred_api_key: str = ""
     kosis_api_key: str = ""
+    data_go_kr_api_key: str = ""
     pykrx_scope: str = "liquid"
     dart_scope: str = "prices"
     default_as_of: str = ""
@@ -31,6 +39,7 @@ class UserSecrets:
             krx_pw=str(data.get("krx_pw", "")).strip(),
             fred_api_key=str(data.get("fred_api_key", "")).strip(),
             kosis_api_key=str(data.get("kosis_api_key", "")).strip(),
+            data_go_kr_api_key=str(data.get("data_go_kr_api_key", "")).strip(),
             pykrx_scope=str(data.get("pykrx_scope", "liquid")).strip() or "liquid",
             dart_scope=str(data.get("dart_scope", "prices")).strip() or "prices",
             default_as_of=str(data.get("default_as_of", "")).strip(),
@@ -79,6 +88,8 @@ def apply_secrets_to_env(data_dir: Path, *, overwrite: bool = False) -> UserSecr
         "KRX_PW": secrets.krx_pw,
         "FRED_API_KEY": secrets.fred_api_key,
         "KOSIS_API_KEY": secrets.kosis_api_key,
+        "DATA_GO_KR_API_KEY": secrets.data_go_kr_api_key,
+        "DATA_API_KEY": secrets.data_go_kr_api_key,
     }
     for env_name, value in mapping.items():
         if not value:
@@ -98,6 +109,10 @@ def credential_status(data_dir: Path) -> dict[str, bool]:
         "krx": bool(os.environ.get("KRX_ID", "").strip() and os.environ.get("KRX_PW", "").strip()),
         "fred": bool(os.environ.get("FRED_API_KEY", "").strip()),
         "kosis": bool(os.environ.get("KOSIS_API_KEY", "").strip()),
+        "data_go_kr": bool(
+            os.environ.get("DATA_GO_KR_API_KEY", "").strip()
+            or os.environ.get("DATA_API_KEY", "").strip()
+        ),
     }
 
 
@@ -201,5 +216,31 @@ def test_kosis_api_key(api_key: str) -> tuple[bool, str]:
         if result.points:
             return True, f"KOSIS 연결 성공 (CPI tbl={tbl_id}, 최근 {result.last_period})"
         return False, result.error or "데이터 없음"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def test_data_go_kr_api_key(api_key: str) -> tuple[bool, str]:
+    if not api_key.strip():
+        return False, "API 키가 비어 있습니다."
+    try:
+        from src.data_refresh.ftc_circular import (
+            ROTAT_PATH,
+            candidate_presentn_yms,
+            ftc_get,
+        )
+
+        last = ""
+        for ym in candidate_presentn_yms()[:4]:
+            try:
+                ftc_get(
+                    ROTAT_PATH,
+                    {"pageNo": 1, "numOfRows": 1, "presentnYm": ym},
+                    api_key=api_key.strip(),
+                )
+                return True, f"공공데이터포털(공정위) 연결 성공 ({ym})"
+            except Exception as exc:
+                last = str(exc)
+        return False, last or "응답 없음"
     except Exception as exc:
         return False, str(exc)
