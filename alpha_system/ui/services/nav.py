@@ -7,12 +7,13 @@ from typing import Any, Optional
 import streamlit as st
 
 # Canonical page labels (radio keys) — review/approval-only surface
-PAGE_HOME = "홈"
-PAGE_REGIME = "레짐"
 PAGE_APPROVAL = "결재함"
 PAGE_PORTFOLIO = "포트폴리오"
+PAGE_ECONOMY = "경제시그널"
 PAGE_JOURNAL = "저널"
 PAGE_SETTINGS = "설정"
+PAGE_HOME = PAGE_APPROVAL  # removed from IA; old session keys land on 확인
+PAGE_REGIME = PAGE_APPROVAL  # removed from IA
 
 # Legacy aliases kept so older navigate() call sites keep working.
 PAGE_EVENTS = PAGE_APPROVAL
@@ -20,39 +21,36 @@ PAGE_SCORES = PAGE_APPROVAL
 PAGE_RULES = PAGE_APPROVAL
 PAGE_CECS = PAGE_APPROVAL
 
-# Sellable IA order: home → approval → portfolio first; regime/settings after.
+# Sellable IA order: 확인 → 포트폴리오 first; 저널·설정 in 더보기.
 PRIMARY_PAGES = (
-    PAGE_HOME,
     PAGE_APPROVAL,
     PAGE_PORTFOLIO,
+    PAGE_ECONOMY,
     PAGE_JOURNAL,
-    PAGE_REGIME,
     PAGE_SETTINGS,
 )
 
 # One-line hints under sidebar main menu (product UI).
 PAGE_HINTS: dict[str, str] = {
-    PAGE_HOME: "할 일 1건 · 후보",
-    PAGE_APPROVAL: "점수·주간 확인",
-    PAGE_PORTFOLIO: "실보유 · 종목 안내",
+    PAGE_APPROVAL: "정량 · 정성",
+    PAGE_PORTFOLIO: "관찰 · 제안 · 실보유",
+    PAGE_ECONOMY: "비중 제안 · 미적용",
     PAGE_JOURNAL: "판정·승인 기록",
-    PAGE_REGIME: "시장 참고",
-    PAGE_SETTINGS: "API · 이식·백업",
+    PAGE_SETTINGS: "화면 · API · 도구",
 }
 
 # Sidebar display names (internal page keys unchanged).
 PAGE_DISPLAY_NAMES: dict[str, str] = {
-    PAGE_HOME: "오늘",
     PAGE_APPROVAL: "확인",
     PAGE_PORTFOLIO: "포트폴리오",
+    PAGE_ECONOMY: "경제 시그널",
     PAGE_JOURNAL: "저널",
-    PAGE_REGIME: "레짐",
     PAGE_SETTINGS: "설정",
 }
 
 # Primary strip vs folded "더보기".
-NAV_MAIN_PAGES: tuple[str, ...] = (PAGE_HOME, PAGE_APPROVAL, PAGE_PORTFOLIO)
-NAV_MORE_PAGES: tuple[str, ...] = (PAGE_JOURNAL, PAGE_REGIME, PAGE_SETTINGS)
+NAV_MAIN_PAGES: tuple[str, ...] = (PAGE_APPROVAL, PAGE_PORTFOLIO)
+NAV_MORE_PAGES: tuple[str, ...] = (PAGE_ECONOMY, PAGE_JOURNAL, PAGE_SETTINGS)
 
 
 def page_display_name(page: str, *, badge: int | None = None) -> str:
@@ -68,9 +66,11 @@ ALL_PAGES = PRIMARY_PAGES
 _LEGACY_PAGE_REDIRECT = {
     "이벤트 입력": PAGE_APPROVAL,
     "설정·이벤트": PAGE_APPROVAL,
-    "CECS 채점": PAGE_APPROVAL,
+    "CECS 채점": PAGE_PORTFOLIO,
     "규칙": PAGE_APPROVAL,
     "스코어": PAGE_APPROVAL,
+    "홈": PAGE_APPROVAL,
+    "레짐": PAGE_APPROVAL,
 }
 
 FOCUS_T2 = "t2_event"
@@ -85,7 +85,6 @@ FOCUS_CECS_SCORE = "cecs_score"
 FOCUS_SCORES = "scores_review"
 FOCUS_SETTINGS_API = "settings_api"
 FOCUS_SETTINGS_DATA = "settings_data"
-FOCUS_REGIME = "regime"
 FOCUS_HOLDINGS_INPUT = "holdings_input"
 
 
@@ -126,7 +125,7 @@ def get_prefill(key: str, default: Any = None) -> Any:
 
 def normalize_page_label(page: str | None) -> str:
     if not page:
-        return PAGE_HOME
+        return PAGE_APPROVAL
     return _LEGACY_PAGE_REDIRECT.get(page, page)
 
 
@@ -138,5 +137,5 @@ def apply_pending_page() -> None:
             st.session_state["alpha_page"] = pending
     current = normalize_page_label(st.session_state.get("alpha_page"))
     if current not in ALL_PAGES:
-        current = PAGE_HOME
+        current = PAGE_APPROVAL
     st.session_state["alpha_page"] = current

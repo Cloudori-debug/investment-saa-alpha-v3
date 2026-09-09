@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import Optional
 
 import streamlit as st
 
 from alpha_system.journal import list_entries
+from alpha_system.proposal_chart import ChartRead, norm_ticker, summary_line, summary_tone
 from alpha_system.ui.services.context import DashboardContext, PortfolioRow, ScoreboardRow
 from alpha_system.ui.services.portfolio_metrics import price_bar_view, weight_bar_view
+from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
 from alpha_system.ui.services.ui_copy import copy_get
 
 SESSION_EXPANDED = "portfolio_expanded_ticker"
@@ -44,65 +47,214 @@ def _quant_caption_html(row: PortfolioRow) -> str:
             mid_s = "—"
     else:
         mid_s = "—"
-    approved = " · 승인목표와 별개" if row.has_target else " · E 승인 전"
+    approved = "승인목표와 별개" if row.has_target else "E 승인 전"
     return (
-        f'<div class="pf-bar-caption">정량초안 P/B {pbr_s} · {mid_s}{approved}</div>'
+        f'<div class="pf-bar-caption pf-quant-note">'
+        f"정량초안 P/B {pbr_s} · {mid_s} · {approved}</div>"
+    )
+
+
+def _won(v) -> str:
+    if v is None or v == "":
+        return "—"
+    try:
+        return f"{int(round(float(v))):,}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _rung_now_idx(current: Optional[float], rungs: list) -> int:
+    """Last rung whose price the spot has reached (0–4)."""
+    if current is None or not rungs:
+        return 0
+    try:
+        cur = float(current)
+    except (TypeError, ValueError):
+        return 0
+    idx = 0
+    for i, px in enumerate(rungs[:5]):
+        try:
+            if cur + 1e-9 >= float(px):
+                idx = i
+        except (TypeError, ValueError):
+            continue
+    return idx
+
+
+def _header_cue(row: PortfolioRow) -> tuple[str, str]:
+    """Short right-side cue + tone. Badge already carries 유지/줄이기/환금."""
+    extra = row.extra or {}
+    if extra.get("proposal_eligible") is False:
+        reason = str(extra.get("ineligible_reason") or row.target_detail or "부적격")
+        return reason, "danger"
+    if row.ops_signal and row.ops_signal_detail:
+        t = str(row.ops_signal_detail)
+        for junk in (
+            " · 권고(사람 집행)",
+            " · 권고",
+            "목표가 근접 · ",
+            "목표가 도달 · ",
+            "수량 절반(내림) · ",
+        ):
+            t = t.replace(junk, "")
+        t = t.strip(" ·")
+        label = (row.ops_signal_label or "").strip()
+        if label and t.startswith(label):
+            t = t[len(label) :].strip(" ·")
+        tone = {
+            "hold": "accent",
+            "trim": "warn",
+            "cash_half": "warn",
+            "exit_full": "danger",
+            "missing": "muted",
+            "review": "danger",
+        }.get(row.ops_signal, "muted")
+        return t, tone
+    upside = row.remaining_upside_pct
+    if not row.has_target:
+        if row.target_gap_kind == "legacy_pending":
+            return "레거시·이행대기", "muted"
+        if row.target_gap_kind == "screen_pending":
+            return "스크린 제안", "muted"
+        return "목표가 없음", "danger"
+    if upside is None:
+        return "—", "muted"
+    return f"목표까지 {upside:+.1f}%", "accent"
+
+
+def _missing_target_banner(row: PortfolioRow) -> str:
+    if (row.extra or {}).get("proposal_eligible") is False:
+        reason = str(
+            (row.extra or {}).get("ineligible_reason") or row.target_detail or "부적격"
+        )
+        return (
+            f'<div class="pf-missing">'
+            f'<span class="alpha-badge-danger">부적격</span> {reason}'
+            f"</div>"
+        )
+    if row.has_target:
+        return ""
+    if row.target_gap_kind == "legacy_pending":
+        badge = copy_get("portfolio", "badge_legacy", default="이행대기")
+        msg = copy_get(
+            "portfolio",
+            "target_missing_legacy",
+            default="목표가 없음 — 레거시 보유, 이행 심사 대기",
+        )
+        return (
+            f'<div class="pf-missing pf-missing-legacy">'
+            f'<span class="alpha-badge-warn">{badge}</span> {msg}'
+            f"</div>"
+        )
+    if row.target_gap_kind == "screen_pending":
+        badge = copy_get("portfolio", "badge_screen", default="스크린")
+        msg = copy_get(
+            "portfolio",
+            "target_missing_screen",
+            default="목표가 없음 — 제안 종목에서 정량초안 승인 · 편입 차단",
+        )
+        return (
+            f'<div class="pf-missing pf-missing-legacy">'
+            f'<span class="alpha-badge-warn">{badge}</span> {msg}'
+            f"</div>"
+        )
+    if row.target_gap_kind == "price_missing":
+        msg = copy_get(
+            "portfolio",
+            "price_missing_signal_invalid",
+            default="데이터 없음 — 신호 무효 (가격 확인)",
+        )
+        return (
+            f'<div class="pf-missing">'
+            f'<span class="alpha-badge-danger">데이터</span> {msg}'
+            f"</div>"
+        )
+    badge = copy_get("portfolio", "badge_violation", default="위반")
+    msg = copy_get(
+        "portfolio",
+        "target_missing_violation",
+        default="목표가 없음 — 편입 규칙 위반",
+    )
+    return (
+        f'<div class="pf-missing">'
+        f'<span class="alpha-badge-danger">{badge}</span> {msg}'
+        f"</div>"
+    )
+
+
+def _ladder_bar_html(row: PortfolioRow, *, show_labels: bool) -> str:
+    extra = row.extra or {}
+    fill = float(extra.get("ladder_fill_pct") or 0.0)
+    fill = min(100.0, max(0.0, fill))
+    rungs = extra.get("ladder_rungs") or []
+    labels = extra.get("ladder_labels") or ("매수1", "매수2", "줄이기", "절반", "전량")
+    high_src = extra.get("ladder_high_source") or "approved"
+    ceiling_word = "상한(초안)" if high_src == "quant_draft" else "상한"
+    if extra.get("ladder_over_high"):
+        pct_label = "상한 위"
+    elif extra.get("ladder_under_low"):
+        pct_label = "하한 아래"
+    else:
+        pct_label = f"{fill:.0f}%"
+    now_idx = _rung_now_idx(row.current_price, list(rungs))
+    lo_s = f"{_won(extra.get('ladder_low'))}원"
+    hi_s = f"{_won(extra.get('ladder_high'))}원"
+    axis = (
+        f'<div class="pf-bar-labels pf-ladder-axis">'
+        f'<span><span class="pf-kicker">하한</span>'
+        f'<span class="pf-num">{lo_s}</span></span>'
+        f'<span class="pf-axis-now"><span class="pf-kicker">현재 · {pct_label}</span></span>'
+        f'<span><span class="pf-kicker">{ceiling_word}</span>'
+        f'<span class="pf-num">{hi_s}</span></span>'
+        f"</div>"
+    )
+    ticks = []
+    for i in range(5):
+        left = i * 25.0
+        ticks.append(
+            f'<span class="pf-bar-tick pf-bar-tick-{i}" style="left:{left:.0f}%"></span>'
+        )
+    ticks.append(
+        f'<span class="pf-bar-now" style="left:{fill:.1f}%" title="현재"></span>'
+    )
+    rung_bits = []
+    for i, name in enumerate(labels[:5]):
+        px = _won(rungs[i]) if i < len(rungs) else "—"
+        px_s = f"{px}원" if px != "—" else "—"
+        state = "pf-rung-now" if i == now_idx else ("pf-rung-past" if i < now_idx else "pf-rung-next")
+        rung_bits.append(
+            f'<span class="{state}">'
+            f'<span class="pf-ladder-rung-name">{name}</span>'
+            f'<span class="pf-ladder-rung-px">{px_s}</span></span>'
+        )
+    rungs_html = f'<div class="pf-ladder-rungs">{"".join(rung_bits)}</div>'
+    note = extra.get("ladder_note") or ""
+    note_html = f'<div class="pf-bar-caption">{note}</div>' if (show_labels and note) else ""
+    return (
+        f'<div class="pf-ladder">'
+        f"{axis}"
+        f'<div class="pf-bar-block">'
+        f'<div class="pf-bar-track pf-bar-price pf-bar-ladder">'
+        f'<div class="pf-bar-fill pf-fill-accent" style="width:{fill:.1f}%"></div>'
+        f"{''.join(ticks)}"
+        f"</div></div>"
+        f"{rungs_html}"
+        f"{note_html}"
+        f"</div>"
     )
 
 
 def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> str:
     """Price axis only — no weight/cap marker."""
+    extra = row.extra or {}
+    if extra.get("proposal_eligible") is False:
+        return _missing_target_banner(row)
+    ladder_ok = bool(extra.get("ladder_ok"))
+    missing = _missing_target_banner(row)
+    if ladder_ok:
+        return f"{missing}{_ladder_bar_html(row, show_labels=show_labels)}{_quant_caption_html(row)}"
     if not row.has_target:
-        if row.target_gap_kind == "legacy_pending":
-            badge = copy_get("portfolio", "badge_legacy", default="이행대기")
-            msg = copy_get(
-                "portfolio",
-                "target_missing_legacy",
-                default="목표가 없음 — 레거시 보유, 이행 심사 대기",
-            )
-            return (
-                f'<div class="pf-missing pf-missing-legacy">'
-                f'<span class="alpha-badge-warn">{badge}</span> {msg}'
-                f"</div>"
-                f"{_quant_caption_html(row)}"
-            )
-        if row.target_gap_kind == "screen_pending":
-            badge = copy_get("portfolio", "badge_screen", default="스크린")
-            msg = copy_get(
-                "portfolio",
-                "target_missing_screen",
-                default="목표가 없음 — 다음 주 통합 보고서(E)까지 대기 · 편입 차단",
-            )
-            return (
-                f'<div class="pf-missing pf-missing-legacy">'
-                f'<span class="alpha-badge-warn">{badge}</span> {msg}'
-                f"</div>"
-                f"{_quant_caption_html(row)}"
-            )
-        if row.target_gap_kind == "price_missing":
-            msg = copy_get(
-                "portfolio",
-                "price_missing_signal_invalid",
-                default="데이터 없음 — 신호 무효 (가격 확인)",
-            )
-            return (
-                f'<div class="pf-missing">'
-                f'<span class="alpha-badge-danger">데이터</span> {msg}'
-                f"</div>"
-                f"{_quant_caption_html(row)}"
-            )
-        badge = copy_get("portfolio", "badge_violation", default="위반")
-        msg = copy_get(
-            "portfolio",
-            "target_missing_violation",
-            default="목표가 없음 — 편입 규칙 위반",
-        )
-        return (
-            f'<div class="pf-missing">'
-            f'<span class="alpha-badge-danger">{badge}</span> {msg}'
-            f"</div>"
-            f"{_quant_caption_html(row)}"
-        )
+        return f"{missing}{_quant_caption_html(row)}"
 
     view = price_bar_view(row.price_progress_pct)
     loss_html = ""
@@ -140,8 +292,8 @@ def render_weight_bar_html(row: PortfolioRow, *, thin: bool = True) -> str:
         badge = ' <span class="alpha-badge-warn">cap 임박</span>'
     return (
         f'<div class="pf-bar-block">'
-        f'<div class="pf-bar-caption">제안 비중 '
-        f'<span class="pf-weight-{view.tone}">{view.label}</span>{badge}</div>'
+        f'<div class="pf-bar-caption">제안 {row.weight_pct:.1f}%'
+        f'<span class="pf-weight-{view.tone}"> · 상한 {row.cap_pct:.0f}%</span>{badge}</div>'
         f'<div class="pf-bar-track{thin_cls}">'
         f'<div class="pf-bar-fill pf-fill-{view.tone}" style="width:{view.fill_pct:.1f}%"></div>'
         f"</div></div>"
@@ -166,49 +318,71 @@ def _ops_badge_html(row: PortfolioRow) -> str:
     return f'<span class="{cls} ops-cue">{label}</span> '
 
 
-def _row_main_html(row: PortfolioRow) -> str:
-    badge = _ops_badge_html(row)
-    if row.ops_signal and row.ops_signal_detail:
-        upside_txt = row.ops_signal_detail
-        tone = {
-            "hold": "accent",
-            "trim": "danger",
-            "cash_half": "danger",
-            "exit_full": "danger",
-            "missing": "muted",
-            "review": "danger",
-        }.get(row.ops_signal, "muted")
-    else:
-        upside = row.remaining_upside_pct
-        if not row.has_target:
-            if row.target_gap_kind == "legacy_pending":
-                upside_txt = "레거시·이행대기"
-                tone = "muted"
-            elif row.target_gap_kind == "screen_pending":
-                upside_txt = "스크린 제안"
-                tone = "muted"
-            else:
-                upside_txt = "목표가 없음"
-                tone = "danger"
-        elif upside is None:
-            upside_txt = "—"
-            tone = "muted"
-        else:
-            upside_txt = f"목표까지 {upside:+.1f}%"
-            tone = "accent"
+def _ladder_hint(row: PortfolioRow) -> str:
+    extra = row.extra or {}
+    rungs = extra.get("ladder_rungs") or []
+    labels = extra.get("ladder_labels") or ("매수1", "매수2", "줄이기", "절반", "전량")
+    cur = row.current_price
+    if cur is None or not rungs:
+        return ""
+    idx = 0
+    try:
+        price = float(cur)
+        for i, px in enumerate(list(rungs)[:5]):
+            if price + 1e-9 >= float(px):
+                idx = i
+    except (TypeError, ValueError):
+        return ""
+    name = labels[idx] if idx < len(labels) else ""
+    return f"지금 {name}" if name else ""
 
+
+def _chart_read_html(row: PortfolioRow, item: ChartRead | None) -> str:
+    if item is None:
+        return ""
+    text = summary_line(item, ladder=_ladder_hint(row))
+    if not text:
+        return ""
+    tone = summary_tone(item)
+    return (
+        f'<div class="pf-chart-read pf-chart-{escape(tone)}">'
+        f"{escape(text)}"
+        f"</div>"
+    )
+
+
+def _row_main_html(row: PortfolioRow, *, chart: ChartRead | None = None) -> str:
+    badge = _ops_badge_html(row)
+    extra = row.extra or {}
+    blocked = extra.get("proposal_eligible") is False
+    if blocked:
+        badge = '<span class="alpha-badge-danger">부적격</span> ' + badge
+    upside_txt, tone = _header_cue(row)
     wview = weight_bar_view(row.weight_pct, row.cap_pct)
     weight_cls = f"pf-weight-{wview.tone}"
-    weight_prefix = "보유" if (row.extra or {}).get("book") == "ops" else "제안"
+    if extra.get("book") == "ops":
+        weight_prefix = "보유"
+        weight_chip = f"{weight_prefix} {row.weight_pct:.1f}%"
+    elif blocked:
+        weight_cls = "pf-weight-muted"
+        weight_chip = "비중 없음"
+    else:
+        weight_prefix = "제안"
+        weight_chip = f"{weight_prefix} {row.weight_pct:.1f}%"
+    spot = ""
+    if extra.get("book") == "proposal" and not blocked and row.current_price is not None:
+        spot = f'<span class="pf-spot">{_fmt_price(row.current_price)}원</span>'
     return (
         f'<div class="pf-row-main">'
         f'<div class="pf-bullet-top">'
-        f"{badge}<strong>{row.name} ({row.ticker})</strong> "
-        f'<span class="{weight_cls}">{weight_prefix} {row.weight_pct:.1f}%</span>'
+        f'<span class="pf-id">{badge}'
+        f"{naver_name_chart_html(row.ticker, row.name)}</span>"
+        f'<span class="{weight_cls} pf-wchip">{weight_chip}</span>'
+        f"{spot}"
         f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
         f"</div>"
-        f"{render_price_bar_html(row)}"
-        f"{render_weight_bar_html(row, thin=True)}"
+        f"{'' if blocked else _chart_read_html(row, chart)}"
+        f"{'' if blocked else render_price_bar_html(row)}"
         f"</div>"
     )
 
@@ -246,21 +420,95 @@ def _section(title: str, body_html: str = "") -> str:
     return f'<div class="pf-sec"><div class="pf-sec-title">{title}</div>{body_html}</div>'
 
 
+def _proposal_expand_html(row: PortfolioRow) -> str:
+    """Short expand for the screen book — score, gate, target. No CECS dump."""
+    extra = row.extra or {}
+    blocked = extra.get("proposal_eligible") is False
+    score = row.total_score
+    score_s = f"{float(score):.2f}" if score is not None else "—"
+    bits: list[str] = []
+    if blocked:
+        reason = str(extra.get("ineligible_reason") or row.target_detail or "부적격")
+        bits.append(
+            _section(
+                "편입하지 않은 이유",
+                f'<div class="pf-sec-body">{reason}</div>',
+            )
+        )
+        bits.append(
+            _section("점수", f'<div class="pf-sec-body">total_score {score_s}</div>')
+        )
+    else:
+        bits.append(
+            _section(
+                "제안",
+                f'<div class="pf-sec-body">'
+                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
+                f"현재 {_fmt_price(row.current_price)} · 목표 {_fmt_price(row.target_price)}"
+                f"</div>",
+            )
+        )
+        if extra.get("quant_ok"):
+            pbr_d = extra.get("quant_pbr_draft")
+            mid = extra.get("quant_price_mid")
+            d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
+            mid_s = _won(mid)
+            mid_s = f"{mid_s}원" if mid_s != "—" else "—"
+            note = extra.get("quant_note") or extra.get("quant_method") or ""
+            bits.append(
+                _section(
+                    "혼합 목표가",
+                    f'<div class="pf-sec-body">PBR {d_s} · {mid_s}'
+                    f"{'<br/>' + str(note) if note else ''}</div>",
+                )
+            )
+    hk = extra.get("hakedaka_detail")
+    if hk:
+        theme = " · 경기민감 테마" if extra.get("cyclical_theme") else ""
+        bits.append(
+            _section(
+                "하케다카",
+                f'<div class="pf-sec-body">{hk}{theme}</div>',
+            )
+        )
+    return f'<div class="pf-extend">{"".join(bits)}</div>'
+
+
 def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
     """Expanded area as parent-row extension — no nested card boxes."""
+    extra = row.extra or {}
+    if extra.get("book") == "proposal":
+        return _proposal_expand_html(row)
+
     wview = weight_bar_view(row.weight_pct, row.cap_pct)
     book = (row.extra or {}).get("book")
     weight_word = "보유 비중" if book == "ops" else "제안 비중"
-    step = (row.extra or {}).get("ops_step_id") or ""
+    extra_row = row.extra or {}
+    step = extra_row.get("ops_step_id") or ""
+    rungs = extra_row.get("ladder_rungs") or []
+    def _rung_won(idx: int) -> str:
+        if idx < len(rungs):
+            return f"{_won(rungs[idx])}원"
+        return ""
     step_line = ""
     if row.ops_signal == "cash_half":
+        px = _rung_won(4)
+        if not px and extra_row.get("ladder_high"):
+            px = f"{_won(extra_row.get('ladder_high'))}원"
         step_line = (
-            "<br/>스텝 S1: 수량 절반(내림) → 잔여는 탈락·신규매수·4주 미상향 시 전량"
+            f"<br/>절반 {px} · 잔여 도달 후 4주"
+            if px
+            else "<br/>절반 환금 · 잔여 도달 후 4주"
         )
     elif row.ops_signal == "exit_full":
-        step_line = f"<br/>스텝 {step or 'S2/S0'}: 잔여·전량 환금 · 로테이션/테제"
+        px = _rung_won(4)
+        if step == "S2c" and px:
+            step_line = f"<br/>전량 {px} · 도달 후 4주"
+        else:
+            step_line = f"<br/>스텝 {step or 'S2/S0'}: 잔여·전량 환금 · 로테이션/테제"
     elif row.ops_signal == "trim":
-        step_line = "<br/>스텝 S근접: ¼만 줄이기(도달 전)"
+        px = _rung_won(2)
+        step_line = f"<br/>줄이기 {px} (25%)" if px else "<br/>줄이기 25%"
     nums = (
         f'<div class="pf-sec-body">'
         f"{weight_word} {row.weight_pct:.1f}% "
@@ -292,12 +540,24 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
                 mid_s = "—"
         j_s = f"{float(pbr_j):.2f}" if pbr_j not in (None, "") else "—"
         d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
+        yaml_px = row.target_price
+        yaml_bit = ""
+        if yaml_px is not None:
+            yaml_bit = f" · 저장 {int(round(float(yaml_px))):,}원"
         quant_html = _section(
-            "정량 초안 (E 승인 전)",
-            f'<div class="pf-sec-body">정당 P/B {j_s} · 초안 {d_s} · {mid_s}'
+            "정량 초안 (익절 상한)",
+            f'<div class="pf-sec-body">지금 혼합 {d_s} · 이론 정당 {j_s} · {mid_s}{yaml_bit}'
             f"<br/>{method}<br/>{note}</div>",
         )
-    bars = render_price_bar_html(row, show_labels=True) + render_weight_bar_html(row, thin=False)
+    hk_html = ""
+    hk_detail = extra.get("hakedaka_detail")
+    if hk_detail:
+        theme = " · 경기민감 테마" if extra.get("cyclical_theme") else ""
+        hk_html = _section(
+            "하케다카 게이트 (점수 불변)",
+            f'<div class="pf-sec-body">{hk_detail}{theme}</div>',
+        )
+    bars = render_price_bar_html(row, show_labels=True)
 
     sc = next((s for s in ctx.scoreboard_rows if s.ticker == row.ticker), None)
     score_bits = (
@@ -390,6 +650,7 @@ def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
         f"{_section('편입 근거', journal_html)}"
         f"{_section('정성 채점 하위지표', cecs_html)}"
         f"{quant_html}"
+        f"{hk_html}"
         f"{modify_html}"
         f"</div>"
     )
@@ -400,15 +661,19 @@ def render_portfolio_bullets(
     *,
     mode: str = "full",
     key_prefix: str = "pf",
+    rows: Optional[list[PortfolioRow]] = None,
+    empty_hint: Optional[str] = None,
 ) -> None:
     """
     mode:
       - full: accordion expand on portfolio page
       - summary: compact home widget; click navigates to portfolio
+    rows:
+      override the bullet list (proposal vs ops holdings).
     """
-    rows = ctx.portfolio_rows
+    rows = list(rows if rows is not None else ctx.portfolio_rows)
     if not rows:
-        st.info("kr_alpha 보유 종목이 없습니다.")
+        st.info(empty_hint or "표시할 종목이 없습니다.")
         return
 
     nav = st.session_state.pop(SESSION_NAV_EXPAND, None)
@@ -416,6 +681,11 @@ def render_portfolio_bullets(
         st.session_state[SESSION_EXPANDED] = nav
 
     expanded = st.session_state.get(SESSION_EXPANDED)
+    chart_map: dict = {}
+    if str(key_prefix).startswith("pf_proposal"):
+        from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
+
+        chart_map = reads_by_ticker(ctx)
 
     st.markdown('<div class="pf-list">', unsafe_allow_html=True)
 
@@ -424,7 +694,11 @@ def render_portfolio_bullets(
         # Fixed column ratio always — prevents horizontal jump on expand/collapse
         left, right = st.columns([6, 1])
         with left:
-            st.markdown(_row_main_html(row), unsafe_allow_html=True)
+            tk = norm_ticker(row.ticker)
+            st.markdown(
+                _row_main_html(row, chart=chart_map.get(tk)),
+                unsafe_allow_html=True,
+            )
         with right:
             if mode == "summary":
                 if st.button("→", key=f"{key_prefix}_go_{row.ticker}", help=f"{row.name} 상세"):

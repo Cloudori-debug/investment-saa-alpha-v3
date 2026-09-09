@@ -1,6 +1,10 @@
 """P4c — pytest tier markers and collection hooks."""
 from __future__ import annotations
 
+from alpha_system.win_sac_pyarrow import shield_pandas_from_blocked_compute
+
+shield_pandas_from_blocked_compute()
+
 import pytest
 
 # --- tier module sets ---
