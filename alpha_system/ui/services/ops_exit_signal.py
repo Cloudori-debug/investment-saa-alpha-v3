@@ -285,6 +285,57 @@ def classify_ops_exit_signal(
     )
 
 
+def _fmt_won(v: Any) -> str | None:
+    x = _to_float(v)
+    if x is None:
+        return None
+    return f"{int(round(x)):,}원"
+
+
+def _detail_with_ladder_prices(
+    sig: OpsExitSignal,
+    extra: dict[str, Any],
+    row: Any,
+) -> str:
+    """Replace ¼/환금 wording with the matching ladder cell in won."""
+    rungs = extra.get("ladder_rungs") if isinstance(extra, dict) else None
+    high = None
+    if isinstance(extra, dict):
+        high = extra.get("ladder_high")
+    if high is None:
+        high = getattr(row, "target_price", None)
+
+    if sig.kind == "trim":
+        px = None
+        if isinstance(rungs, (list, tuple)) and len(rungs) >= 3:
+            px = _fmt_won(rungs[2])
+        if px:
+            return f"줄이기 {px} (25%) · 권고"
+        return sig.detail
+
+    if sig.kind == "cash_half":
+        px = None
+        if isinstance(rungs, (list, tuple)) and len(rungs) >= 5:
+            px = _fmt_won(rungs[4])
+        if px is None:
+            px = _fmt_won(high)
+        if px:
+            return f"절반 환금 {px} · 권고(사람 집행)"
+        return sig.detail
+
+    if sig.kind == "exit_full" and sig.step_id == "S2c":
+        px = None
+        if isinstance(rungs, (list, tuple)) and len(rungs) >= 5:
+            px = _fmt_won(rungs[4])
+        if px is None:
+            px = _fmt_won(high)
+        if px:
+            return f"전량 {px} · 도달 후 4주"
+        return sig.detail
+
+    return sig.detail
+
+
 def apply_ops_exit_signals(
     rows: list[Any],
     *,
@@ -330,7 +381,7 @@ def apply_ops_exit_signals(
         )
         row.ops_signal = sig.kind
         row.ops_signal_label = sig.label
-        row.ops_signal_detail = sig.detail
+        row.ops_signal_detail = _detail_with_ladder_prices(sig, extra, row)
         row.ops_trim_pct = sig.trim_pct
         row.extra = {
             **extra,

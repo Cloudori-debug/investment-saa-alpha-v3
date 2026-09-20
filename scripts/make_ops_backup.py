@@ -1,4 +1,4 @@
-"""CLI: create SAA 알파 운용 비서 backup zip (format / other PC)."""
+"""CLI: create 코스피 알파 스크리너 backup zip (format / other PC)."""
 
 from __future__ import annotations
 

@@ -13,10 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from alpha_system.product import PRODUCT_NAME, PRODUCT_TAGLINE
+
 # Relative to repo root. Order is stable for manifests.
 OPS_PACK_VERSION = "1.0"
-PRODUCT_NAME = "SAA 알파 운용 비서"
-PRODUCT_TAGLINE = "규칙 있는 개인 운용 비서 · 자동매매 아님"
 
 # Always include when present (ops state / approvals).
 CORE_RELATIVE_PATHS: tuple[str, ...] = (
@@ -28,21 +28,61 @@ CORE_RELATIVE_PATHS: tuple[str, ...] = (
     "data/cecs_manual_scoring_candidates.csv",
     "data/positions.csv",
     "data/alpha_dashboard_runtime.json",
+    "data/alpha_book_ops.yaml",
+    "data/qual_rank_overlay.json",
+    "data/killswitch_watch.json",
+    "data/opendart_proposal_watch.json",
+    "data/alpha_quant_snapshot_provenance.json",
+    "data/alpha_quant_snapshot_history.jsonl",
+    "data/alpha_system_journal.jsonl",
+    "data/proposal_freeze_policy.json",
+    "data/weekly_qual_proposal_freeze.json",
+    "data/public_brake_ledger.json",
+    "data/public_brake_candidates.json",
+    "data/market_data_provenance.json",
+    "data/tier2_provenance.json",
+    "data/tier2_sources.yaml",
+    "data/hakedaka_integration.yaml",
     "data/short_bond_regime_guide.yaml",
     "data/portfolio_policy.yaml",
     "data/compass_rules.yaml",
     "data/saa_profiles.yaml",
     "data/trigger_rules.yaml",
+    "alpha_system/config/scoring.yaml",
+    "alpha_system/config/alpha_system.yaml",
+    "alpha_system/config/dashboard.yaml",
 )
 
 # Optional market caches — restore speeds first run; can re-fetch.
 OPTIONAL_DATA_GLOBS: tuple[str, ...] = (
     "data/prices.csv",
     "data/fundamentals.csv",
+    "data/universe.csv",
+    "data/krx_sector_mapping.csv",
+    "data/investor_flows.csv",
     "data/market_indicators.csv",
+    "data/market_indicators_history.csv",
     "data/macro_tier2.csv",
     "data/kospi_market_pbr_history.csv",
     "alpha_portfolio/data/output/alpha_scores.csv",
+    "alpha_portfolio/data/output/alpha_candidates.csv",
+)
+
+# Extra cache trees (only when include_optional_data).
+OPTIONAL_PATH_GLOBS: tuple[str, ...] = (
+    "data/public_brake_feed/*.json",
+)
+
+_RESTORE_PREFIXES = (
+    "data/",
+    "alpha_portfolio/data/",
+)
+_RESTORE_EXACT = frozenset(
+    {
+        "alpha_system/config/scoring.yaml",
+        "alpha_system/config/alpha_system.yaml",
+        "alpha_system/config/dashboard.yaml",
+    }
 )
 
 SECRETS_RELATIVE = "data/local/user_secrets.json"
@@ -83,6 +123,12 @@ def list_pack_candidates(
     rels: list[str] = list(CORE_RELATIVE_PATHS)
     if include_optional_data:
         rels.extend(OPTIONAL_DATA_GLOBS)
+        for pattern in OPTIONAL_PATH_GLOBS:
+            rels.extend(
+                p.relative_to(root).as_posix()
+                for p in sorted(root.glob(pattern))
+                if p.is_file()
+            )
     if include_secrets:
         rels.append(SECRETS_RELATIVE)
     out: list[PackFile] = []
@@ -215,7 +261,7 @@ def create_ops_backup_folder(
                 "Keep separate from the program (Setup / App folder).",
                 "",
                 "Restore:",
-                "  Run 장부_가져오기.bat and select this folder (or the zip inside).",
+                "  설정 › 도구 › 장부 가져오기 (zip) 또는 scripts/import_ledger.py",
                 "",
                 f"created: {generated_at.isoformat(timespec='seconds')}",
                 f"files: {len(zip_result.included)}",
@@ -256,8 +302,8 @@ def restore_ops_backup_zip(
             }:
                 continue
             if not (
-                name.startswith("data/")
-                or name.startswith("alpha_portfolio/data/")
+                name.startswith(_RESTORE_PREFIXES)
+                or name in _RESTORE_EXACT
             ):
                 skipped.append(name)
                 continue

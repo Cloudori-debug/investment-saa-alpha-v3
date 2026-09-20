@@ -1,13 +1,7 @@
-"""Weekly integrated qualitative AI report — request schema A–E + parser.
+"""Weekly qualitative request — C (T2) and D (thesis) only.
 
-Sections:
-  A_CECS_SUMMARY — shortlist 30 CECS axis summaries
-  B_FINAL6_DEEP — deep dive for proposed six
-  C_T2_EVENTS — commercial code / MSCI / IFRS18
-  D_THESIS — thesis damage signs
-  E_TARGET_VALUATION — target PBR/price proposals for six
-
-AI suggestions stay domain-isolated until separate approval gates apply them.
+Name-level gates and targets live on the proposal screen.
+CECS 0–100 scoring is not a weekly or monthly request.
 """
 
 from __future__ import annotations
@@ -21,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 
 from alpha_system.journal import append_record
 from alpha_system.ui.services.cecs_ai_research import (
@@ -31,6 +26,20 @@ from alpha_system.ui.services.cecs_ai_research import (
     parse_cecs_ai_research_markdown,
 )
 from src.alpha.quant_target_estimate import markdown_target_fields
+
+# fired:true may only cite these hosts (news / DART HTML viewers rejected).
+T2_TRUE_HOST_SUFFIXES = (
+    "gwanbo.go.kr",
+    "law.go.kr",
+    "msci.com",
+    "fsc.go.kr",
+    "kasb.or.kr",
+)
+T2_EVENT_LABELS = {
+    "commercial_code_enforcement_decrees": "상법 시행령 (관보)",
+    "msci_dm_index_inclusion_confirmed": "MSCI 선진국 편입",
+    "ifrs18_domestic_adoption_schedule_confirmed": "IFRS18 확정 고시",
+}
 
 SECTION_IDS = (
     "A_CECS_SUMMARY",
@@ -73,7 +82,7 @@ SUGGESTIONS_LANE_MONTHLY = "monthly"
 SUGGESTIONS_FILE_WEEKLY = "weekly_qual_suggestions.json"
 SUGGESTIONS_FILE_MONTHLY = "monthly_cecs_suggestions.json"
 
-WEEKLY_DOMAIN_KEYS = ("t2", "thesis", "targets")
+WEEKLY_DOMAIN_KEYS = ("t2", "thesis")
 MONTHLY_DOMAIN_KEYS = ("cecs",)
 
 
@@ -160,9 +169,11 @@ def build_weekly_qual_markdown(
     input_snapshot_hash: str,
     existing_exit: Mapping[str, Mapping[str, Any]] | None = None,
     quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
+    cecs_facts: Mapping[str, Sequence[str]] | None = None,
 ) -> str:
+    del existing_exit, quant_drafts, summary_subjects, deep_subjects, cecs_facts
     lines = [
-        "# 주간 통합 정성 AI 요청서",
+        "# 주간 제도·논지 요청서",
         "",
         f"- report_id: `{report_id}`",
         f"- as_of: `{as_of.isoformat()}`",
@@ -173,46 +184,17 @@ def build_weekly_qual_markdown(
         "",
         "## 작성 규칙",
         "",
-        "1. 섹션 헤더(`## A_CECS_SUMMARY` 등)와 필드 라벨을 변경하지 마세요.",
+        "1. 섹션 헤더(`## C_T2_EVENTS`, `## D_THESIS`)와 필드 라벨을 변경하지 마세요.",
         "2. 확인 불가한 항목은 추정하지 말고 근거에 `확인 불가; 검색 키워드: ...`를 적으세요.",
-        "3. 각 영역은 별도 승인됩니다. 한 섹션 실패가 다른 섹션을 자동 승인하지 않습니다.",
-        "4. `target_portfolio.csv` 변경 제안은 금지입니다. 목표가 YAML 제안만 허용합니다.",
-        "5. **채움 순서(필수):** `C_T2_EVENTS` → `D_THESIS` → `E_TARGET_VALUATION` → `A_CECS_SUMMARY`.",
-        "   (선택) `B_FINAL6_DEEP` · `F_QUANT_EVENTS`는 C/D/E 이후.",
+        "3. 종목 채점(CECS)·심층·목표가는 이 파일에 없습니다. "
+        "목표·편입 게이트는 **포트폴리오 › 제안 종목**입니다.",
+        "4. `target_portfolio.csv` 변경 제안은 금지입니다.",
+        "5. **채움 순서:** `C_T2_EVENTS` → `D_THESIS`.",
         "6. **출력:** 설명·서론 없이 **이 Markdown 전체**(빈칸만 채운 완성본). "
         "헤더 추가·삭제·번역 금지. as_of 기준(「오늘」금지).",
-        "7. **숫자 칸 형식(파서 계약 — 반드시 준수)**",
-        "   - CECS `점수 제안(0-100):` → **숫자만**. 예: `65`",
-        "     금지: `65 (AI 초안)`, `65점`, `약 65`, 점수 칸에 `확인 불가`",
-        "     못 정하면 `_____`만 (업로드 시 잠정 50). `확인 불가`는 근거·출처에만.",
-        "   - 목표가 `pbr_max:` → **숫자만**. 예: `0.75`",
-        "     금지: `0.75배`, `0.7배 (2028년 목표)`, `1.4배 (대신증권…)`",
-        "   - 목표가 `target_price:` → **원 단위 숫자만** (쉼표·원·범위·주석 금지). 예: `48000`",
-        "     금지: `48,000원`, `200,000~250,000원`, `150000원 (한화…)`",
-        "   - `pbr_max`와 `target_price` 중 **최소 1개**는 숫자로 채우세요. 둘 다 `_____`면 업로드 실패.",
-        "   - 증권사명·범위·근거 설명은 `펀더멘털 사유`/`근거` 칸에만 쓰세요.",
-        "   - 출처 URL은 줄마다 단독으로 적어도 됩니다.",
-        "8. **자기점검(출력 전):** C 근거≠`_____` · D 근거≠`_____` · "
-        "E 전 TARGET 펀더멘털·근거·URL≥1 · A 점수=숫자|`_____`.",
-        "9. 이 파일은 **조사 초안**입니다. 최종 점수·fired는 사람이 출처 원문 확인 후 승인합니다.",
-        "",
-        "### CECS 3축 채점표 (A — 이 표만 따를 것)",
-        "",
-        "**execution (주주환원 연속성)** — 최근 완결 4개 분기(배당·자사주 매입·소각).",
-        "분기당 이벤트 1건 이상=그 분기 충족. 동일 분기 복수는 1회. "
-        "연·반기 배당은 **결의/지급이 속한 분기만** 인정(프로그램 걸쳐 셈 금지).",
-        "- 4/4→`100` · 3/4→`75` · 2/4→`50` · 1/4→`25` · 0/4→`0`",
-        "",
-        "**pension (연기금 지분 추세)** — 국민연금 등.",
-        "- 보유+2분기 이상 지분 **순증**→`70`~`100`",
-        "- 보유+보합(±0.1%p)→`50`",
-        "- 보유+감소→`20`~`40`",
-        "- 미보유 **확인**→`50` (중립). 모름→점수 `_____`",
-        "- 자사주 소각 **분모효과만**으로 지분율↑ → 증가로 치지 말 것(`50` 또는 보수)",
-        "",
-        "**purpose (대량보유 투자목적)** — **최신** DART 대량보유보고 문구만.",
-        "- 일반투자/단순투자→`100` · 경영참여/지배→`30` · 보고 없음→`50`",
-        "- 2020~2023만 있고 이후 재확인 불가→점수 `_____`",
+        "7. **자기점검:** C 근거≠`_____` · D 근거≠`_____`. "
+        "`fired:true`는 관보·법령·MSCI·금융위·회계기준원 URL만.",
+        "8. 이 파일은 **조사 초안**입니다. 최종 fired는 사람이 출처 원문 확인 후 승인합니다.",
         "",
         "### T2 확정 기준 (C — true는 아래만)",
         "",
@@ -220,64 +202,24 @@ def build_weekly_qual_markdown(
         "- `msci_dm_index_inclusion_confirmed`: **MSCI 공식 편입 발표**만. 워치리스트→false",
         "- `ifrs18_domestic_adoption_schedule_confirmed`: **금융위 또는 한국회계기준원 확정 고시**만. "
         "검토·의견수렴→false",
-        "- `fired:true`이면 출처에 1차 http(s) URL 필수. 못 찾으면 false.",
+        "- `fired:true`이면 출처가 다음 호스트 중 하나여야 합니다: "
+        "`gwanbo.go.kr` · `law.go.kr` · `msci.com` · `fsc.go.kr` · `kasb.or.kr`. "
+        "신문·로펌·DART 뷰어 URL은 true로 인정하지 않습니다. 못 찾으면 false.",
         "",
         "---",
         "",
-        "## A_CECS_SUMMARY",
+        "## C_T2_EVENTS",
         "",
-        "shortlist 30종 CECS 3축 요약. 종목 블록은 `## [TICKER] 이름` 형식을 유지하세요.",
-        "각 축의 `점수 제안(0-100):`은 숫자만(또는 `_____`). 괄호·주석·한글을 붙이지 마세요.",
-        "위 **CECS 3축 채점표**만 사용하세요. 축 의미를 임의로 재해석하지 마세요.",
+        "제도 이벤트 발생 여부. `fired`는 true/false만.",
+        "**`근거`는 fired=false여도 한 줄 필수.** `_____`·빈칸이면 업로드 실패(영역 empty).",
+        "true는 1차 출처(관보·MSCI 공식·금융위/KASB 고시) URL이 있을 때만.",
+        "완성 예 (복붙 금지 — 형식만 참고):",
+        "- fired: false",
+        "- 근거: as_of 기준 MSCI 공식 DM 편입 발표 없음(워치리스트·전망만으로는 미확정)",
+        "- 출처:",
+        "  - 확인 불가; 검색 키워드: \"MSCI Korea DM inclusion official announcement\"",
         "",
     ]
-    for subject in summary_subjects:
-        lines.extend(_cecs_block(subject))
-        lines.append("")
-
-    lines.extend(
-        [
-            "---",
-            "",
-            "## B_FINAL6_DEEP",
-            "",
-            "최종 제안 6종 심층(공시·환원·연기금·투자목적·리스크).",
-            "",
-        ]
-    )
-    for subject in deep_subjects:
-        lines.extend(
-            [
-                f"### DEEP [{subject.ticker}] {subject.name}",
-                f"- 섹터: {subject.sector or '—'}",
-                "- 공시/지배구조: _____",
-                "- 자사주·배당·환원: _____",
-                "- 연기금·수급: _____",
-                "- 투자목적: _____",
-                "- 리스크: _____",
-                "- 출처:",
-                "  - ",
-                "",
-            ]
-        )
-
-    lines.extend(
-        [
-            "---",
-            "",
-            "## C_T2_EVENTS",
-            "",
-            "제도 이벤트 발생 여부. `fired`는 true/false만.",
-            "**`근거`는 fired=false여도 한 줄 필수.** `_____`·빈칸이면 업로드 실패(영역 empty).",
-            "true는 1차 출처(관보·MSCI 공식·금융위/KASB 고시) URL이 있을 때만.",
-            "완성 예 (복붙 금지 — 형식만 참고):",
-            "- fired: false",
-            "- 근거: as_of 기준 MSCI 공식 DM 편입 발표 없음(워치리스트·전망만으로는 미확정)",
-            "- 출처:",
-            "  - 확인 불가; 검색 키워드: \"MSCI Korea DM inclusion official announcement\"",
-            "",
-        ]
-    )
     for eid in t2_event_ids:
         lines.extend(
             [
@@ -305,116 +247,28 @@ def build_weekly_qual_markdown(
             "- 출처:",
             "  - ",
             "",
-            "---",
-            "",
-            "## E_TARGET_VALUATION",
-            "",
-            "제안 종목 목표가/PBR. **`kr_alpha_exit_targets.yaml`은 요청서 생성만으로 지워지지 않습니다.**",
-            "이미 승인된 종목은 아래 「이미 승인」에 **참고 숫자만** 적습니다 — AI가 덮어 쓰지 마세요.",
-            "채울 대상은 「대기(채움)」공란만입니다. 승인 시 YAML에 반영되는 것도 대기 종목 위주입니다.",
-            "`pbr_max`는 배수 숫자만(예: `0.75`), `target_price`는 원 단위 숫자만(예: `48000`).",
-            "둘 중 최소 1개는 숫자. `배`/`원`/쉼표/범위(~)/증권사 주석은 근거 칸에만.",
-            "**대기 종목:** `펀더멘털 사유`·`근거`·출처 URL≥1 필수. `_____`면 해당 종목 파싱 실패.",
-            "정량초안이 있으면 숫자가 미리 채워집니다(정당 P/B · E 승인 전 yaml 미기입). 수정 후 업로드하세요.",
-            "",
         ]
     )
-    exit_map = {
-        str(k).zfill(6): dict(v)
-        for k, v in (existing_exit or {}).items()
-        if _exit_entry_has_usable_target(v)
-    }
-    already = [s for s in deep_subjects if s.ticker in exit_map]
-    waiting_e = [s for s in deep_subjects if s.ticker not in exit_map]
-    if already:
-        lines.extend(
-            [
-                "### 이미 승인 (참고 · 채우지 말 것 · YAML 유지)",
-                "",
-                "아래는 `kr_alpha_exit_targets.yaml`에 있는 값입니다. "
-                "재조사가 필요할 때만 운용자가 별도 보충/수정하세요. "
-                "**이 블록을 AI가 다시 채워 업로드·승인하면 기존 PBR/목표가를 덮어쓸 수 있습니다.**",
-                "",
-            ]
-        )
-        for subject in already:
-            entry = exit_map[subject.ticker]
-            val = entry.get("valuation") if isinstance(entry.get("valuation"), dict) else {}
-            pbr = val.get("pbr_max") if isinstance(val, dict) else None
-            tp = entry.get("target_price")
-            lines.extend(
-                [
-                    f"### TARGET_REF [{subject.ticker}] {subject.name}",
-                    f"- pbr_max(승인): {pbr if pbr is not None else '—'}",
-                    f"- target_price(승인): {tp if tp is not None else '—'}",
-                    f"- approved_as_of: {entry.get('approved_as_of') or '—'}",
-                    "- 상태: already_approved — **빈칸 채우기 금지**",
-                    "",
-                ]
-            )
-    lines.extend(
-        [
-            "### 대기 (채움 대상)",
-            "",
-        ]
-    )
-    if not waiting_e:
-        lines.extend(
-            [
-                "(대기 종목 없음 — 제안 북 전 종목 목표가 승인됨. E 공란 없음.)",
-                "",
-            ]
-        )
-    for subject in waiting_e:
-        lines.extend(_e_target_fill_lines(subject, quant_drafts))
-    lines.extend(
-        [
-            "---",
-            "",
-            "## F_QUANT_EVENTS",
-            "",
-            "정량 이벤트 감시(수동). **CECS/점수는 자동 변경되지 않음** — 재채점 검토 신호만.",
-            "PyKRX/DART로는 컨센서스 EPS·목표가·등급을 자동 수집할 수 없음 "
-            "(`docs/CONSENSUS_DATA_FEASIBILITY.md`).",
-            "",
-            "event_id 허용값: `earnings_surprise` | `rating_downgrade` | `target_gap_narrowed`",
-            "해당 없으면 `event_id: _____` 로 두세요. 임계값(SUE/%)은 TODO.",
-            "",
-        ]
-    )
-    for subject in deep_subjects:
-        lines.extend(
-            [
-                f"### SIGNAL [{subject.ticker}] {subject.name}",
-                "- event_id: _____",
-                "- note: _____",
-                "- 출처:",
-                "  - ",
-                "",
-            ]
-        )
     return "\n".join(lines).rstrip() + "\n"
 
 
 def write_weekly_qual_report(
     *,
-    summary_subjects: Sequence[WeeklySubject],
-    deep_subjects: Sequence[WeeklySubject],
-    t2_event_ids: Sequence[str],
     docs_dir: Path,
+    t2_event_ids: Sequence[str],
+    summary_subjects: Sequence[WeeklySubject] = (),
+    deep_subjects: Sequence[WeeklySubject] = (),
     as_of: date | None = None,
     generated_at: datetime | None = None,
     input_paths: Sequence[Path] | None = None,
     journal_path: Path | None = None,
     existing_exit: Mapping[str, Mapping[str, Any]] | None = None,
     quant_drafts: Mapping[str, Mapping[str, Any]] | None = None,
+    cecs_facts: Mapping[str, Sequence[str]] | None = None,
+    report_basename: str = "weekly_qual_report",
 ) -> WeeklyQualReport:
-    if not summary_subjects:
-        raise ValueError("A_CECS_SUMMARY 대상이 없습니다.")
-    if not deep_subjects:
-        raise ValueError(
-            "B/E(심층·목표가) 대상이 없습니다. proposal_book 최종 선정이 필요합니다."
-        )
+    if not t2_event_ids:
+        raise ValueError("C_T2_EVENTS 대상이 없습니다. qual_gates.t2_event_ids를 확인하세요.")
     generated_at = generated_at or datetime.now()
     as_of = as_of or generated_at.date()
     report_id = f"WQR-{generated_at.strftime('%Y%m%d-%H%M%S')}"
@@ -431,9 +285,11 @@ def write_weekly_qual_report(
         input_snapshot_hash=input_snapshot_hash,
         existing_exit=existing_exit,
         quant_drafts=quant_drafts,
+        cecs_facts=cecs_facts,
     )
     docs_dir.mkdir(parents=True, exist_ok=True)
-    path = docs_dir / f"weekly_qual_report_{generated_at.strftime('%Y%m%d')}.md"
+    stem = (report_basename or "weekly_qual_report").strip() or "weekly_qual_report"
+    path = docs_dir / f"{stem}_{generated_at.strftime('%Y%m%d')}.md"
     _atomic_write_text(path, markdown)
     append_record(
         action_kind="WEEKLY_QUAL_REPORT_GENERATED",
@@ -478,15 +334,12 @@ def parse_weekly_qual_markdown(text: str) -> WeeklyParseResult:
             "ai_suggested" if cecs_suggestions else ("failed" if parsed.failures else "empty")
         )
     else:
-        domain_failures["cecs"].append("A_CECS_SUMMARY 섹션 없음")
+        domain_status["cecs"] = "empty"
 
     deep_dives: list[ParsedDeepDive] = []
     if "B_FINAL6_DEEP" in sections:
         deep_dives, deep_fail = _parse_deep(sections["B_FINAL6_DEEP"])
-        domain_failures["cecs"].extend(deep_fail)  # deep is CECS-adjacent qualitative
-        # Deep alone must not mark CECS approvable — approve_domain reads `cecs` only.
-    else:
-        domain_failures["cecs"].append("B_FINAL6_DEEP 섹션 없음")
+        domain_failures["cecs"].extend(deep_fail)
 
     t2_events: list[ParsedT2Event] = []
     if "C_T2_EVENTS" in sections:
@@ -516,7 +369,7 @@ def parse_weekly_qual_markdown(text: str) -> WeeklyParseResult:
             "ai_suggested" if targets else ("failed" if tg_fail else "empty")
         )
     else:
-        domain_failures["targets"].append("E_TARGET_VALUATION 섹션 없음")
+        domain_status["targets"] = "empty"
 
     quant_signals: list[dict[str, str]] = []
     if "F_QUANT_EVENTS" in sections:
@@ -727,6 +580,62 @@ def persist_weekly_suggestions(
     return out
 
 
+def persist_killswitch_draft(
+    *,
+    root: Path,
+    t2_events: Sequence[ParsedT2Event],
+    thesis: ParsedThesis | None,
+    as_of: date,
+    journal_path: Path | None = None,
+) -> Path:
+    """Store a human kill-switch draft. Idle (all unconfirmed) is not stored.
+
+    ``fired:true`` / ``damage:true`` require an allowlisted official URL.
+    Does not apply runtime flags until domain approval.
+    """
+    fired = tuple(e for e in t2_events if e.fired)
+    for event in fired:
+        if not t2_true_source_allowed(event.sources):
+            raise ValueError(
+                f"{event.event_id}: true는 관보·법령·MSCI·금융위·회계기준원 URL만 "
+                f"({', '.join(T2_TRUE_HOST_SUFFIXES)})"
+            )
+        if not str(event.rationale or "").strip():
+            raise ValueError(f"{event.event_id}: 근거가 필요합니다.")
+    damage = thesis if (thesis is not None and thesis.damage) else None
+    if damage is not None:
+        if not t2_true_source_allowed(damage.sources):
+            raise ValueError(
+                "논지 훼손은 관보·법령·MSCI·금융위·회계기준원 URL이 필요합니다."
+            )
+        if not str(damage.rationale or "").strip():
+            raise ValueError("논지 훼손 근거가 필요합니다.")
+    if not fired and damage is None:
+        raise ValueError("저장할 이슈가 없습니다. 미확인은 파일에 남기지 않습니다.")
+    parsed = WeeklyParseResult(
+        report_id=f"KS-{as_of.isoformat()}",
+        as_of=as_of.isoformat(),
+        input_snapshot_hash="",
+        t2_events=fired,
+        thesis=damage,
+        domain_status={
+            "cecs": "empty",
+            "t2": "ai_suggested" if fired else "empty",
+            "thesis": "ai_suggested" if damage is not None else "empty",
+            "targets": "empty",
+        },
+        domain_failures={k: () for k in DOMAIN_KEYS},
+    )
+    return persist_weekly_suggestions(
+        root=root,
+        parsed=parsed,
+        report_name="killswitch-draft",
+        as_of=as_of,
+        journal_path=journal_path,
+        lane=SUGGESTIONS_LANE_WEEKLY,
+    )
+
+
 def _preserve_unchanged_approvals(
     payload: dict[str, Any],
     previous: dict[str, Any],
@@ -924,12 +833,19 @@ def subjects_from_portfolio_rows(rows: Sequence[Any]) -> list[WeeklySubject]:
     return out
 
 
-def _cecs_block(subject: WeeklySubject) -> list[str]:
+def _cecs_block(
+    subject: WeeklySubject,
+    *,
+    facts_lines: Sequence[str] | None = None,
+) -> list[str]:
     lines = [
         f"## [{subject.ticker}] {subject.name}",
         f"- 섹터: {subject.sector or '—'}",
         "",
     ]
+    if facts_lines:
+        lines.extend(str(x) for x in facts_lines if str(x).strip())
+        lines.append("")
     for axis in ("execution", "pension", "purpose"):
         lines.extend(
             [
@@ -1044,6 +960,21 @@ def _parse_deep(text: str) -> tuple[list[ParsedDeepDive], list[str]]:
     return out, failures
 
 
+def t2_true_source_allowed(sources: Sequence[str]) -> bool:
+    """True if any source URL host is an official T2 domain."""
+    for raw in sources:
+        text = str(raw or "").strip()
+        low = text.lower()
+        if not (low.startswith("http://") or low.startswith("https://")):
+            continue
+        host = (urlparse(text).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if any(host == suffix or host.endswith("." + suffix) for suffix in T2_TRUE_HOST_SUFFIXES):
+            return True
+    return False
+
+
 def _parse_t2(text: str) -> tuple[list[ParsedT2Event], list[str]]:
     chunks = re.split(r"(?m)^###\s+EVENT\s+\[", text)
     out: list[ParsedT2Event] = []
@@ -1062,12 +993,19 @@ def _parse_t2(text: str) -> tuple[list[ParsedT2Event], list[str]]:
         if not rationale or rationale == "_____":
             failures.append(f"{eid}: 근거 필요")
             continue
+        sources = _parse_sources(body)
+        if fired_raw == "true" and not t2_true_source_allowed(sources):
+            failures.append(
+                f"{eid}: fired:true는 관보·법령·MSCI·금융위·회계기준원 URL만 "
+                f"({', '.join(T2_TRUE_HOST_SUFFIXES)})"
+            )
+            continue
         out.append(
             ParsedT2Event(
                 event_id=eid,
-                fired=fired_raw == "true",
+                fired=True if fired_raw == "true" else False,
                 rationale=rationale,
-                sources=_parse_sources(body),
+                sources=sources,
             )
         )
     return out, failures
@@ -1275,11 +1213,13 @@ def _atomic_write_text(path: Path, text: str) -> None:
             os.remove(tmp_name)
 
 
-def load_exit_target_entries(root: Path) -> dict[str, dict[str, Any]]:
+def load_exit_target_entries(
+    root: Path, *, yaml_path: Path | None = None
+) -> dict[str, dict[str, Any]]:
     """ticker → exit YAML entry (may be empty dict)."""
     import yaml
 
-    path = root / "data" / "kr_alpha_exit_targets.yaml"
+    path = Path(yaml_path) if yaml_path is not None else root / "data" / "kr_alpha_exit_targets.yaml"
     if not path.exists():
         return {}
     try:
@@ -1344,22 +1284,9 @@ _PROMPT_FALLBACK_B = """당신은 한국 상장주식 목표가(익절·밸류 �
 """
 
 
-_PROMPT_FALLBACK_C = """당신은 한국 상장주식 CECS(정성) 조사 보조입니다.
-첨부는 SAA 알파 월간 CECS 요청서입니다. 첨부 as_of·티커·채점표·헤더를 그대로 따르세요.
-
-# 범위
-- A_CECS_SUMMARY만 채우세요. C/D/E는 손대지 마세요.
-
-# 절대 규칙
-1. 헤더·필드 라벨 불변. 추정 금지. as_of 기준.
-2. target_portfolio 변경·매수 추천·순위 변경 제안 금지.
-3. 완성 Markdown만 출력.
-
-# A_CECS_SUMMARY
-첨부된 모든 `## [티커]` 블록의 execution / pension / purpose를 채우세요.
-점수는 첨부 채점표만. 근거·출처(URL) 필수.
-
-[아래에 월간 CECS 요청서 Markdown 전체를 붙이세요]
+_PROMPT_FALLBACK_C = """월간 CECS 채점 요청서는 사용하지 마세요.
+종목 게이트와 목표가는 대시보드 포트폴리오 › 제안 종목에서 처리합니다.
+DART/KIND HTML 뷰어(dsaf001, viewer.do)를 열지 마세요.
 """
 
 
@@ -1404,7 +1331,8 @@ def load_cde_copy_prompt(
         # Prefer A from docs; if missing, CDE-oriented fallback from B+T2 hint.
         return (
             "당신은 한국 상장주식 주간 정성 조사 보조입니다.\n"
-            "첨부 Markdown의 C_T2_EVENTS → D_THESIS → E_TARGET_VALUATION만 채우세요.\n"
+            "첨부 Markdown의 C_T2_EVENTS → D_THESIS만 채우세요.\n"
+            "fired:true는 gwanbo.go.kr·law.go.kr·msci.com·fsc.go.kr·kasb.or.kr URL만.\n"
             "헤더·필드 불변. 추정 금지. target_portfolio 변경 금지. 완성 Markdown만.\n\n"
             "[아래에 요청서 Markdown 전체를 붙이세요]\n"
         )
@@ -1633,7 +1561,9 @@ __all__ = [
     "WEEKLY_DOMAIN_KEYS",
     "SUGGESTIONS_LANE_MONTHLY",
     "SUGGESTIONS_LANE_WEEKLY",
-    "SECTION_IDS",
+    "T2_TRUE_HOST_SUFFIXES",
+    "T2_EVENT_LABELS",
+    "t2_true_source_allowed",
     "WeeklySubject",
     "WeeklyQualReport",
     "WeeklyParseResult",
@@ -1641,6 +1571,7 @@ __all__ = [
     "write_weekly_qual_report",
     "parse_weekly_qual_markdown",
     "persist_weekly_suggestions",
+    "persist_killswitch_draft",
     "persist_targets_supplement",
     "load_weekly_suggestions",
     "load_exit_target_entries",

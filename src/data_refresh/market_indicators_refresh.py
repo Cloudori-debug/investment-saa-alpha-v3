@@ -55,7 +55,7 @@ def _compute_kospi_metrics(index_df: pd.DataFrame, *, existing: dict[str, str] |
         raise ValueError("KOSPI index OHLCV empty")
     closes = index_df["종가"].astype(float)
     kospi = float(closes.iloc[-1])
-    recent_high = float(closes.max())
+    recent_high = float(closes.tail(min(252, len(closes))).max())
     ma_window = min(200, len(closes))
     kospi_200ma = float(closes.tail(ma_window).mean())
     if ma_window < 120:

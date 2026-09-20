@@ -56,21 +56,32 @@ def _read_mapping(path: Path) -> dict[str, dict[str, str]]:
     return out
 
 
+def _mapping_bases(data_dir: str) -> tuple[Path, ...]:
+    """Book dirs (data/books/kosdaq) still read the shared KRX mapping in data/."""
+    base = Path(data_dir)
+    bases = [base]
+    if base.parent.name == "books" and base.parent.parent.name == "data":
+        shared = base.parent.parent
+        if shared != base:
+            bases.append(shared)
+    return tuple(bases)
+
+
 @lru_cache(maxsize=4)
 def load_sector_groups(data_dir: str) -> Mapping[str, str]:
     """Return ticker → concentration sector_group from data/krx_sector_mapping*.csv."""
-    base = Path(data_dir)
     merged: dict[str, dict[str, str]] = {}
-    for fname in ("krx_sector_mapping.csv", "krx_sector_mapping_manual.csv"):
-        for ticker, row in _read_mapping(base / fname).items():
-            existing = merged.get(ticker)
-            if existing is None:
-                merged[ticker] = row
-                continue
-            p_new = _SOURCE_PRIORITY.get(row.get("source", ""), 5)
-            p_old = _SOURCE_PRIORITY.get(existing.get("source", ""), 5)
-            if p_new < p_old or (p_new == p_old and row.get("is_manual") == "true"):
-                merged[ticker] = row
+    for base in _mapping_bases(data_dir):
+        for fname in ("krx_sector_mapping.csv", "krx_sector_mapping_manual.csv"):
+            for ticker, row in _read_mapping(base / fname).items():
+                existing = merged.get(ticker)
+                if existing is None:
+                    merged[ticker] = row
+                    continue
+                p_new = _SOURCE_PRIORITY.get(row.get("source", ""), 5)
+                p_old = _SOURCE_PRIORITY.get(existing.get("source", ""), 5)
+                if p_new < p_old or (p_new == p_old and row.get("is_manual") == "true"):
+                    merged[ticker] = row
 
     out: dict[str, str] = {}
     for ticker, row in merged.items():

@@ -2,39 +2,42 @@
 REM Direct UI start - prefers bundled .venv (packaged install).
 setlocal EnableExtensions
 set PYTHONUNBUFFERED=1
-title SAA Alpha Ops Assistant UI [v3]
+title KOSPI Alpha Screener UI [v3]
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
 echo [SAA] root=%ROOT%
-echo [SAA] expect: investment-saa-alpha-v3
-echo %ROOT% | find /I "investment-saa-alpha-v3" >nul
-if errorlevel 1 (
-  echo [WARN] Launcher path is not investment-saa-alpha-v3 — wrong shortcut?
+if not exist "%ROOT%\alpha_dashboard.py" (
+  echo [ERROR] alpha_dashboard.py missing. Copy the whole program folder.
+  pause
+  exit /b 1
 )
 
 call "%~dp0scripts\_env_python.bat"
 if not defined SAA_PY (
   echo [ERROR] Python not found.
-  echo Install Python 3.11+ with PATH, or run packaging\bundle first.
-  echo See docs\V3_WINDOWS_PACKAGING.md
+  echo Install Python 3.11+ with PATH, then run the daily launcher again.
+  echo https://www.python.org/downloads/
   pause
   exit /b 1
 )
 set "PY=%SAA_PY%"
 echo [SAA] Python: %PY%
 
-%PY% -c "import streamlit" >nul 2>&1
+echo [SAA] checking local runtime...
+%PY% "%ROOT%\scripts\ensure_runtime.py" --root "%ROOT%"
 if errorlevel 1 (
-  echo Installing packages first time...
-  %PY% -m pip install --upgrade pip
-  %PY% -m pip install -e ".[ui,data]"
-  if errorlevel 1 (
-    echo [ERROR] Install failed.
-    pause
-    exit /b 1
-  )
+  echo [ERROR] Could not create/repair .venv
+  pause
+  exit /b 1
+)
+call "%~dp0scripts\_env_python.bat"
+set "PY=%SAA_PY%"
+if not defined PY (
+  echo [ERROR] Python missing after runtime repair.
+  pause
+  exit /b 1
 )
 
 echo [SAA] UI starting - http://localhost:8501

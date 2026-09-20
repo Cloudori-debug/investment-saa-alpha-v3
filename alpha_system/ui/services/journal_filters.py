@@ -63,6 +63,10 @@ _KIND_CATEGORY: dict[str, str] = {
     "THESIS_DAMAGE_CANCEL": "입력",
     "TARGET_VALUATION_MODIFY": "입력",
     "ENTRY_JOURNAL": "입력",
+    "QUAL_GATE": "입력",
+    "QUAL_GATE_CLEAR": "입력",
+    "QUAL_SWAP": "입력",
+    "QUAL_SWAP_CLEAR": "입력",
 }
 
 

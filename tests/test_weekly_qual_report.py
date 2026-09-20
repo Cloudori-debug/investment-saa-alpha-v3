@@ -14,9 +14,12 @@ from alpha_system.journal import clear_entries, list_entries
 from alpha_system.ui.services.cecs_workbench import import_ai_suggestions, reopen_final_for_rescoring
 from alpha_system.ui.services.weekly_domain_gates import approve_domain, mark_sources_reviewed
 from alpha_system.ui.services.weekly_qual_report import (
+    ParsedT2Event,
+    ParsedThesis,
     WeeklySubject,
     load_cde_copy_prompt,
     parse_weekly_qual_markdown,
+    persist_killswitch_draft,
     persist_targets_supplement,
     persist_weekly_suggestions,
     waiting_target_subjects,
@@ -35,62 +38,139 @@ def test_load_cde_copy_prompt_b_from_docs() -> None:
     assert "target_portfolio" in prompt
     prompt_a = load_cde_copy_prompt(root, which="A")
     assert "C_T2_EVENTS" in prompt_a
+    assert "D_THESIS" in prompt_a
+    assert "gwanbo.go.kr" in prompt_a
+    assert "A_CECS_SUMMARY" not in prompt_a
     prompt_c = load_cde_copy_prompt(root, which="C")
-    assert "A_CECS_SUMMARY" in prompt_c or "CECS" in prompt_c
+    assert "CECS" in prompt_c or "제안 종목" in prompt_c
+    assert "dsaf001" in prompt_c or "viewer.do" in prompt_c
     # Missing docs → fallback still usable
     assert "완성 Markdown" in load_cde_copy_prompt(Path("/nonexistent"), which="B")
-    assert "CECS" in load_cde_copy_prompt(Path("/nonexistent"), which="C")
+    assert "제안 종목" in load_cde_copy_prompt(Path("/nonexistent"), which="C")
 
 
-def test_weekly_request_has_sections_a_to_e(tmp_path: Path) -> None:
+def test_weekly_request_is_cd_only(tmp_path: Path) -> None:
     clear_entries()
     report = write_weekly_qual_report(
-        summary_subjects=[
-            WeeklySubject("005830", "DB손해보험", "insurance"),
-            WeeklySubject("021240", "코웨이", "consumer"),
-        ],
-        deep_subjects=[WeeklySubject("005830", "DB손해보험", "insurance")],
-        t2_event_ids=["commercial_code_enforcement_decrees"],
         docs_dir=tmp_path / "docs",
+        t2_event_ids=["commercial_code_enforcement_decrees"],
         as_of=date(2026, 7, 17),
         generated_at=datetime(2026, 7, 17, 16, 0, 0),
         journal_path=tmp_path / "journal.jsonl",
     )
     md = report.markdown
-    for section in (
-        "A_CECS_SUMMARY",
-        "B_FINAL6_DEEP",
-        "C_T2_EVENTS",
-        "D_THESIS",
-        "E_TARGET_VALUATION",
-    ):
-        assert f"## {section}" in md
-    assert "## [005830] DB손해보험" in md
-    assert "### DEEP [005830]" in md
+    assert "## C_T2_EVENTS" in md
+    assert "## D_THESIS" in md
+    assert "## A_CECS_SUMMARY" not in md
+    assert "## B_FINAL6_DEEP" not in md
+    assert "## E_TARGET_VALUATION" not in md
+    assert "## F_QUANT_EVENTS" not in md
     assert "### EVENT [commercial_code_enforcement_decrees]" in md
     assert "### THESIS" in md
-    assert "### TARGET [005830]" in md
-    assert "숫자 칸 형식" in md
-    assert "65 (AI 초안)" in md  # as forbidden example in the rules
-    assert "숫자만" in md
-    assert "48000" in md  # target_price example
-    assert "0.75" in md  # pbr_max example
-    assert "CECS 3축 채점표" in md
+    assert "### TARGET [" not in md
+    assert "gwanbo.go.kr" in md
+    assert "제안 종목" in md
     assert "T2 확정 기준" in md
-    assert "C_T2_EVENTS` → `D_THESIS` → `E_TARGET_VALUATION` → `A_CECS_SUMMARY" in md
+    assert "CECS 3축 채점표" not in md
+    parsed = parse_weekly_qual_markdown(md)
+    assert parsed.domain_status["cecs"] == "empty"
+    assert parsed.domain_status["targets"] == "empty"
     assert list_entries(action_kind="WEEKLY_QUAL_REPORT_GENERATED")
     clear_entries()
 
 
-def test_weekly_be_requires_deep_subjects(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="proposal_book|B/E"):
+def test_weekly_requires_t2_event_ids(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="C_T2_EVENTS"):
         write_weekly_qual_report(
-            summary_subjects=[WeeklySubject("005830", "DB손해보험", "insurance")],
-            deep_subjects=[],
-            t2_event_ids=["commercial_code_enforcement_decrees"],
             docs_dir=tmp_path / "docs",
+            t2_event_ids=[],
             as_of=date(2026, 7, 18),
         )
+
+
+def test_t2_true_requires_allowlisted_host() -> None:
+    news = """## C_T2_EVENTS
+
+### EVENT [commercial_code_enforcement_decrees]
+- fired: true
+- 근거: 국무회의 통과 보도
+- 출처:
+  - https://www.fnnews.com/news/202607141450257792
+"""
+    parsed = parse_weekly_qual_markdown(news)
+    assert parsed.t2_events == ()
+    assert any("관보" in f or "URL만" in f for f in parsed.domain_failures["t2"])
+
+    official = """## C_T2_EVENTS
+
+### EVENT [msci_dm_index_inclusion_confirmed]
+- fired: false
+- 근거: as_of 기준 MSCI 공식 DM 편입 발표 없음
+- 출처:
+  - https://ir.msci.com/news-releases/news-release-details/example
+
+### EVENT [ifrs18_domestic_adoption_schedule_confirmed]
+- fired: true
+- 근거: 금융위 고시
+- 출처:
+  - https://www.fsc.go.kr/no010101/85886
+"""
+    parsed2 = parse_weekly_qual_markdown(official)
+    by_id = {e.event_id: e for e in parsed2.t2_events}
+    assert by_id["msci_dm_index_inclusion_confirmed"].fired is False
+    assert by_id["ifrs18_domestic_adoption_schedule_confirmed"].fired is True
+
+
+def test_persist_killswitch_draft_requires_issue_and_official_url(tmp_path: Path) -> None:
+    clear_entries()
+    (tmp_path / "data").mkdir()
+    with pytest.raises(ValueError, match="저장할 이슈"):
+        persist_killswitch_draft(
+            root=tmp_path,
+            t2_events=(),
+            thesis=None,
+            as_of=date(2026, 8, 31),
+        )
+    with pytest.raises(ValueError, match="URL만"):
+        persist_killswitch_draft(
+            root=tmp_path,
+            t2_events=(
+                ParsedT2Event(
+                    event_id="commercial_code_enforcement_decrees",
+                    fired=True,
+                    rationale="보도",
+                    sources=("https://www.fnnews.com/x",),
+                ),
+            ),
+            thesis=None,
+            as_of=date(2026, 8, 31),
+        )
+    out = persist_killswitch_draft(
+        root=tmp_path,
+        t2_events=(
+            ParsedT2Event(
+                event_id="ifrs18_domestic_adoption_schedule_confirmed",
+                fired=True,
+                rationale="금융위 고시",
+                sources=("https://www.fsc.go.kr/no010101/85886",),
+            ),
+        ),
+        thesis=ParsedThesis(
+            damage=True,
+            rationale="제도 후퇴",
+            sources=("https://www.law.go.kr/example",),
+        ),
+        as_of=date(2026, 8, 31),
+        journal_path=tmp_path / "j.jsonl",
+    )
+    import json
+
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["domain_status"]["t2"] == "ai_suggested"
+    assert payload["domain_status"]["thesis"] == "ai_suggested"
+    assert payload["t2"][0]["fired"] is True
+    assert payload["thesis"]["damage"] is True
+    clear_entries()
 
 
 def test_apply_targets_fails_closed_when_deep_tickers_empty(tmp_path: Path) -> None:
@@ -135,45 +215,17 @@ def test_apply_targets_fails_closed_when_deep_tickers_empty(tmp_path: Path) -> N
     clear_entries()
 
 
-def test_weekly_report_marks_approved_as_target_ref(tmp_path: Path) -> None:
-    """E section: YAML 승인 종목은 TARGET_REF, 대기만 TARGET 공란."""
-    root = tmp_path
-    (root / "data").mkdir()
-    yaml_path = root / "data" / "kr_alpha_exit_targets.yaml"
-    yaml_path.write_text(
-        yaml.safe_dump(
-            {
-                "tickers": {
-                    "005830": {
-                        "valuation": {"pbr_max": 0.9},
-                        "target_price": 120000,
-                        "approved_as_of": "2026-07-01",
-                    }
-                }
-            },
-            allow_unicode=True,
-        ),
-        encoding="utf-8",
-    )
-    from alpha_system.ui.services.weekly_qual_report import load_exit_target_entries
-
+def test_weekly_report_omits_targets_and_cecs_blocks(tmp_path: Path) -> None:
     report = write_weekly_qual_report(
-        summary_subjects=[WeeklySubject("005830", "DB손보", "insurance")],
-        deep_subjects=[
-            WeeklySubject("005830", "DB손보", "insurance"),
-            WeeklySubject("021240", "코웨이", "consumer"),
-        ],
-        t2_event_ids=["commercial_code_enforcement_decrees"],
         docs_dir=tmp_path / "docs",
+        t2_event_ids=["commercial_code_enforcement_decrees"],
         as_of=date(2026, 7, 18),
         generated_at=datetime(2026, 7, 18, 9, 0, 0),
-        existing_exit=load_exit_target_entries(root),
+        journal_path=tmp_path / "journal.jsonl",
     )
-    e = report.markdown.split("## E_TARGET_VALUATION", 1)[1]
-    assert "### TARGET_REF [005830]" in e
-    assert "### TARGET [021240]" in e
-    assert "### TARGET [005830]" not in e
-    assert "pbr_max: _____" not in e.split("### TARGET_REF [005830]", 1)[1].split("###", 1)[0]
+    assert "포트폴리오 › 제안 종목" in report.markdown
+    assert "### TARGET [" not in report.markdown
+    assert "## A_CECS_SUMMARY" not in report.markdown
 
 
 def test_parse_ignores_target_ref_blocks() -> None:

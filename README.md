@@ -1,36 +1,36 @@
-# SAA 알파 투자 — v3 (활성)
+# 알파 스크리너 — v3 (활성)
 
 **규칙 기반 실투자 보조 · Review-only.** 자동매매·증권사 API 없음.
 
-> 코드 루트: `C:\Cursor\investment-saa-alpha-v3` · 공식 채팅: **SAA 알파 투자**  
-> 배포: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)
+> 코드 루트: `C:\Cursor\investment\investment-alpha-screener` · 표시 이름: **알파 스크리너** · 공식 채팅: **SAA 알파 투자**  
+> 배포: [`docs/V3_DEPLOY.md`](docs/V3_DEPLOY.md) · 헌장: [`docs/V3_CHARTER.md`](docs/V3_CHARTER.md)  
+> 책상 포털(수급과 **프로세스만** 나란히): [`docs/DESK_PORTAL.md`](docs/DESK_PORTAL.md)
 
 ## 빠른 시작 (이것만)
 
 ```
 투자나침반.bat 더블클릭 → http://localhost:8501
-→ 홈「실보유 입력」또는 사이드바「포트폴리오」
+→ 확인(정량·정성) 후 사이드바「포트폴리오」
 ```
 
 Go-Live 체크리스트·점검 스크립트는 **선택**(백업·업데이트 전). 필수 아님.  
 선택 문서: [`docs/V3_GO_LIVE.md`](docs/V3_GO_LIVE.md)
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
+cd C:\Cursor\investment\investment-alpha-screener
 streamlit run alpha_dashboard.py --server.address 127.0.0.1 --server.port 8501
 ```
 
-설치·백업·분석 메뉴: `START_OPS_ASSISTANT.bat`  
+설치·백업·업데이트: 설정 › **도구**  
 이식: [`docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md`](docs/OPS_ASSISTANT_WINDOWS_PORTABLE.md)  
 패키징(Setup·업데이트): [`docs/V3_WINDOWS_PACKAGING.md`](docs/V3_WINDOWS_PACKAGING.md)  
-USB 2덩어리: [`docs/V3_CARRY_KIT.md`](docs/V3_CARRY_KIT.md) · `장부_내보내기.bat` / `장부_가져오기.bat`
+USB 2덩어리: [`docs/V3_CARRY_KIT.md`](docs/V3_CARRY_KIT.md) · 설정 › 도구에서 장부 내보내기/가져오기
 
 | bat / vbs | 용도 |
 |-----------|------|
 | **`투자나침반.bat` / `Start-Ops-Assistant.vbs`** | **일상 진입** |
-| `run_ui_direct.bat` | Streamlit 직접 |
-| `START_OPS_ASSISTANT.bat` | 설치 / 분석 / 백업 |
-| `go_live_backup.bat` | (선택) 장부 zip |
+| `Launch_SAA.bat` | 바로가기·설치 아이콘 (위와 같음) |
+| `desk\책상.bat` | 수급 브리핑과 나란히 (시스템 혼합 아님) |
 
 상세: **[사용설명서](docs/USER_GUIDE.md)** · **[에이전트 시작](docs/V3_AGENT_START.md)** · **[정리(Hygiene)](docs/V3_HYGIENE.md)** · **[AGENTS.md](AGENTS.md)**
 
@@ -38,16 +38,14 @@ USB 2덩어리: [`docs/V3_CARRY_KIT.md`](docs/V3_CARRY_KIT.md) · `장부_내보
 
 - ETF Executable / kr_alpha Review-only
 - `target_portfolio.csv` 자동 변경 없음
-- 같은 Wi-Fi 폰: `run_ui_direct.bat`는 `0.0.0.0:8501` (LAN)
+- 같은 Wi-Fi 폰: 투자나침반으로 연 UI는 `0.0.0.0:8501` (LAN)
 
 ## 기능 (요약)
 
 | 모듈 | 설명 |
 |------|------|
-| **홈** | 오늘 할 일 · 후보·모멘텀 · 월 리밸(Review-only) |
-| **포트폴리오** | 실보유 입력 · 종목별 익절 안내 |
-| **확인** | CECS·목표가·주간 정성 |
-| **나침반/레짐** | 레거시 멀티에셋 보조 |
+| **확인** | ① 숫자 · ② 이슈 시 제도·논지 · ③ 가동 |
+| **포트폴리오** | 후보 30 · 제안 · 실보유 · 알파 9:1 · 월 리밸(Review-only) |
 - **외부 인터넷 포트 노출 금지** (LAN 전용)
 - 가이드: **[ALPHA_DASHBOARD_UI_GUIDE.md](docs/ALPHA_DASHBOARD_UI_GUIDE.md)**
 

@@ -1,84 +1,35 @@
-# 주간 통합 정성 AI 리포트 SPEC
+# 제도·논지 킬스위치 SPEC
 
-**상태:** 구현 (2026-07-17)  
-**코드:** `alpha_system/ui/services/weekly_qual_report.py`, `weekly_domain_gates.py`  
-**UI:** 이벤트 탭 → 주간 정성 수집·승인  
-**정량 경로:** 홈 「정량 전체 갱신」 또는
-`scripts/run_alpha_quant_snapshot.py`
+**상태:** 공식 RSS 탐색만 (2026-08-31)  
+**코드:** `killswitch_watch.refresh_killswitch_watch`  
+**UI:** 확인 › ② — 공식 RSS 후보 조회. 기입·승인 칸 없음  
+**목표가·종목 게이트:** 포트폴리오 › 제안 종목에서 자동  
+**클로드 요청서 없음.** 30종 CECS 채점 없음.
 
-## 운영 리듬
+## 질문
 
-| 시점 | 작업 |
-|------|------|
-| 금요일 장후 | 요청서 생성 (`weekly_qual_report_YYYYMMDD.md`) → **제안 스냅샷 고정** |
-| 주말 | 외부 AI/운용자 작성 (정량 재실행 차단) |
-| 월요일 장전 | 업로드 → 영역별 출처 확인 → **필수 게이트**(T2·논지·목표가) 승인 → 고정 해제 |
+1. 이 제안 종목은 들어가도 되나 — 컷·편입 수 확정 시 OpenDART 자동 탐색 → 경영참여·연기금은 제안에서 자동 제외  
+2. 익절 숫자는 — 컷 확정 시 정당 60%+섹터 40% 자동 → `kr_alpha_exit_targets.yaml`  
+3. 제도·논지가 깨졌나 — **공식 RSS가 후보를 모은 뒤** 원문을 본다. `fired`/`damage`를 켜지 않음
 
-### 제안 스냅샷 고정 (2026-07-25)
+순위는 정량(Ops A). 홈은 주간 리포트 없음을 다음 할 일로 막지 않음. 탐색 후보는 `blocks_next=False`.
 
-- 요청서 생성 시 `data/weekly_qual_proposal_freeze.json` 기록 (proposal tickers pin)
-- 고정 중: `run_quant_snapshot_refresh` / `run_alpha_quant_snapshot` 차단 · UI proposal_book은 pin 순서 유지
-- 해제: 필수 게이트 `t2` · `thesis` · `targets` 모두 승인 시 자동 (CECS는 선택·해제 조건 아님)
-- `target_portfolio.csv` 불변 · 순위 엔진은 Ops A(정량 100%) 유지
+## 탐색 (프로그램)
 
-## 단순화된 조작
+- 허용 호스트 **공식 RSS만** (금융위 보도·설명·공지, MSCI IR 피드). 뉴스 검색·DART HTML 없음.  
+- 키워드로 **후보만** `data/killswitch_watch.json`에 저장. `fired`/`damage`를 켜지 않음.  
+- 정량 전체 갱신 성공 뒤 같이 돌고, 확인 › ② 버튼으로도 돈다.  
+- 빈 탐색 ≠ 없음. 관보 원문은 RSS에 없을 수 있어, 화면의 공식 검색 링크로 직접 연다.  
+- `target_portfolio.csv` 불변.
 
-1. 요청서 생성·다운로드
-2. 완성본 업로드 1회 — 파서가 A~E를 영역별 `ai_suggested`로 분리
-3. 공통 승인자 1회 입력
-4. 영역 카드에서 출처를 확인하고 **그 영역만 승인**
+## 사람 기입 없음
 
-- 출처 확인 저장과 영역 적용은 승인 버튼 한 번으로 처리한다.
-- T2 2단계·논지 3단계 확인은 영향이 큰 해당 카드에만 유지한다.
-- 실패 영역은 승인할 수 없고 재업로드로 보완한다. 다른 영역 승인은 유지한다.
-
-## 섹션
-
-| ID | 내용 | 승인 domain |
-|----|------|-------------|
-| A_CECS_SUMMARY | shortlist 30종 CECS 3축 | `cecs` |
-| B_FINAL6_DEEP | 제안 6종 심층 | (참고, CECS 인접) |
-| C_T2_EVENTS | 상법/MSCI/IFRS18 | `t2` |
-| D_THESIS | 논지 훼손 | `thesis` |
-| E_TARGET_VALUATION | 목표가/PBR | `targets` |
+상법·MSCI·IFRS18·논지 라디오, URL 칸, 이슈 초안 저장, 킬스위치 승인 보드는 두지 않는다.  
+신평·공공 게이트·자리 교체 폼도 두지 않는다. 정량·정성은 자동 경로만 쓴다.
 
 ## 불변
 
-- AI는 제안만. 엔진은 **승인된 입력만** 소비
-- 영역 실패/미승인이 다른 영역을 자동 승인·취소하지 않음
-- `target_portfolio.csv` 자동 쓰기 금지 (목표가 승인은 exit YAML만)
-- 업로드만으로 CECS `final`을 덮어쓰지 않음
-- CECS 영역 승인 시에는 출처 확인·명시적 승인 동작 안에서만
-  `final → ai_suggested → final`을 즉시 수행하고 원장에 기록
-- FASTJUSIK 금지 · `proposal_mode: pure_qvm` 유지
-
-## 목표가 대기 보충 (E only)
-
-제안 북 중 `kr_alpha_exit_targets.yaml`에 아직 없는 종목만 대상으로 한다.
-
-| 단계 | 동작 |
-|------|------|
-| 생성 | `weekly_qual_targets_supplement_YYYYMMDD.md` — `E_TARGET_VALUATION`만 |
-| 업로드 | `persist_targets_supplement` — **targets만** 병합, CECS/T2/논지 유지 |
-| 승인 | 기존 목표가 카드만 · exit YAML만 갱신 · `target_portfolio.csv` 불변 |
-
-- `deep_tickers` = 현재 proposal_book 전체 (편입 게이트 allowlist)
-- proposal 밖·대기 목록 밖 종목은 업로드 거부
-
-## 저장물
-
-- 요청서: `docs/weekly_qual_report_YYYYMMDD.md`
-- 목표가 보충: `docs/weekly_qual_targets_supplement_YYYYMMDD.md`
-- 미승인 제안 봉투: `data/weekly_qual_suggestions.json`
-- 정량 provenance: `data/alpha_quant_snapshot_provenance.json`
-- 스코어: `alpha_portfolio/data/output/alpha_scores.csv`
-
-## 검수
-
-1. 요청서 1개에 A~E 섹션 존재
-2. 업로드 후 domain `ai_suggested`, 출처 미확인 시 승인 불가
-3. CECS 승인만으로 T2/논지/목표가 미확정
-4. UI 제안 6종 = dry CLI 6종
-5. 목표가 승인 후 `target_portfolio.csv` 해시 불변
-6. 미승인 정성 입력이 eligibility/트리거에 미반영
-7. 대기 보충은 E만 생성·병합하며 다른 domain 상태를 지우지 않음
+- AI는 이 경로에 없음
+- `target_portfolio.csv` 자동 쓰기 금지
+- FASTJUSIK 금지 · `proposal_mode: pure_qvm`
+- OpenDART JSON만. DART/KIND HTML 스크래핑 없음

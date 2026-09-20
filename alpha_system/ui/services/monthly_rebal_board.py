@@ -3,8 +3,7 @@
 Rules (operator-facing, no auto orders / no target_portfolio writes):
 1. kr_alpha: rebalance only when weight is outside target ± band
 2. Prefer weekly gate / exit signals as the trigger for name trades
-3. CRISIS regime → exception rebalance allowed (do not wait for month-start)
-4. SCALE_IN in progress → exclude name from full monthly align (legs only)
+3. SCALE_IN in progress → exclude name from full monthly align (legs only)
 
 Does not write target_portfolio.csv.
 
@@ -84,8 +83,6 @@ class RebalRuleCard:
 class MonthlyRebalBoard:
     as_of: date
     is_month_start_window: bool
-    regime_label: str
-    crisis: bool
     band_rel: float
     cards: tuple[RebalRuleCard, ...]
     do_now_count: int
@@ -172,33 +169,13 @@ def _band_breach(
     return False, f"실비중 {actual:.2f}% · 목표 {target:.2f}% · 밴드 안", lo, hi
 
 
-def _regime_label_ko(label: str) -> str:
-    """Map regime codes to Korean for operator-facing UI."""
-    raw = (label or "—").strip()
-    if not raw or raw == "—":
-        return "—"
-    upper = raw.upper()
-    mapping = {
-        "CRISIS": "위기",
-        "RISK_ON": "위험선호",
-        "RISK_OFF": "위험회피",
-        "CAUTION": "주의",
-        "NEUTRAL": "중립",
-        "YELLOW": "주의(노랑)",
-    }
-    for key, ko in mapping.items():
-        if key in upper:
-            return ko
-    return raw
-
-
 def build_monthly_rebal_board(
     ctx: Any,
     *,
     band_rel: float | None = None,
     as_of: date | None = None,
 ) -> MonthlyRebalBoard:
-    """Build home checklist from live ctx (ops book + exit cues + regime)."""
+    """Build home checklist from live ctx (ops book + exit cues)."""
     as_of = as_of or getattr(ctx, "as_of", None) or date.today()
     root = Path(ctx.root)
     is_month_start = as_of.day <= MONTH_START_WINDOW_DAYS
@@ -208,15 +185,10 @@ def build_monthly_rebal_board(
         build_alpha_actual_map,
         load_alpha_book_ops,
     )
-    from alpha_system.ui.services.v2_chrome import regime_info
 
     policy = load_alpha_book_ops(root)
     band_rel = float(policy.band_rel if band_rel is None else band_rel)
-
-    reg = regime_info(root)
-    regime_label = str(reg.get("label") or reg.get("regime") or "—")
-    crisis = "CRISIS" in regime_label.upper() or bool(reg.get("crisis"))
-    cash_guide = policy.cash_guidance_for_regime(regime_label)
+    cash_guide = float(policy.cash_share)
 
     ops = list(getattr(ctx, "ops_portfolio_rows", None) or [])
     proposal = list(getattr(ctx, "portfolio_rows", None) or [])
@@ -242,7 +214,6 @@ def build_monthly_rebal_board(
         except Exception:
             saa_map = {}
     target_map = alpha_target_map_from_saa_csv(saa_map, policy)
-    # Regime cash guidance overlays cash *target for Review band only* (not CSV write)
     if policy.cash_ticker in target_map:
         target_map[policy.cash_ticker] = (
             policy.cash_name,
@@ -273,11 +244,9 @@ def build_monthly_rebal_board(
         breached, detail, lo, hi = _band_breach(act, tgt, band_rel=band_rel)
         if not breached:
             continue
-        if tk == policy.cash_ticker and tk not in actual_map and not crisis:
+        if tk == policy.cash_ticker and tk not in actual_map:
             continue
-        if tk == policy.cash_ticker and tk not in actual_map and not crisis:
-            continue
-        if tk not in actual_map and not (is_month_start or crisis):
+        if tk not in actual_map and not is_month_start:
             continue
         held = tk in actual_map
         band_items.append(
@@ -311,7 +280,7 @@ def build_monthly_rebal_board(
                     band_hi=None,
                 )
             )
-    band_do = bool(band_items) and (is_month_start or crisis)
+    band_do = bool(band_items) and is_month_start
     card_band = RebalRuleCard(
         key="band",
         title="① 알파 비중 밴드만 조정",
@@ -322,7 +291,7 @@ def build_monthly_rebal_board(
         ),
         detail=(
             f"알파북 100% 기준 · 목표 대비 ±{int(band_rel * 100)}% · "
-            f"단기채 가이던스 {cash_guide * 100:.0f}% ({policy.cash_ticker}). "
+            f"단기채 {cash_guide * 100:.0f}% ({policy.cash_ticker}). "
             "밴드 안이면 매달 1일에 맞추지 않습니다."
             + (
                 " · 월초라 오늘 정렬 검토"
@@ -368,31 +337,7 @@ def build_monthly_rebal_board(
         items=tuple(sig_items[:12]),
     )
 
-    # --- Rule 3: crisis exception ---
-    regime_ko = _regime_label_ko(regime_label)
-    card_crisis = RebalRuleCard(
-        key="crisis",
-        title="③ 위기 시 예외 조정",
-        status=(
-            "위기 — 월초를 기다리지 말고 방어 정렬 가능"
-            if crisis
-            else "비위기 — 예외 조정 불필요"
-        ),
-        detail=(
-            f"현재 시장 상태: {regime_ko}. "
-            + (
-                f"알파 단기채 가이던스 {cash_guide * 100:.0f}% "
-                f"({policy.cash_name}) · 개별주 노출 축소 검토 · target 불변."
-                if crisis
-                else "정기 조정은 월초(1~3일) 또는 밴드 이탈·신호 있을 때."
-            )
-        ),
-        tone="danger" if crisis else "ok",
-        do_now=crisis,
-        items=(),  # band table already lists names; avoid duplicate
-    )
-
-    # --- Rule 4: scale-in exclude ---
+    # --- Rule 3: scale-in exclude ---
     scale_items = [
         RebalItem(
             ticker=tk,
@@ -407,7 +352,7 @@ def build_monthly_rebal_board(
     overlap = [i for i in band_items if i.ticker in open_scale]
     card_scale = RebalRuleCard(
         key="scale_in",
-        title="④ 분할매수 중 → 월 조정 제외",
+        title="③ 분할매수 중 → 월 조정 제외",
         status=(
             f"진행 {len(open_scale)}종 · 월 정렬에서 빼기"
             if open_scale
@@ -426,20 +371,18 @@ def build_monthly_rebal_board(
         items=tuple(scale_items[:12]),
     )
 
-    cards = (card_band, card_signal, card_crisis, card_scale)
+    cards = (card_band, card_signal, card_scale)
     do_now_count = sum(1 for c in cards if c.do_now)
     if do_now_count:
         summary = f"오늘 볼 조정 규칙 {do_now_count}건 · 자동매매 아님"
     elif is_month_start:
         summary = "월초 · 당장 할 조정 없음 (밴드 안·신호 없음)"
     else:
-        summary = "정기 월 조정 대기 · 신호·밴드·위기만 감시"
+        summary = "정기 월 조정 대기 · 신호·밴드만 감시"
 
     return MonthlyRebalBoard(
         as_of=as_of,
         is_month_start_window=is_month_start,
-        regime_label=regime_ko,
-        crisis=crisis,
         band_rel=band_rel,
         cards=cards,
         do_now_count=do_now_count,

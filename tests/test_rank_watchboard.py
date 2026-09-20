@@ -8,6 +8,7 @@ import pandas as pd
 
 from alpha_system.ui.services.context import ScoreboardRow
 from alpha_system.ui.services.rank_watchboard import (
+    TONE_BLOCKED,
     TONE_ELIGIBLE,
     TONE_PROPOSAL,
     TONE_WATCH,
@@ -146,6 +147,28 @@ def test_preview_tone_cutoff_then_book_size() -> None:
         watch_preview_tone(score=None, cutoff=70, eligible_rank=None, target_n=6)
         == TONE_WATCH
     )
+    assert (
+        watch_preview_tone(
+            score=88,
+            cutoff=70,
+            eligible_rank=2,
+            target_n=6,
+            in_proposal=False,
+            blocked=True,
+        )
+        == TONE_BLOCKED
+    )
+    assert (
+        watch_preview_tone(
+            score=90,
+            cutoff=70,
+            eligible_rank=1,
+            target_n=6,
+            in_proposal=True,
+            blocked=True,
+        )
+        == TONE_PROPOSAL
+    )
 
 
 def test_watch_table_rows_join_metrics_and_tone() -> None:
@@ -178,7 +201,15 @@ def test_watch_table_rows_join_metrics_and_tone() -> None:
     assert table[0].target_price == 62000
     assert table[1].tone == TONE_WATCH
     assert table[1].target_price == 13000
-    assert "부적격" in table[1].judgment
+
+
+def test_watch_tone_label_matches_legend() -> None:
+    from alpha_system.ui.services.rank_watchboard import watch_tone_label
+
+    assert watch_tone_label(TONE_PROPOSAL) == "최종 제안"
+    assert watch_tone_label(TONE_ELIGIBLE) == "컷 통과"
+    assert watch_tone_label(TONE_BLOCKED) == "편입 제외"
+    assert watch_tone_label(TONE_WATCH) == "관찰"
 
 
 def test_unscored_names_stay_in_watch_pool() -> None:
@@ -288,3 +319,15 @@ def test_naver_fchart_link_shows_name_in_fragment() -> None:
     link = naver_fchart_link("5930", "삼성전자")
     assert link.startswith(url + "#")
     assert link.endswith("#삼성전자")
+
+
+def test_naver_name_chart_html_links_chart_not_name() -> None:
+    from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
+
+    html = naver_name_chart_html("021240", "코웨이")
+    assert "<strong>코웨이</strong>" in html
+    assert "pf-chart-name" not in html
+    assert html.index("<strong>코웨이</strong>") < html.index("href=")
+    assert "finance.naver.com/item/fchart.naver?code=021240" in html
+    assert ">차트</a>" in html
+    assert "021240" in html

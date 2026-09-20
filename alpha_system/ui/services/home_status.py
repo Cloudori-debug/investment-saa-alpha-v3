@@ -7,11 +7,9 @@ from typing import Iterable, Optional, Sequence
 
 from alpha_system.ui.services.data_freshness import SourceStatus
 
-# Home one-liner keys (dashboard.yaml) — prices / regime proxy / T3
+# Ops freshness one-liner — prices only. Regime indicators are not on the screen path.
 _HOME_SOURCE_KEYS: tuple[tuple[str, str], ...] = (
     ("prices", "종가"),
-    ("benchmark", "레짐"),
-    ("kospi_pbr_history", "T3"),
 )
 
 
@@ -42,7 +40,7 @@ def freshness_line(
     sources: Sequence[SourceStatus] | Iterable[SourceStatus],
     today: date,
 ) -> tuple[str, bool]:
-    """Return ('종가 어제 · 레짐 35일 전 · T3 59일 전', any_attention)."""
+    """Return ('종가 어제 · 지표 35일 전', any_attention)."""
     by_key = {s.key: s for s in sources}
     bits: list[str] = []
     attention = False

@@ -3,8 +3,8 @@
 ; 2) Open this file in Inno Setup Compiler → Build
 ; 3) Output: packaging\Output\SAAAlphaSetup.exe
 
-#define MyAppName "SAA 알파 운용 비서"
-#define MyAppNameEn "SAA Alpha Ops Assistant"
+#define MyAppName "코스피 알파 스크리너"
+#define MyAppNameEn "KOSPI Alpha Screener"
 #define MyAppVersion "3.0.1"
 #define MyAppPublisher "Cloudori"
 #define MyAppURL "https://github.com/Cloudori-debug/investment-saa-alpha-v3"
@@ -50,10 +50,6 @@ Source: "icons\saa_alpha.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch_SAA.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
-Name: "{group}\메뉴 (설치·백업·업데이트)"; Filename: "{app}\START_OPS_ASSISTANT.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
-Name: "{group}\장부 내보내기"; Filename: "{app}\장부_내보내기.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
-Name: "{group}\장부 가져오기"; Filename: "{app}\장부_가져오기.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"
-Name: "{group}\업데이트 (프로그램만)"; Filename: "{app}\업데이트.bat"; WorkingDir: "{app}"
 Name: "{group}\제거 {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch_SAA.bat"; WorkingDir: "{app}"; IconFilename: "{app}\saa_alpha.ico"; Tasks: desktopicon
 

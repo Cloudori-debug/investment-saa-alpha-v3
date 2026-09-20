@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--kind", required=True, choices=("quant", "compass"))
     parser.add_argument("--collect-scope", default="liquid")
     parser.add_argument("--run-mode", default="standard")
+    parser.add_argument("--market", default="KOSPI")
     args = parser.parse_args()
     root = Path(args.root).resolve()
 
@@ -51,7 +52,9 @@ def main() -> int:
 
             update_phase(root, "운용 데이터·alpha_scores 수집")
             result = run_quant_snapshot_refresh(
-                root, collect_scope=str(args.collect_scope or "liquid")
+                root,
+                collect_scope=str(args.collect_scope or "liquid"),
+                market=str(args.market or "KOSPI"),
             )
             refresh_key = "alpha_quant_snapshot"
         else:

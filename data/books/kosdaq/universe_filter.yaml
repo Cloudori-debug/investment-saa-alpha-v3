@@ -1,0 +1,37 @@
+# KOSDAQ 스크리너 유니버스 — 코스피 장부와 분리. DART는 시총순 상한 안에서만.
+active_preset: kosdaq_safe
+
+presets:
+  kosdaq_safe:
+    label: 코스닥 안전 — 시총 바닥 + 소수만 DART
+    description: 시총 2,000억+ · 업종 상위 4 · 거래대금 10억/일. DART는 80종 상한.
+    min_market_cap_krw: 200000000000
+    min_20d_avg_trading_value_krw: 1000000000
+    min_60d_avg_trading_value_krw: 800000000
+
+universe:
+  include:
+    market: ["KOSDAQ"]
+    security_type: ["common_stock"]
+  exclude:
+    preferred_stock: true
+    etf_etn: true
+    reit: true
+    spac: true
+    trading_halt: true
+    administrative_issue: true
+    audit_opinion_not_clean: true
+    capital_impairment: true
+
+liquidity:
+  min_20d_avg_trading_value_krw: 1000000000
+  min_60d_avg_trading_value_krw: 800000000
+  min_market_cap_krw: 200000000000
+  min_listed_days: 252
+  max_order_to_adv_ratio: 0.05
+
+data_gate:
+  require_point_in_time: true
+  financial_statement_lag_days: 0
+  stale_data_max_days: 120
+  missing_data_policy: penalize

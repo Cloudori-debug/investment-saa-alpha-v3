@@ -278,12 +278,6 @@ def build_momentum_review_board(
     as_of = as_of or getattr(ctx, "as_of", None) or date.today()
     root = Path(ctx.root)
 
-    from alpha_system.ui.services.v2_chrome import regime_info
-
-    reg = regime_info(root)
-    regime_label = str(reg.get("label") or reg.get("regime") or "—")
-    crisis = "CRISIS" in regime_label.upper() or bool(reg.get("crisis"))
-
     price_as_of, price_map = _load_price_rows(root)
     cross, vol_high_set = _universe_cross_and_vol(price_map)
     subjects = _subject_tickers(ctx, root)
@@ -305,7 +299,7 @@ def build_momentum_review_board(
             ret_3=ret_3,
             cross_pct=cp,
             vol_high=vh,
-            crisis=crisis,
+            crisis=False,
         )
         absolute: Literal["UP", "DOWN", "—"]
         if ret_12 is None:
@@ -349,8 +343,8 @@ def build_momentum_review_board(
     return MomentumReviewBoard(
         as_of=as_of,
         price_as_of=price_as_of or "—",
-        regime_label=regime_label,
-        crisis=crisis,
+        regime_label="—",
+        crisis=False,
         cadence_note=(
             "신호=가격표 최신 종가 · 매일 확인만 · "
             "매매 결정은 주간 또는 분할매수 회차일"

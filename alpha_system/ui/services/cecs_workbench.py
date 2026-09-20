@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -511,6 +512,60 @@ def default_relative_cutoff_rank(
     if options:
         return options[-1].rank_n
     return 6
+
+
+def recommended_absolute_cutoff_option(
+    options: Sequence[CutoffRankOption],
+    scored_names: Sequence[Mapping[str, Any]] | None = None,
+) -> CutoffRankOption | None:
+    """Quality bar, not slot-fill. Shortfall is allowed.
+
+    Walk total_score descending and stop at the first name whose Quality sits
+    on the cross-section floor (the most common score_q). The cutoff is the
+    last name still above that floor. Book size is not an input.
+    """
+    if not options:
+        return None
+    rows: list[tuple[float, float | None, str]] = []
+    for row in scored_names or []:
+        score = row.get("total_score")
+        if score is None:
+            continue
+        try:
+            total = float(score)
+        except (TypeError, ValueError):
+            continue
+        raw_q = row.get("score_q")
+        q_val: float | None
+        try:
+            q_val = float(raw_q) if raw_q is not None and str(raw_q).strip() != "" else None
+        except (TypeError, ValueError):
+            q_val = None
+        rows.append((total, q_val, _ticker(row.get("ticker"))))
+    rows.sort(key=lambda item: (-item[0], item[2]))
+    q_vals = [round(q, 2) for _, q, _ in rows if q is not None]
+    picked_total: float | None = None
+    picked_ticker: str | None = None
+    if len(q_vals) >= 4:
+        floor, floor_n = Counter(q_vals).most_common(1)[0]
+        if floor_n >= 3:
+            for total, q, ticker in rows:
+                if q is not None and round(q, 2) > floor + 0.05:
+                    picked_total = total
+                    picked_ticker = ticker
+                    continue
+                break
+    if picked_total is not None:
+        for option in options:
+            if picked_ticker and option.boundary_ticker == picked_ticker:
+                return option
+        nearest = min(options, key=lambda option: abs(option.cutoff - picked_total))
+        if abs(nearest.cutoff - picked_total) <= 0.05:
+            return nearest
+    breaks = [option for option in options if option.is_natural_break]
+    if breaks:
+        return max(breaks, key=lambda option: option.cutoff)
+    return options[0]
 
 
 def confirm_score_cutoff(

@@ -38,11 +38,10 @@ streamlit run alpha_dashboard.py --server.address 0.0.0.0
 
 | 화면 | 파일 | 설명 |
 |------|------|------|
-| 홈 | `alpha_system/ui/pages/home.py` | 액션 큐, 트랜치 4칸, window_end, 지표, 데이터 상태 |
-| 설정·이벤트 | `alpha_system/ui/pages/settings.py` | config 조회, T2/논지훼손, 데이터 갱신 |
-| 포트폴리오 | `alpha_system/ui/pages/portfolio.py` | kr_alpha 종목 상세 |
-| 스코어 | `alpha_system/ui/pages/scores.py` | CECS 30종 테이블 |
-| 저널 | `alpha_system/ui/pages/journal.py` | 타임라인 + 재량/목표가 기입 |
+| 확인 | `alpha_system/ui/pages/approval.py` | ① 숫자 · ② 정성 · ③ 가동 |
+| 포트폴리오 | `alpha_system/ui/pages/portfolio.py` | 후보 30 · 제안 · 실보유 · 알파 9:1 |
+| 설정 | `alpha_system/ui/pages/settings.py` | API · 이식·백업 |
+| 저널 | `alpha_system/ui/pages/journal.py` | 타임라인 |
 
 진입점: [`alpha_dashboard.py`](../alpha_dashboard.py)
 
@@ -58,7 +57,7 @@ streamlit run alpha_dashboard.py --server.address 0.0.0.0
 
 | # | 항목 | 기준 |
 |---|------|------|
-| ① | 액션 큐 | 홈 첫 화면 스크롤 없이 보임 |
+| ① | 확인 첫 화면 | 정량 전체 갱신이 바로 보임 |
 | ② | 스코어 테이블 | 종목명·total·eligibility·보유 4열이 가독 가능 |
 | ③ | 재량 기록 | 저널 화면에서 한 손으로 종목·사유·저장 가능 |
 | ④ | T2 2단계 확인 | 경고 2체크박스 + 최종 버튼 없이는 저장 불가 |

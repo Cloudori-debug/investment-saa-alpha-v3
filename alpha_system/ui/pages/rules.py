@@ -5,19 +5,22 @@ from __future__ import annotations
 import streamlit as st
 
 from alpha_system.ui.services.action_panels import open_panel, render_active_panel
+from alpha_system.ui.services.approval_chrome import ap_copy
 from alpha_system.ui.services.config_display import classify_config
 from alpha_system.ui.services.context import DashboardContext
-from alpha_system.ui.services.nav import FOCUS_RULES_PREFIX, consume_focus
-from alpha_system.ui.services.ui_copy import copy_get, format_tranche_label, tranche_display
+from alpha_system.ui.services.nav import consume_focus
+from alpha_system.ui.services.ui_copy import copy_get
+
+_CAT_LABEL = {
+    "todo": "할 일",
+    "locked": "잠금",
+    "confirmed": "확정",
+}
 
 
 def render_rules(ctx: DashboardContext) -> None:
-    focus = consume_focus()
-    target_tid = None
-    if focus and focus.startswith(FOCUS_RULES_PREFIX):
-        target_tid = focus[len(FOCUS_RULES_PREFIX) :]
+    consume_focus()
 
-    st.subheader("가동 전 체크리스트")
     if ctx.checklist is not None:
         st.caption(f"{ctx.checklist.done}/{ctx.checklist.total} 충족")
         for item in ctx.checklist.items:
@@ -52,53 +55,37 @@ def render_rules(ctx: DashboardContext) -> None:
     else:
         st.caption("체크리스트 없음")
 
-    st.divider()
-    st.subheader("트랜치 규칙")
-    for tid in ("T1", "T2", "T3", "T4"):
-        tcfg = ctx.cfg.tranches[tid]
-        name, short = tranche_display(tid)
-        # Prefer config display fields when set
-        if getattr(tcfg, "display_name", None):
-            name = tcfg.display_name or name
-        if getattr(tcfg, "short_desc", None):
-            short = tcfg.short_desc or short
-        expanded = target_tid == tid
-        with st.expander(f"{format_tranche_label(tid)}", expanded=expanded):
-            st.markdown(short or tcfg.description)
-            st.markdown(f"- weight: `{tcfg.weight}`")
-            st.markdown(f"- trigger_type: `{tcfg.trigger_type.value}`")
-            if tcfg.event_ids:
-                st.markdown(f"- event_ids: `{', '.join(tcfg.event_ids)}`")
-            if tcfg.valuation_band:
-                st.markdown(f"- valuation_band: `{tcfg.valuation_band}`")
-            if tcfg.hybrid_rules:
-                st.markdown(f"- hybrid_rules: `{tcfg.hybrid_rules}`")
-            st.caption(tcfg.description)
-
-    st.divider()
-    st.subheader("Config 조회 (읽기 전용)")
-    st.info(copy_get("rules", "edit_friction"))
-    cfg_path = ctx.root / "alpha_system" / "config" / "alpha_system.yaml"
-    rows, errs = classify_config(cfg_path)
-    if errs:
-        st.warning("스키마 검증: " + "; ".join(errs[:3]))
-    todo_n = sum(1 for r in rows if r.category == "todo")
-    st.caption(f"잠금/확정/TODO — TODO {todo_n}건")
-    filter_cat = st.selectbox(
-        "분류 필터", ["전체", "todo", "locked", "confirmed"], key="cfg_filter"
-    )
-    for row in rows:
-        if filter_cat != "전체" and row.category != filter_cat:
-            continue
-        badge = {
-            "todo": "alpha-badge-warn",
-            "locked": "alpha-badge-ok",
-            "confirmed": "alpha-badge-ok",
-        }[row.category]
-        val = row.value
-        if isinstance(val, (list, dict)):
-            val = str(val)[:120] + ("…" if len(str(val)) > 120 else "")
-        st.markdown(
-            f'<span class="{badge}">{row.category.upper()}</span> `{row.path}` = {val}',
-            unsafe_allow_html=True,
+    with st.expander(ap_copy("live_yaml_title"), expanded=False):
+        st.info(copy_get("rules", "edit_friction"))
+        cfg_path = ctx.root / "alpha_system" / "config" / "alpha_system.yaml"
+        rows, errs = classify_config(cfg_path)
+        if errs:
+            st.warning("스키마 검증: " + "; ".join(errs[:3]))
+        todo_n = sum(1 for r in rows if r.category == "todo")
+        st.caption(f"잠금/확정/할 일 — 할 일 {todo_n}건")
+        filter_cat = st.selectbox(
+            "분류 필터",
+            ["전체", "todo", "locked", "confirmed"],
+            format_func=lambda value: "전체" if value == "전체" else _CAT_LABEL[value],
+            key="cfg_filter",
         )
+        for row in rows:
+            if filter_cat != "전체" and row.category != filter_cat:
+                continue
+            badge = {
+                "todo": "alpha-badge-warn",
+                "locked": "alpha-badge-ok",
+                "confirmed": "alpha-badge-ok",
+            }[row.category]
+            val = row.value
+            if isinstance(val, (list, dict)):
+                val = str(val)[:120] + ("…" if len(str(val)) > 120 else "")
+            label = ap_copy(
+                {"todo": "yaml_todo", "locked": "yaml_locked", "confirmed": "yaml_confirmed"}[
+                    row.category
+                ]
+            )
+            st.markdown(
+                f'<span class="{badge}">{label}</span> `{row.path}` = {val}',
+                unsafe_allow_html=True,
+            )

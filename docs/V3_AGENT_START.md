@@ -1,6 +1,7 @@
 # v3 에이전트 시작 (짧은 핸드오프)
 
-> **코드 루트:** `C:\Cursor\investment-saa-alpha-v3` only  
+> **코드 루트:** `C:\Cursor\investment\investment-alpha-screener` only  
+> **표시 이름:** 알파 스크리너 (본문 위 코스피 | 코스닥 탭 · 장부·정량 분리)  
 > **채팅 제목:** `SAA 알파 투자`  
 > **필수 선행:** [`V3_CHARTER.md`](V3_CHARTER.md) · 정리 정책: [`V3_HYGIENE.md`](V3_HYGIENE.md)  
 > **레거시 장문 핸드오프:** [`archive/20260729_hygiene/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md`](archive/20260729_hygiene/CHAT_HANDOFF_LEGACY_MULTI_ASSET.md) (명시 요청 시에만)
@@ -14,6 +15,8 @@
 - ETF·현금 = Executable / **kr_alpha·하케다카·수급 = Review-only**
 - FASTJUSIK 금지 — PyKRX·DART
 - Core에서 `score_m` 제외 · Ops A `total_score` = 정량 100% (CECS 순위 미반영)
+- 신평·공공 = OpenDART 게이트 자동 (점수 혼합 아님) · `data/qual_rank_overlay.json`
+- 자본 T1~T4 봉투 폐기 — 스케일인은 포트폴리오 가격 사다리. 종목 게이트는 컷 확정 시 OpenDART 자동. 목표가는 정당 60%+섹터 40% 자동(**순환주는 중기 ROE**). **현재가≥혼합 목표가면 제안에서 제외**(다음 적격 채움 · 보유는 환금). 제도·논지는 공식 RSS 후보(기입 칸 없음). 30종 CECS 채점 없음
 
 ---
 
@@ -21,20 +24,21 @@
 
 | 사이드바 표시 | 내부 키 | 하는 일 |
 |---------------|---------|---------|
-| 오늘 | 홈 | **① 비중(보유+제안) → ② 보유 분석 → ③ 제안 분석** · 월리밸·레짐은 접힘 |
-| 확인 | 결재함 | 주간/월간 정성 승인 |
-| **포트폴리오** | 포트폴리오 | **내 보유종목 선택**(항상 표시) · 종목별 안내 · 제안 북 |
-| 더보기 | 저널·레짐·설정 | 감사·시장·API/백업 |
+| 확인 | 결재함 | 본문 위 **코스피 \| 코스닥** · ① 숫자(해당 시장만 정량) · ② 공식 RSS · ③ 가동 |
+| **포트폴리오** | 포트폴리오 | 같은 시장 탭 · 코스피 관찰 30/제안 6 · 코스닥 관찰 10/제안 3 |
+| 경제 시그널 | 경제시그널 | 더보기 · 개별주/단기채 5단계 제안만 (순위·target 미변경) |
 
-실보유: 수량 없이 후보 슬라이더로 등록 가능 (`positions.csv` kr_alpha, gitignore).
+장부: 코스피=`data/` · 코스닥=`data/books/kosdaq/` (섞지 않음).
+
+실보유: 후보 30 표 맨 앞칸 체크로 등록 (`positions.csv` kr_alpha, gitignore).
 
 ---
 
 ## 최근 고정 (2026-07-28~29)
 
-- v3 활성 · 홈 월 리밸 보드 · 모멘텀 Review-only
+- v3 활성 · 확인→포트폴리오 IA · 모멘텀 Review-only
 - 종목별 교체 안내 · 전체 나침반 UI 제거
-- 사이드바「보유」→「포트폴리오」· 보유 선택 창 상시 표시
+- 사이드바「보유」→「포트폴리오」· 후보 30 표 체크가 실보유
 - `positions.csv` git 비추적 (고스트 보유 방지)
 - 정량 freeze 기본 off
 - Hygiene: 문서 archive · journal 축약 스크립트

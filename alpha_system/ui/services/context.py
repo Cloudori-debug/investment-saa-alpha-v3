@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
 import yaml
@@ -288,6 +288,7 @@ def load_context(
         fundamentals_df=fundamentals_df,
         exit_yaml=exit_yaml,
     )
+    skip_reasons: dict[str, str] = {}
     proposal_rows = _build_screen_portfolio(
         cfg,
         scoreboard_rows,
@@ -297,17 +298,18 @@ def load_context(
         lookback_lows=lookback_lows,
         overlay_path=paths["overlay"],
         exclude_tickers=above_target,
+        root=root,
+        data_dir=paths["positions"].parent,
+        skip_reasons=skip_reasons,
     )
     from alpha_system.ui.services.proposal_freeze import load_freeze, pin_proposal_rows
 
     proposal_rows = pin_proposal_rows(proposal_rows, load_freeze(root))
-    blocked_scores = cutoff_passed_ineligible(
-        scoreboard_rows,
-        cutoff=cfg.scoring.score_cutoff,
-    )
+    band_n = int(cfg.sizing.target_names)
+    band_scores = proposal_band_scores(scoreboard_rows, target_n=band_n)
     already = {str(r.ticker).zfill(6) for r in proposal_rows}
     blocked_scores = [
-        s for s in blocked_scores if str(s.ticker).zfill(6) not in already
+        s for s in band_scores if str(s.ticker).zfill(6) not in already
     ]
     blocked_rows = _blocked_proposal_rows(
         blocked_scores,
@@ -316,6 +318,9 @@ def load_context(
         fundamentals_df=fundamentals_df,
         lookback_lows=lookback_lows,
         root=root,
+        above_target=above_target,
+        skip_reasons=skip_reasons,
+        data_dir=paths["positions"].parent,
     )
     ops_rows = _build_ops_portfolio(
         cfg,
@@ -803,6 +808,9 @@ def _build_screen_portfolio(
     lookback_lows: dict | None = None,
     overlay_path: Path | None = None,
     exclude_tickers: set[str] | None = None,
+    root: Path | None = None,
+    data_dir: Path | None = None,
+    skip_reasons: dict[str, str] | None = None,
 ) -> list[PortfolioRow]:
     """Build proposal_book from screened eligible names only (Policy B).
 
@@ -814,6 +822,13 @@ def _build_screen_portfolio(
     if not name_scores:
         return []
 
+    from alpha_system.sizing.cyclical_theme import is_cyclical_heavy
+    from alpha_system.sizing.hakedaka_screen import (
+        evaluate_hakedaka,
+        hakedaka_fail_tickers,
+        hits_label,
+        load_hakedaka_inputs,
+    )
     from alpha_system.sizing.qual_overlay import load_qual_overlay
     from alpha_system.sizing.target_gate import collect_above_justified_target_tickers
     from alpha_system.ui.services.alpha_book_ops import (
@@ -826,8 +841,12 @@ def _build_screen_portfolio(
         quant_portfolio_extra,
     )
 
-    # root is not on cfg — use exit path parent.parent or default
-    root_guess = exit_targets_path.parent.parent if exit_targets_path else Path(".")
+    root_guess = Path(root) if root is not None else (
+        exit_targets_path.parent.parent if exit_targets_path else Path(".")
+    )
+    book_dir = Path(data_dir) if data_dir is not None else (
+        exit_targets_path.parent if exit_targets_path else root_guess / "data"
+    )
     alpha_fund_by = load_alpha_template_fundamentals(root_guess)
     if lookback_lows is None:
         lookback_lows = load_lookback_lows(root_guess, prices_df)
@@ -850,6 +869,15 @@ def _build_screen_portfolio(
             template_fund_by=alpha_fund_by,
             exit_yaml=exit_yaml,
         )
+    hk_inputs = load_hakedaka_inputs(root_guess, data_dir=book_dir)
+    hk_min = int(getattr(cfg.sizing, "hakedaka_min_hits", 2) or 2)
+    hk_on = bool(getattr(cfg.sizing, "hakedaka_gate_enabled", True))
+    hk_fail = hakedaka_fail_tickers(
+        [s.ticker for s in name_scores],
+        hk_inputs,
+        min_hits=hk_min,
+        enabled=hk_on,
+    )
     # Candidate count = sizing.target_names (portfolio UI / yaml). Do not
     # override with alpha_book_ops default (that file is 9:1 weight policy).
     allocation = allocate_tranche(
@@ -860,7 +888,10 @@ def _build_screen_portfolio(
         tranche_budget=float(policy.equity_share),
         overlay=overlay,
         exclude_tickers=gated,
+        hakedaka_skip=hk_fail,
     )
+    if skip_reasons is not None:
+        skip_reasons.update(allocation.skip_reasons)
     selected = [
         item for item in allocation.allocated if item.incremental_weight > 0
     ]
@@ -1023,6 +1054,13 @@ def _build_screen_portfolio(
             "revalidate_reason": revalidate_reason,
             **qextra,
         }
+        hk = evaluate_hakedaka(ticker, hk_inputs, min_hits=hk_min)
+        extra["hakedaka_detail"] = hits_label(hk)
+        extra["hakedaka_hits"] = hk.hits
+        extra["hakedaka_known"] = hk.known
+        extra["cyclical_theme"] = is_cyclical_heavy(
+            sector=sector, name=str(name or "")
+        )
         mix_px = qextra.get("quant_price_mid")
         if yaml_target_px and mix_px not in (None, ""):
             try:
@@ -1072,10 +1110,31 @@ def _build_screen_portfolio(
     return rows
 
 
+def proposal_band_scores(
+    scores: Sequence[ScoreboardRow],
+    *,
+    target_n: int,
+) -> list[ScoreboardRow]:
+    """Top N by total_score for the proposal list. Eligibility does not drop names."""
+    n = max(0, int(target_n))
+    scored: list[ScoreboardRow] = []
+    for row in scores:
+        if row.total_score is None:
+            continue
+        try:
+            float(row.total_score)
+        except (TypeError, ValueError):
+            continue
+        scored.append(row)
+    scored.sort(key=lambda r: (-float(r.total_score or 0), str(r.ticker).zfill(6)))
+    return scored[:n]
+
+
 def cutoff_passed_ineligible(
     scores: Sequence[ScoreboardRow],
     *,
     cutoff: float | None,
+    target_n: int | None = None,
 ) -> list[ScoreboardRow]:
     """High total_score names blocked by quality/gates, not by the score cutoff."""
     if cutoff is None:
@@ -1094,7 +1153,33 @@ def cutoff_passed_ineligible(
         if score >= bar:
             out.append(row)
     out.sort(key=lambda r: (-float(r.total_score or 0), str(r.ticker)))
+    if target_n is not None:
+        return out[: max(0, int(target_n))]
     return out
+
+
+def _blocked_proposal_reason(
+    sc: ScoreboardRow,
+    *,
+    min_q: float | None,
+    above_target: set[str],
+    skip_reasons: Mapping[str, str] | None = None,
+) -> str:
+    from alpha_system.ui.services.ko_display import format_ineligibility_reason
+
+    ticker = str(sc.ticker).zfill(6)
+    if sc.eligibility is not True:
+        return format_ineligibility_reason(
+            sc.eligibility_reason,
+            score_q=sc.score_q,
+            min_q=min_q,
+        )
+    if ticker in above_target:
+        return "현재가 ≥ 혼합 목표가"
+    mapped = (skip_reasons or {}).get(ticker) or (skip_reasons or {}).get(str(sc.ticker))
+    if mapped:
+        return str(mapped)
+    return "편입 슬롯·업종 한도·게이트로 제외"
 
 
 def _blocked_proposal_rows(
@@ -1105,9 +1190,17 @@ def _blocked_proposal_rows(
     fundamentals_df: pd.DataFrame,
     lookback_lows: dict | None = None,
     root: Path | None = None,
+    above_target: set[str] | None = None,
+    skip_reasons: Mapping[str, str] | None = None,
+    data_dir: Path | None = None,
 ) -> list[PortfolioRow]:
     """Same proposal card shape, weight 0, with the ineligibility reason."""
-    from alpha_system.ui.services.ko_display import format_ineligibility_reason
+    from alpha_system.sizing.cyclical_theme import is_cyclical_heavy
+    from alpha_system.sizing.hakedaka_screen import (
+        evaluate_hakedaka,
+        hits_label,
+        load_hakedaka_inputs,
+    )
     from src.alpha.price_ladder import attach_ladder_extra
     from src.alpha.quant_target_estimate import (
         load_alpha_template_fundamentals,
@@ -1116,9 +1209,13 @@ def _blocked_proposal_rows(
 
     if not blocked:
         return []
+    gated = {str(t).zfill(6) for t in (above_target or set()) if str(t).strip()}
     cap = float(cfg.sizing.market_value_cap) * 100.0
     min_q = getattr(cfg.scoring, "quality_min_score", None)
     root_guess = Path(root) if root is not None else Path(".")
+    book_dir = Path(data_dir) if data_dir is not None else root_guess / "data"
+    hk_inputs = load_hakedaka_inputs(root_guess, data_dir=book_dir)
+    hk_min = int(getattr(cfg.sizing, "hakedaka_min_hits", 2) or 2)
     alpha_fund_by = load_alpha_template_fundamentals(root_guess)
     price_idx = pd.DataFrame()
     if not prices_df.empty and "ticker" in prices_df.columns:
@@ -1158,10 +1255,8 @@ def _blocked_proposal_rows(
         fund_row = fund_by_ticker.get(ticker, {})
         current_pbr = _f(fund_row.get("pbr"))
         sector = str(sc.sector or fund_row.get("sector") or "")
-        reason = format_ineligibility_reason(
-            sc.eligibility_reason,
-            score_q=sc.score_q,
-            min_q=min_q,
+        reason = _blocked_proposal_reason(
+            sc, min_q=min_q, above_target=gated, skip_reasons=skip_reasons
         )
         qextra = quant_portfolio_extra(
             ticker,
@@ -1178,6 +1273,13 @@ def _blocked_proposal_rows(
             "ineligible_reason": reason,
             **qextra,
         }
+        hk = evaluate_hakedaka(ticker, hk_inputs, min_hits=hk_min)
+        extra["hakedaka_detail"] = hits_label(hk)
+        extra["hakedaka_hits"] = hk.hits
+        extra["hakedaka_known"] = hk.known
+        extra["cyclical_theme"] = is_cyclical_heavy(
+            sector=sector, name=str(sc.name or "")
+        )
         extra = attach_ladder_extra(
             extra,
             ticker=ticker,

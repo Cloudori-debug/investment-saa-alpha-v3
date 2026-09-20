@@ -74,8 +74,14 @@ packaging/Output/
 
 # Operator runtime state (do not resurrect ghost holdings / freeze locks via git)
 data/positions.csv
+data/books/kosdaq/positions.csv
+data/books/kosdaq/prices.csv
+data/books/kosdaq/fundamentals.csv
+data/books/kosdaq/qual_rank_overlay.json
+data/books/kosdaq/alpha_quant_snapshot_provenance.json
 data/weekly_qual_proposal_freeze.json
 data/proposal_freeze_policy.json
 data/alpha_system_journal.jsonl
 alpha_portfolio/data/raw/positions.csv
+alpha_portfolio/data/books/
 

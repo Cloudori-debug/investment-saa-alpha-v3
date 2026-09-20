@@ -14,7 +14,7 @@ collect:
     sync_stub_fundamentals: true
     max_stub_rows: 150       # fundamentals에 추가할 stub 상한
     export_template: true    # fundamentals_liquid_template.csv
-    # OpenDART 재무(영업이익·부채·실적)는 전 종목이 아니라 관찰 풀(코스피 30 / 코스닥 10)만.
+    # OpenDART 재무는 관찰 풀만(코스피 30 / 코스닥 10). 재순위 후 새로 들어온 종목은 한 번 더 채움. 전 종목 DART 없음.
 
 # holdings = positions kr_alpha + fundamentals tickers + target kr_alpha
 # liquid   = Gate 시총 통과 전체 + holdings union → Replace 후보 풀 확대

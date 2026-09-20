@@ -42,11 +42,17 @@ def test_gate_drops_name_next_eligible_fills() -> None:
             ),
         )
     )
+    reasons: dict[str, str] = {}
     selected, warnings = select_eligible(
-        scores, target_names=3, max_names_per_sector=2, overlay=overlay
+        scores,
+        target_names=3,
+        max_names_per_sector=2,
+        overlay=overlay,
+        skip_reasons=reasons,
     )
     assert [s.ticker for s in selected] == ["000002", "000003", "000004"]
     assert any("000001" in w for w in warnings)
+    assert reasons.get("000001") == "정성 게이트"
 
 
 def test_swap_within_two_slots_changes_book() -> None:

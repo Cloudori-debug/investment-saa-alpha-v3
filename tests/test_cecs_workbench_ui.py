@@ -18,6 +18,7 @@ from alpha_system.ui.services.cecs_workbench import (
     cutoff_actions_enabled,
     default_relative_cutoff_rank,
     generate_correlation_report,
+    recommended_absolute_cutoff_option,
 )
 from alpha_system.ui.services.go_live_gate import assess_checklist
 from alpha_system.ui.services.t3_history_refresh import try_generate_t3_history
@@ -117,6 +118,32 @@ def test_relative_cutoff_ladder_derives_absolute_from_rank_count() -> None:
     assert by_rank[3].margin_below == 29
     assert by_rank[3].is_natural_break is True
     assert default_relative_cutoff_rank(ladder) == 3
+
+
+def test_recommended_cutoff_stops_at_quality_floor_not_slot_count() -> None:
+    """Cutoff is the last name above the Q floor, even if the book is unfilled."""
+    scored = [
+        {"ticker": "006040", "name": "동원", "total_score": 66.82, "score_q": 60.39},
+        {"ticker": "005830", "name": "DB", "total_score": 63.61, "score_q": 56.79},
+        {"ticker": "000660", "name": "하이닉스", "total_score": 62.92, "score_q": 92.42},
+        {"ticker": "005440", "name": "현대GF", "total_score": 61.59, "score_q": 57.27},
+        {"ticker": "021240", "name": "코웨이", "total_score": 61.36, "score_q": 86.54},
+        {"ticker": "000370", "name": "한화손보", "total_score": 60.79, "score_q": 50.83},
+        {"ticker": "024110", "name": "기업은행", "total_score": 60.42, "score_q": 50.83},
+        {"ticker": "012630", "name": "HDC", "total_score": 59.68, "score_q": 50.83},
+        {"ticker": "015760", "name": "한전", "total_score": 56.91, "score_q": 50.83},
+        {"ticker": "032640", "name": "LGU+", "total_score": 55.38, "score_q": 50.83},
+        {"ticker": "000270", "name": "기아", "total_score": 54.50, "score_q": 50.83},
+        {"ticker": "000013", "name": "M", "total_score": 51.19, "score_q": 50.83},
+        {"ticker": "000017", "name": "Q", "total_score": 46.80, "score_q": 50.83},
+        {"ticker": "000018", "name": "R", "total_score": 42.20, "score_q": 50.83},
+    ]
+    ladder = build_relative_cutoff_ladder(scored, min_rank=1)
+    rec = recommended_absolute_cutoff_option(ladder, scored)
+    assert rec is not None
+    assert rec.boundary_ticker == "021240"
+    assert rec.cutoff == 61.36
+    assert rec.eligible_count == 5
 
 
 def test_cutoff_requires_two_confirmations_without_cecs_gate(

@@ -101,6 +101,7 @@ def test_collect_pack_from_injected_json(tmp_path: Path) -> None:
     md = "\n".join(pack.markdown_by_ticker["005930"])
     assert "OpenDART" in md
     assert "현금배당결정" in md
+    assert "최대주주+특수관계인" in md
     assert "국민연금" in md
     assert "단순투자" in md
     assert "dsaf001" in md

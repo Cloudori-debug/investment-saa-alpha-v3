@@ -148,6 +148,7 @@ def apply_book_config(cfg: Any, market: object | None = None, *, root: Path | No
                 update={
                     "target_names": names,
                     "max_names_per_sector": per_sector,
+                    "cyclical_theme_max": 1,
                 }
             ),
             "benchmark": "KOSDAQ",

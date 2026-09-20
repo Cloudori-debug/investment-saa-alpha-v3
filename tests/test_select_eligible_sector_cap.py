@@ -125,6 +125,37 @@ def test_insurance_rolls_into_financial_cap() -> None:
     assert any("sector cap" in w for w in warnings)
 
 
+def test_cyclical_theme_cap_skips_third_ship_or_machine() -> None:
+    """대한조선(auto+이름)과 기계 2종이 한 테마 — 3번째는 스킵, 다음 적격 채움."""
+    scores = [
+        _score("100840", 67, sector="industrials"),
+        _score("383220", 64, sector="distribution"),
+        _score("439260", 63, sector="auto"),
+        _score("017800", 61, sector="industrials"),
+        _score("081660", 60, sector="distribution"),
+        _score("462870", 59, sector="consumer"),
+    ]
+    scores[0].name = "SNT에너지"
+    scores[1].name = "F&F"
+    scores[2].name = "대한조선"
+    scores[3].name = "현대엘리베이터"
+    scores[4].name = "미스토홀딩스"
+    scores[5].name = "시프트업"
+    reasons: dict[str, str] = {}
+    selected, warnings = select_eligible(
+        scores,
+        target_names=6,
+        max_names_per_sector=2,
+        cyclical_theme_max=2,
+        skip_reasons=reasons,
+    )
+    tickers = [s.ticker for s in selected]
+    assert tickers == ["100840", "383220", "439260", "081660", "462870"]
+    assert "017800" not in tickers
+    assert reasons.get("017800") == "경기민감 테마 상한"
+    assert any("cyclical theme cap" in w for w in warnings)
+
+
 def test_sector_weight_cap_35_scales_two_names() -> None:
     """동일 섹터 2종 · 예산 50% → 종목캡 25%×2=50%이지만 섹터합 ≤35%."""
     cfg = load_config()

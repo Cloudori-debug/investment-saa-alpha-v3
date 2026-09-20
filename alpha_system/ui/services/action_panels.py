@@ -20,6 +20,7 @@ from alpha_system.schema import TrancheId
 from alpha_system.scoring.engine import NameScore, score_name
 from alpha_system.sizing.allocate import allocate_tranche
 from alpha_system.ui.services.action_queue import ActionItem
+from alpha_system.ui.services.approval_chrome import ap_subhead
 from alpha_system.ui.services.auto_journal import journal_data_refresh
 from alpha_system.ui.services.cecs_workbench import (
     cecs_progress,
@@ -34,7 +35,6 @@ from alpha_system.ui.services.nav import (
     FOCUS_RULES_PREFIX,
     FOCUS_SETTINGS_API,
     FOCUS_T2,
-    FOCUS_T3_DETAIL,
     FOCUS_WEEKLY_QUAL,
     PAGE_APPROVAL,
     PAGE_EVENTS,
@@ -52,7 +52,7 @@ SESSION_PANEL = "action_panel_key"
 
 
 def _exit_target_tickers(ctx: DashboardContext) -> set[str]:
-    path = ctx.root / "data" / "kr_alpha_exit_targets.yaml"
+    path = ctx.data_dir / "kr_alpha_exit_targets.yaml"
     if not path.exists():
         return set()
     try:
@@ -84,7 +84,7 @@ def render_active_panel(ctx: DashboardContext) -> bool:
         return False
 
     st.markdown("---")
-    st.subheader(f"처리 패널 · {item.title}")
+    ap_subhead(f"처리 패널 · {item.title}")
     if st.button("← 큐로", key="panel_close"):
         close_panel()
 
@@ -241,7 +241,8 @@ def _panel_execute(ctx: DashboardContext, item: ActionItem) -> None:
         elif not status.trigger_met:
             hard_block_reason = "트리거 미충족 — 집행 불가"
 
-    budget = float(ctx.cfg.tranches[tid].weight)
+    tcfg = ctx.cfg.tranches.get(tid)
+    budget = float(tcfg.weight) if tcfg is not None else 1.0
     capital_frac = float(ctx.cfg.capital.max_fraction_of_total_assets)
     alpha_book_krw, book_note = _alpha_book_krw(ctx)
     tranche_krw = (alpha_book_krw * budget) if alpha_book_krw is not None else None
@@ -303,7 +304,7 @@ def _panel_execute(ctx: DashboardContext, item: ActionItem) -> None:
             st.warning(
                 "목표가 미승인 대기 후보(편입 차단): "
                 + ", ".join(f"`{t}`" for t in waiting)
-                + " — 다음 주 통합 보고서(E) 승인 전까지 체결 기록 불가"
+                + " — 제안 종목에서 목표가 승인 전까지 체결 기록 불가"
             )
         tickers = [a["ticker"] for a in suggested] if suggested else _eligible_tickers(ctx)[:8]
         for tkr in tickers:
@@ -444,11 +445,7 @@ def _panel_execute(ctx: DashboardContext, item: ActionItem) -> None:
         if tid == "T2":
             navigate(PAGE_EVENTS, focus=FOCUS_T2)
         elif tid == "T3":
-            hist = ctx.root / "data" / "kospi_market_pbr_history.csv"
-            navigate(
-                PAGE_EVENTS,
-                focus=FOCUS_T3_DETAIL if hist.exists() else FOCUS_DATA_REFRESH,
-            )
+            navigate(PAGE_EVENTS, focus=FOCUS_DATA_REFRESH)
         else:
             navigate(PAGE_RULES, focus=f"{FOCUS_RULES_PREFIX}{tid}")
 
@@ -899,11 +896,19 @@ def _sizing_excerpt(
             continue
     existing = {r.ticker: r.weight_pct / 100.0 for r in ops}
     try:
+        from alpha_system.sizing.target_gate import (
+            collect_above_justified_target_tickers_from_root,
+        )
+
         result = allocate_tranche(
             ctx.cfg,
             tranche_id=TrancheId(tid),
             scores=scores,
             existing_weights=existing,
+            exclude_tickers=collect_above_justified_target_tickers_from_root(
+                [s.ticker for s in scores],
+                ctx.root,
+            ),
         )
     except Exception as exc:
         return headroom_lines + f"- sizing 오류: {exc}\n", str(exc), []

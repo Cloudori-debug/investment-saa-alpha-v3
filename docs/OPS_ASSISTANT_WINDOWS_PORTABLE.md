@@ -1,8 +1,8 @@
-# SAA 알파 운용 비서 — Windows 이식 (포맷·다른 PC)
+# 코스피 알파 스크리너 — Windows 이식 (포맷·다른 PC)
 
-> **제품 포지션:** 규칙 있는 **개인 운용 비서** (자동매매·증권사 API 아님)  
+> **제품 포지션:** 규칙 기반 **스크리너** (자동매매·증권사 API 아님)  
 > **목표:** 포맷하거나 다른 Windows PC에서도 같은 장부·승인 상태로 다시 켠다.  
-> **코드 루트:** `C:\Cursor\investment-saa-alpha-v3`  
+> **코드 루트:** `C:\Cursor\investment\investment-alpha-screener`  
 > **설치형 패키징:** [`V3_WINDOWS_PACKAGING.md`](V3_WINDOWS_PACKAGING.md)
 
 ---
@@ -31,20 +31,20 @@ python scripts/make_ops_backup.py
 python scripts/make_ops_backup.py --with-secrets
 ```
 
-zip에 들어가는 핵심: `target_portfolio.csv`, `kr_alpha_exit_targets.yaml`, 주간/월간 정성 JSON, CECS CSV, positions, 런타임 등.
+zip에 들어가는 핵심: 보유·목표가·승인·게이트 JSON, 스코어 컷 설정, 가격 캐시(선택), API 키(선택).
 
 ---
 
 ## 포맷 후 / 다른 PC (복원)
 
-1. **Python 3.11+** 설치 (PATH 추가)
-2. 이 저장소 폴더 복사 또는 Git clone
-3. `투자나침반.bat` → **[2] Install**
-4. **설정 › 이식·백업**에서 zip 업로드·**복원 실행**  
-   또는  
-   `python scripts/restore_ops_backup.py path\to\backup.zip`
+**가장 쉬움:** `PC이사.bat` → 안내 파일대로 폴더 복사.
+
+1. 새 PC에 **Python 3.11+** 설치 (PATH 추가)
+2. 프로그램 폴더 복사 또는 Git clone
+3. `투자나침반.bat` — `.venv`가 없거나 깨져 있으면 자동 수리
+4. 장부가 비어 있으면 **설정 › 이식·백업** 또는 `장부_가져오기.bat`
 5. **설정 › API 키** 확인 (secrets를 zip에 안 넣었다면 다시 입력)
-6. 결재함에서 **정량 전체 갱신** (캐시를 안 넣었거나 오래됐을 때)
+6. 확인 › ① **정량 전체 갱신** (캐시를 안 넣었거나 오래됐을 때)
 
 ---
 
@@ -52,7 +52,7 @@ zip에 들어가는 핵심: `target_portfolio.csv`, `kr_alpha_exit_targets.yaml`
 
 | 포함 | 미포함 |
 |------|--------|
-| 운용 비서 브랜드·첫 실행 안내 | 앱스토어·Mac·클라우드 SaaS |
+| 스크리너 브랜드·첫 실행 안내 | 앱스토어·Mac·클라우드 SaaS |
 | 백업/복원 zip | 증권사 자동매매 |
 | Windows bat 이식 | “누구나 클릭만” 제로설정 |
 

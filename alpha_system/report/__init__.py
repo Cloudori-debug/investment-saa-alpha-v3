@@ -121,15 +121,19 @@ def render_status_report(
         "",
         "## 트랜치 상태",
         "",
-        "| tranche | state | trigger_met | weight | detail |",
-        "|---|---|---|---:|---|",
     ]
-    for st in data.entry.statuses:
-        lines.append(
-            f"| {st.tranche_id.value} | {st.state.value} | {st.trigger_met} | "
-            f"{st.weight} | {st.detail.replace('|', '/')} |"
-        )
-    lines.append("")
+    if not data.entry.statuses:
+        lines.append("_자본 T1~T4 봉투 폐기. 스케일인은 종목 가격 사다리._")
+        lines.append("")
+    else:
+        lines.append("| tranche | state | trigger_met | weight | detail |")
+        lines.append("|---|---|---|---:|---|")
+        for st in data.entry.statuses:
+            lines.append(
+                f"| {st.tranche_id.value} | {st.state.value} | {st.trigger_met} | "
+                f"{st.weight} | {st.detail.replace('|', '/')} |"
+            )
+        lines.append("")
 
     lines.append("## 트리거·액션 (이번 평가)")
     lines.append("")

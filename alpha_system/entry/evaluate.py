@@ -424,6 +424,22 @@ def evaluate_entry(
 
 ) -> EntryEvaluation:
 
+    """Capital T1–T4 retired. Scale-in/out is the per-name price ladder."""
+
+    return EntryEvaluation(
+
+        as_of=snapshot.as_of,
+
+        statuses=[],
+
+        actions=[],
+
+        warnings=["capital_tranches_retired"],
+
+        todo_fields=[],
+
+    )
+
     actions: list[EntryAction] = []
 
     warnings: list[str] = []
@@ -861,6 +877,15 @@ def attempt_execute(
     entry_tickers: Sequence[str] | None = None,
     has_target_by_ticker: Mapping[str, bool] | None = None,
 ) -> tuple[TrancheStatus, EntryAction]:
+    retired = EntryAction(
+        action_type=EntryActionType.WARN_BLOCKED,
+        tranche_id=tranche_id,
+        reason="capital_tranches_retired",
+        weight=0.0,
+        as_of=as_of,
+        blocked=True,
+    )
+    return status, retired
     frac = execution_fraction
     if frac is None:
         frac = float(status.meta.get("executable_fraction", 1.0))

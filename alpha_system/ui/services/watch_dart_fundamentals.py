@@ -2,6 +2,7 @@
 
 KRX ranks the liquid universe. DART fills OPM / debt / earnings for the
 watch board (30 KOSPI / 10 KOSDAQ) then those names are rescored.
+Names that enter the pool after that rescore get one extra DART round (still ≤ N).
 HTML viewers are not used. target_portfolio.csv is not written.
 """
 
@@ -15,7 +16,7 @@ from typing import Any, Callable, Mapping
 import pandas as pd
 
 from alpha_system.screen_book import watch_max
-from alpha_system.ui.services.cecs_opendart_pack import _repo_src_on_top
+from alpha_system.ui.services.cecs_opendart_pack import _hyslr_owner_pct, _repo_src_on_top
 
 FetchOne = Callable[[str, str], Mapping[str, Any] | None]
 
@@ -26,6 +27,7 @@ class WatchDartResult:
     filled: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    hakedaka: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def watch_depth_tickers(
@@ -53,6 +55,19 @@ def watch_depth_tickers(
         [score_col, "ticker"], ascending=[False, True]
     )
     return [str(t) for t in work["ticker"].head(n).tolist()]
+
+
+def watch_round_tickers(
+    scores: pd.DataFrame,
+    *,
+    already: set[str] | None = None,
+    market: str = "KOSPI",
+    depth: int | None = None,
+) -> list[str]:
+    """Names now in the watch pool that have not been DART-filled this run."""
+    have = {str(t).zfill(6) if str(t).isdigit() else str(t) for t in (already or set())}
+    top = watch_depth_tickers(scores, market=market, depth=depth)
+    return [t for t in top if t not in have]
 
 
 def _as_float(val: Any) -> float | None:
@@ -116,6 +131,135 @@ def apply_watch_dart_rows(
     return work
 
 
+_HK_KEYS = (
+    "net_cash",
+    "net_cash_to_market_cap",
+    "treasury_share_ratio",
+    "largest_shareholder_pct",
+)
+
+
+def load_market_caps(path: Path) -> dict[str, float]:
+    """ticker → 시가총액 from alpha price_snapshot (or ops prices)."""
+    if not path.exists():
+        return {}
+    try:
+        df = pd.read_csv(path, dtype=str)
+    except (OSError, ValueError):
+        return {}
+    if df.empty or "ticker" not in df.columns:
+        return {}
+    cap_col = next(
+        (c for c in ("market_cap", "marcap", "mkt_cap", "시가총액") if c in df.columns),
+        None,
+    )
+    if cap_col is None:
+        return {}
+    out: dict[str, float] = {}
+    for _, row in df.iterrows():
+        ticker = str(row.get("ticker") or "").strip()
+        if ticker.isdigit():
+            ticker = ticker.zfill(6)
+        if not ticker:
+            continue
+        cap = _as_float(row.get(cap_col))
+        if cap is not None and cap > 0:
+            out[ticker] = cap
+    return out
+
+
+def persist_hakedaka_watch_rows(
+    path: Path,
+    rows: Mapping[str, Mapping[str, Any]],
+    *,
+    market_caps: Mapping[str, float] | None = None,
+    as_of: str = "",
+) -> int:
+    """Upsert DART hakedaka fields for the watch pool. Does not drop other tickers."""
+    import csv
+    from datetime import datetime, timezone
+
+    if not rows:
+        return 0
+    caps = dict(market_caps or {})
+    fieldnames = [
+        "ticker",
+        "as_of",
+        "net_cash",
+        "net_cash_to_market_cap",
+        "treasury_share_ratio",
+        "largest_shareholder_pct",
+        "related_party_risk_flag",
+        "governance_event_flag",
+        "enriched_at",
+    ]
+    existing: dict[str, dict[str, str]] = {}
+    orig_fields: list[str] = []
+    if path.exists():
+        try:
+            with path.open(encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle)
+                orig_fields = [str(c) for c in (reader.fieldnames or []) if c]
+                for raw in reader:
+                    ticker = str(raw.get("ticker") or "").strip()
+                    if ticker.isdigit():
+                        ticker = ticker.zfill(6)
+                    if ticker:
+                        existing[ticker] = dict(raw)
+                        existing[ticker]["ticker"] = ticker
+        except (OSError, csv.Error):
+            existing = {}
+            orig_fields = []
+    wrote = 0
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for raw_tk, payload in rows.items():
+        ticker = str(raw_tk).zfill(6) if str(raw_tk).isdigit() else str(raw_tk)
+        if not ticker or not isinstance(payload, Mapping):
+            continue
+        net_cash = _as_float(payload.get("net_cash"))
+        ncm = _as_float(payload.get("net_cash_to_market_cap"))
+        if ncm is None and net_cash is not None:
+            cap = caps.get(ticker)
+            if cap and cap > 0:
+                ncm = round(net_cash / cap * 100.0, 4)
+        tre = _as_float(payload.get("treasury_share_ratio"))
+        owner = _as_float(payload.get("largest_shareholder_pct"))
+        if all(v is None for v in (net_cash, ncm, tre, owner)):
+            continue
+        row = dict(existing.get(ticker) or {"ticker": ticker})
+        row["ticker"] = ticker
+        if as_of:
+            row["as_of"] = as_of
+        if net_cash is not None:
+            row["net_cash"] = str(net_cash)
+        if ncm is not None:
+            row["net_cash_to_market_cap"] = str(ncm)
+        if tre is not None:
+            row["treasury_share_ratio"] = str(tre)
+        if owner is not None:
+            row["largest_shareholder_pct"] = str(owner)
+        row["enriched_at"] = stamp
+        existing[ticker] = row
+        wrote += 1
+    if not wrote:
+        return 0
+    write_fields = list(orig_fields) if orig_fields else list(fieldnames)
+    for key in fieldnames:
+        if key not in write_fields:
+            write_fields.append(key)
+    for row in existing.values():
+        for key in row:
+            if key and key not in write_fields:
+                write_fields.append(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=write_fields, extrasaction="ignore")
+        writer.writeheader()
+        for ticker in sorted(existing):
+            writer.writerow({k: existing[ticker].get(k, "") for k in write_fields})
+    return wrote
+
+
 def persist_watch_dart_to_fundamentals(
     path: Path,
     filled: Mapping[str, Mapping[str, Any]],
@@ -135,6 +279,47 @@ def persist_watch_dart_to_fundamentals(
             continue
         df.loc[idx] = merge_watch_dart_row(row, payload)
     df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def _hakedaka_from_accounts(
+    accounts: list[dict[str, Any]],
+    meta: Any,
+    *,
+    corp: str,
+    as_of: str,
+    limiter: Any,
+    dart_get_fn: Callable[..., Any],
+    compute_hakedaka_metrics: Callable[..., Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Same DART account list as quality metrics — extra hyslr call for owner %."""
+    out: dict[str, Any] = {}
+    try:
+        hk_m = compute_hakedaka_metrics(accounts, meta)
+    except Exception:
+        hk_m = {}
+    net_cash = _as_float(hk_m.get("net_cash") if isinstance(hk_m, Mapping) else None)
+    tre = _as_float(hk_m.get("treasury_share_ratio") if isinstance(hk_m, Mapping) else None)
+    if net_cash is not None:
+        out["net_cash"] = net_cash
+    if tre is not None:
+        out["treasury_share_ratio"] = tre
+    try:
+        as_of_d = date.fromisoformat(str(as_of)[:10])
+    except ValueError:
+        as_of_d = date.today()
+
+    def _limited_get(path: str, params: dict[str, Any], **kwargs: Any) -> Any:
+        if limiter is not None:
+            limiter.wait()
+        return dart_get_fn(path, params, **kwargs)
+
+    try:
+        owner = _hyslr_owner_pct(_limited_get, corp, as_of_d)
+    except Exception:
+        owner = None
+    if owner is not None:
+        out["largest_shareholder_pct"] = owner
+    return out
 
 
 def collect_watch_dart_financials(
@@ -170,6 +355,13 @@ def collect_watch_dart_financials(
             continue
         filled[ticker] = dict(payload)
         result.filled += 1
+        hk = {
+            key: payload[key]
+            for key in _HK_KEYS
+            if key in payload and payload[key] is not None
+        }
+        if hk:
+            result.hakedaka[ticker] = hk
     return filled, result
 
 
@@ -183,9 +375,11 @@ def _collect_watch_dart_live(
     filled: dict[str, dict[str, Any]] = {}
     repo = Path(root) if root is not None else Path(__file__).resolve().parents[3]
     with _repo_src_on_top():
+        from src.data_refresh.dart_account_aliases import compute_hakedaka_metrics
         from src.data_refresh.dart_client import (
             DartCredentialsError,
             RateLimiter,
+            dart_get,
             get_dart_api_key,
         )
         from src.data_refresh.dart_corp_codes import build_ticker_corp_map
@@ -224,6 +418,17 @@ def _collect_watch_dart_live(
                     result.skipped += 1
                     continue
                 metrics = compute_metrics(accounts, meta)
+                hk_row = _hakedaka_from_accounts(
+                    accounts,
+                    meta,
+                    corp=corp,
+                    as_of=as_of,
+                    limiter=limiter,
+                    dart_get_fn=dart_get,
+                    compute_hakedaka_metrics=compute_hakedaka_metrics,
+                )
+                if hk_row:
+                    result.hakedaka[ticker] = hk_row
                 payload = {
                     "opm": metrics.get("operating_margin"),
                     "debt_ratio": metrics.get("debt_ratio"),

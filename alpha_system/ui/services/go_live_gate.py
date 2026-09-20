@@ -54,13 +54,11 @@ def assess_checklist(
 ) -> ChecklistStatus:
     pre_launch = go_live_date is None
     cecs_path = cecs_path or (root / "data" / "cecs_manual_scoring_template.csv")
-    hist_path = root / "data" / "kospi_market_pbr_history.csv"
 
     final_n, total_n = _cecs_counts(cecs_path)
     score_ok = cfg.scoring.score_cutoff is not None
     # Ops A (2026-07-25): CECS no longer blocks go-live — rank is quant-only.
     cecs_ok = True
-    t3_ok = hist_path.exists() and _csv_has_rows(hist_path)
 
     items = [
         ChecklistItem(
@@ -79,13 +77,6 @@ def assess_checklist(
             todo=copy_get("checklist", "cecs_final", "todo"),
             ok=cecs_ok,
         ),
-        ChecklistItem(
-            key="t3_history",
-            title=copy_get("checklist", "t3_history", "title"),
-            why=copy_get("checklist", "t3_history", "why"),
-            todo=copy_get("checklist", "t3_history", "todo"),
-            ok=t3_ok,
-        ),
     ]
     return ChecklistStatus(items=items, pre_launch=pre_launch, go_live_date=go_live_date)
 
@@ -103,11 +94,3 @@ def _cecs_counts(path: Path) -> tuple[int, int]:
     total = len(df)
     final = int((df.get("status", pd.Series(dtype=str)) == "final").sum()) if "status" in df.columns else 0
     return final, total
-
-
-def _csv_has_rows(path: Path) -> bool:
-    try:
-        df = pd.read_csv(path)
-        return not df.empty
-    except Exception:
-        return False

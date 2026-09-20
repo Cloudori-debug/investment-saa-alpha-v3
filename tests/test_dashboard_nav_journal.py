@@ -32,20 +32,39 @@ def test_primary_pages_sellable_ia_order() -> None:
         page_display_name,
     )
 
-    assert PRIMARY_PAGES[0] == "홈"
-    assert PRIMARY_PAGES[1] == "결재함"
-    assert PRIMARY_PAGES[2] == "포트폴리오"
-    assert "레짐" in PRIMARY_PAGES
-    assert PAGE_HINTS["홈"]
-    assert "점수" in PAGE_HINTS["결재함"] or "주간" in PAGE_HINTS["결재함"]
+    assert PRIMARY_PAGES[0] == "결재함"
+    assert PRIMARY_PAGES[1] == "포트폴리오"
+    assert "경제시그널" in PRIMARY_PAGES
+    assert "홈" not in PRIMARY_PAGES
+    assert "레짐" not in PRIMARY_PAGES
+    assert "점수" in PAGE_HINTS["결재함"] or "정량" in PAGE_HINTS["결재함"]
     assert "실보유" in PAGE_HINTS["포트폴리오"]
-    assert PAGE_DISPLAY_NAMES["홈"] == "오늘"
     assert PAGE_DISPLAY_NAMES["결재함"] == "확인"
     assert PAGE_DISPLAY_NAMES["포트폴리오"] == "포트폴리오"
+    assert "홈" not in PAGE_DISPLAY_NAMES
     assert page_display_name("결재함", badge=3) == "확인 · 3"
-    assert NAV_MAIN_PAGES == ("홈", "결재함", "포트폴리오")
+    assert NAV_MAIN_PAGES == ("결재함", "포트폴리오")
     assert "저널" in NAV_MORE_PAGES
     assert "설정" in NAV_MORE_PAGES
+    assert NAV_MORE_PAGES[0] == "경제시그널"
+    assert "레짐" not in NAV_MORE_PAGES
+    assert PAGE_DISPLAY_NAMES["경제시그널"] == "경제 시그널"
+    assert "홈" not in NAV_MAIN_PAGES
+
+
+def test_retired_home_tab_lands_on_approval() -> None:
+    from alpha_system.ui.services.nav import (
+        PAGE_APPROVAL,
+        PAGE_HOME,
+        PAGE_REGIME,
+        normalize_page_label,
+    )
+
+    assert PAGE_HOME == PAGE_APPROVAL
+    assert PAGE_REGIME == PAGE_APPROVAL
+    assert normalize_page_label("홈") == PAGE_APPROVAL
+    assert normalize_page_label("레짐") == PAGE_APPROVAL
+    assert normalize_page_label(None) == PAGE_APPROVAL
 
 
 def test_journal_filter_categories() -> None:
@@ -82,10 +101,8 @@ def test_auto_journal_records_state_transition(tmp_path: Path) -> None:
         portfolio_rows=[],
         pre_launch=False,
     )
-    assert "TRANCHE_STATE_TRANSITION" in written or "TRIGGER_FIRED" in written
-    kinds = {e.action_kind for e in list_entries()}
-    assert kinds & {"TRANCHE_STATE_TRANSITION", "TRIGGER_FIRED"}
-    # second sync should not duplicate same snapshot
+    assert "TRANCHE_STATE_TRANSITION" not in written
+    assert "TRIGGER_FIRED" not in written
     n1 = len(list_entries())
     sync_system_journal(
         as_of=date(2026, 7, 16),

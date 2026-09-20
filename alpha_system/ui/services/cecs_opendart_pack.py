@@ -84,6 +84,7 @@ class CecsOpendartPack:
     missing_key: bool
     notes: tuple[str, ...] = ()
     flags: tuple[QualDraftFlag, ...] = ()
+    owner_pct_by_ticker: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -95,6 +96,7 @@ class _TickerFacts:
     quarters_hit: int | None = None
     nps_rows: list[dict[str, str]] = field(default_factory=list)
     latest_major: dict[str, str] | None = None
+    owner_pct: float | None = None
 
 
 def last_four_completed_quarters(as_of: date) -> list[tuple[int, int]]:
@@ -304,6 +306,10 @@ def format_facts_markdown(facts: _TickerFacts, *, as_of: date) -> tuple[str, ...
     else:
         lines.append("> purpose 최신 대량보유: 없음")
         lines.append("> purpose 힌트: " + purpose_hint("", "", as_of_year=as_of.year))
+    if facts.owner_pct is not None:
+        lines.append(f"> 최대주주+특수관계인(사업보고서): {facts.owner_pct:.2f}%")
+    else:
+        lines.append("> 최대주주+특수관계인(사업보고서): 미수집")
     lines.append("> 출처 칸에는 위 rcpNo 링크 또는 `https://opendart.fss.or.kr/` 를 적어도 됩니다.")
     return tuple(lines)
 
@@ -370,6 +376,7 @@ def collect_cecs_opendart_pack(
 
     markdown_by_ticker: dict[str, tuple[str, ...]] = {}
     flags: list[QualDraftFlag] = []
+    owner_pct_by_ticker: dict[str, float] = {}
     ok = 0
     for raw in tickers:
         ticker = str(raw).strip()
@@ -394,12 +401,17 @@ def collect_cecs_opendart_pack(
             facts.nps_rows, facts.latest_major = _majorstock_rows(
                 dart_get_fn, facts.corp_code, lookback_start, as_of
             )
+            if limiter:
+                limiter.wait()
+            facts.owner_pct = _hyslr_owner_pct(dart_get_fn, facts.corp_code, as_of)
             ok += 1
         except Exception as exc:
             facts.error = str(exc)[:160]
             notes.append(f"{ticker}: {facts.error}")
         markdown_by_ticker[ticker] = format_facts_markdown(facts, as_of=as_of)
         flags.extend(flags_from_facts(facts))
+        if facts.owner_pct is not None:
+            owner_pct_by_ticker[ticker] = float(facts.owner_pct)
 
     return CecsOpendartPack(
         markdown_by_ticker=markdown_by_ticker,
@@ -407,6 +419,7 @@ def collect_cecs_opendart_pack(
         missing_key=missing_key,
         notes=tuple(notes),
         flags=tuple(flags),
+        owner_pct_by_ticker=owner_pct_by_ticker,
     )
 
 
@@ -494,6 +507,47 @@ def _majorstock_rows(
     nps = [r for r in rows if is_nps_reporter(r.get("repror") or "")]
     latest = rows[0] if rows else None
     return nps[:8], latest
+
+
+def _hyslr_owner_pct(
+    dart_get_fn: DartGet,
+    corp_code: str,
+    as_of: date,
+) -> float | None:
+    """Sum 최대주주+특수관계인 year-end stake from OpenDART hyslrSttus.json."""
+    for year in (as_of.year - 1, as_of.year - 2):
+        for reprt in ("11011", "11014"):
+            try:
+                data = dart_get_fn(
+                    "hyslrSttus.json",
+                    {
+                        "corp_code": corp_code,
+                        "bsns_year": str(year),
+                        "reprt_code": reprt,
+                    },
+                )
+            except Exception:
+                continue
+            items = data.get("list") or []
+            if not items:
+                continue
+            total = 0.0
+            n = 0
+            for item in items:
+                nm = str(item.get("nm") or "")
+                if "합계" in nm:
+                    continue
+                knd = str(item.get("stock_knd") or "")
+                if knd and "우선" in knd:
+                    continue
+                rt = parse_ratio(item.get("trmend_posesn_stock_rt"))
+                if rt is None:
+                    continue
+                n += 1
+                total += rt
+            if n:
+                return round(total, 4)
+    return None
 
 
 PAYOUT_SR4_CACHE = "opendart_payout_sr4.json"
@@ -681,6 +735,7 @@ class OpendartProposalWatch:
     missing_key: bool = False
     notes: list[str] = field(default_factory=list)
     flags: list[dict[str, str]] = field(default_factory=list)
+    metrics: list[dict[str, Any]] = field(default_factory=list)
 
     def flag_models(self) -> tuple[QualDraftFlag, ...]:
         out: list[QualDraftFlag] = []
@@ -699,12 +754,15 @@ class OpendartProposalWatch:
         return tuple(f for f in out if f.ticker and f.kind)
 
 
-def opendart_watch_path(root: Path) -> Path:
-    return Path(root) / "data" / WATCH_FILENAME
+def opendart_watch_path(root: Path, *, data_dir: Path | None = None) -> Path:
+    base = Path(data_dir) if data_dir is not None else Path(root) / "data"
+    return base / WATCH_FILENAME
 
 
-def load_opendart_watch(root: Path) -> OpendartProposalWatch | None:
-    path = opendart_watch_path(root)
+def load_opendart_watch(
+    root: Path, *, data_dir: Path | None = None
+) -> OpendartProposalWatch | None:
+    path = opendart_watch_path(root, data_dir=data_dir)
     if not path.exists():
         return None
     try:
@@ -721,6 +779,7 @@ def load_opendart_watch(root: Path) -> OpendartProposalWatch | None:
         missing_key=bool(data.get("missing_key")),
         notes=list(data.get("notes") or []),
         flags=list(data.get("flags") or []),
+        metrics=list(data.get("metrics") or []),
     )
 
 
@@ -766,8 +825,9 @@ def refresh_opendart_proposal_watch(
     dart_get_fn: DartGet | None = None,
     corp_map: dict[str, str] | None = None,
     journal_path: Path | None = None,
+    data_dir: Path | None = None,
 ) -> OpendartProposalWatch:
-    """Search confirmed proposal names only. Never writes overlay or target_portfolio."""
+    """Search the watch pool (and confirmed proposal). Never writes overlay or target_portfolio."""
     from alpha_system.journal import append_record
 
     day = as_of or date.today()
@@ -780,6 +840,7 @@ def refresh_opendart_proposal_watch(
         corp_map=corp_map,
         include_payout=False,
     )
+    control = {f.ticker for f in pack.flags if f.kind == "control_purpose"}
     snap = OpendartProposalWatch(
         version=1,
         fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -796,8 +857,16 @@ def refresh_opendart_proposal_watch(
             }
             for f in pack.flags
         ],
+        metrics=[
+            {
+                "ticker": tk,
+                "largest_shareholder_pct": pack.owner_pct_by_ticker.get(tk),
+                "control_purpose": tk in control,
+            }
+            for tk in wanted
+        ],
     )
-    path = opendart_watch_path(root)
+    path = opendart_watch_path(root, data_dir=data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(asdict(snap), ensure_ascii=False, indent=2) + "\n",
@@ -808,7 +877,7 @@ def refresh_opendart_proposal_watch(
         as_of=day,
         subject="proposal",
         rationale=(
-            f"제안 {len(wanted)}종 OpenDART 탐색 · 후보 {len(snap.flags)}건"
+            f"관찰·제안 {len(wanted)}종 OpenDART 탐색 · 후보 {len(snap.flags)}건"
             + (" · API 키 없음" if pack.missing_key else "")
         ),
         payload={

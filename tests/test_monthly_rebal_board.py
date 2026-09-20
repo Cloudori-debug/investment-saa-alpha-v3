@@ -22,17 +22,13 @@ def test_band_breach_relative() -> None:
     assert "허용" in detail or "목표" in detail
 
 
-def test_board_crisis_and_band(tmp_path: Path) -> None:
+def test_board_mid_month_band_is_idle(tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
     (data / "target_portfolio.csv").write_text(
         "ticker,name,asset_group,target_weight\n"
         "005830,DB손보,kr_alpha,5.0\n"
         "021240,코웨이,kr_alpha,5.0\n",
-        encoding="utf-8",
-    )
-    (data / "market_indicators.csv").write_text(
-        "as_of,regime\n2026-07-28,CRISIS\n",
         encoding="utf-8",
     )
     ops = [
@@ -53,10 +49,9 @@ def test_board_crisis_and_band(tmp_path: Path) -> None:
         portfolio_rows=[],
     )
     board = build_monthly_rebal_board(ctx, as_of=date(2026, 7, 28))
-    assert board.crisis is True
     keys = {c.key: c for c in board.cards}
-    assert keys["crisis"].do_now is True
-    assert keys["band"].do_now is True  # crisis allows band rebal now
+    assert "crisis" not in keys
+    assert keys["band"].do_now is False
     assert any(i.ticker == "005830" for i in keys["band"].items)
 
 

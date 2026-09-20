@@ -58,6 +58,7 @@ def test_kosdaq_config_overlay_is_three_names(tmp_path: Path) -> None:
     assert out.universe.include_markets == ["KOSDAQ"]
     assert out.sizing.target_names == KOSDAQ_TARGET_NAMES
     assert out.sizing.max_names_per_sector == 1
+    assert out.sizing.cyclical_theme_max == 1
     assert out.scoring.score_cutoff == 55.0
     kospi = apply_book_config(cfg, "KOSPI", root=tmp_path)
     assert kospi.universe.include_markets == ["KOSPI"]

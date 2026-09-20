@@ -1,8 +1,8 @@
 """Alpha book ops policy — literature-aligned Review-only operating rules.
 
 SAA (ETF fixed ratios) is out of scope. Alpha book = equity 90% + KODEX
-단기채권PLUS 10%, 9 names equal-weight, regime only scales cash guidance,
-never rewrites target_portfolio.csv.
+단기채권PLUS 10%, 9 names equal-weight. Cash share is fixed. Does not
+rewrite target_portfolio.csv.
 """
 
 from __future__ import annotations
@@ -36,14 +36,9 @@ class AlphaBookOpsPolicy:
         return float(self.equity_share) / n
 
     def cash_guidance_for_regime(self, regime_label: str) -> float:
-        raw = (regime_label or "").upper()
-        table = self.regime_cash_guidance
-        for key, frac in table.items():
-            if key == "default":
-                continue
-            if key.upper() in raw:
-                return float(frac)
-        return float(table.get("default", self.cash_share))
+        """Fixed cash sleeve. Regime label is ignored (operator path has no TAA)."""
+        del regime_label
+        return float(self.cash_share)
 
 
 def load_alpha_book_ops(root: Path | None = None) -> AlphaBookOpsPolicy:
@@ -239,7 +234,7 @@ def guidance_rows(
             ),
         },
         {
-            "항목": "오늘 단기채 가이던스",
+            "항목": "단기채",
             "내용": (
                 f"{cash_g * 100:.0f}% ({policy.cash_ticker}) · "
                 f"개별주 합 {equity_g * 100:.0f}% "
@@ -252,6 +247,6 @@ def guidance_rows(
         },
         {
             "항목": "불변",
-            "내용": "Core 순위 레짐/모멘텀 비변경 · 자동매매 없음 · target 사람만",
+            "내용": "Core 순위 고정 · 자동매매 없음 · target 사람만",
         },
     ]

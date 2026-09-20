@@ -39,6 +39,25 @@ def test_proposal_drop_is_full_exit() -> None:
     assert "탈락" in sig.detail
 
 
+def test_held_above_target_membership_uses_s1_not_s2a() -> None:
+    from alpha_system.sizing.target_gate import ops_proposal_membership
+
+    members = ops_proposal_membership(
+        ["006040"],
+        held_tickers=["000660"],
+        above_target=["000660"],
+    )
+    sig = classify_ops_exit_signal(
+        "000660",
+        fundamentals={"pbr": 9.62},
+        prices={"current_price": 1_674_000},
+        ticker_targets={"valuation": {"pbr_max": 3.60}, "target_price": 626_445},
+        in_proposal="000660" in members,
+    )
+    assert sig.kind == "cash_half"
+    assert sig.step_id == "S1"
+
+
 def test_missing_target() -> None:
     sig = classify_ops_exit_signal(
         "192400",
@@ -185,6 +204,43 @@ def test_apply_and_actionable() -> None:
     actionable = actionable_ops_signals(rows)
     assert len(actionable) == 1
     assert actionable[0].ticker == "105560"
+
+
+def test_apply_replaces_trim_wording_with_rung_price() -> None:
+    rows = [
+        PortfolioRow(
+            ticker="021240",
+            name="코웨이",
+            weight_pct=5.0,
+            initial_weight_pct=None,
+            avg_price=None,
+            current_price=120000,
+            target_price=150000,
+            target_progress=None,
+            remaining_upside_pct=25.0,
+            has_target=True,
+            target_detail="",
+            cap_pct=35.0,
+            cap_headroom_pct=30.0,
+            cap_near=False,
+            extra={
+                "ladder_ok": True,
+                "ladder_high": 150000,
+                "ladder_rungs": [80000, 97500, 115000, 132500, 150000],
+            },
+        )
+    ]
+    apply_ops_exit_signals(
+        rows,
+        proposal_tickers={"021240"},
+        fundamentals_by_ticker={},
+        exit_tickers={"021240": {"target_price": 150000.0, "valuation": {}}},
+        defaults={},
+        check_proposal_membership=False,
+    )
+    assert rows[0].ops_signal == "trim"
+    assert "115,000원" in rows[0].ops_signal_detail
+    assert "¼" not in rows[0].ops_signal_detail
 
 
 def test_missing_price_is_invalid_not_hold() -> None:

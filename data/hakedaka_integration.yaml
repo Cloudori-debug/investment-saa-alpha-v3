@@ -63,6 +63,13 @@ review:
     - hakedaka_priority
     - shadow_slot_candidate
 
+# Sequential gate lives in alpha_system.yaml sizing (hakedaka_gate_enabled).
+# Not a score blend. QVM rank first, then binary hits. T4 envelopes stay retired.
+sequential_gate:
+  enabled: true
+  min_hits: 2
+  note: "자격 게이트만 · total_score 불변 · 5% 경영참여는 제안 제외 + 사다리 Review-only"
+
 compass:
   annotate_kr_alpha: true
   reform_success_note: "거시 시나리오 성공 시 — 하케다카 A·DART verified 종목을 kr_alpha 교차검증"

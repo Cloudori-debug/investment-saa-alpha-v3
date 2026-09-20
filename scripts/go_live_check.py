@@ -25,6 +25,9 @@ REQUIRED_FILES = [
     "data/kr_alpha_exit_targets.yaml",
     "alpha_system/config/scoring.yaml",
     "data/hakedaka_integration.yaml",
+    "scripts/ensure_runtime.py",
+    "scripts/export_ledger.py",
+    "scripts/import_ledger.py",
 ]
 
 LEDGER_WARN_IF_MISSING = [
@@ -79,8 +82,8 @@ def check_invariants(errors: list[str]) -> None:
         _ok("Core scoring.yaml has no score_m weight key")
 
     dash = (ROOT / "alpha_dashboard.py").read_text(encoding="utf-8")
-    if "investment-saa-alpha-v3" in dash or "v3" in dash.lower():
-        _ok("alpha_dashboard.py references v3")
+    if "investment-alpha-screener" in dash or "v3" in dash.lower():
+        _ok("alpha_dashboard.py is the v3 screener entry")
     else:
         _warn("alpha_dashboard.py may still say v2 — check docstring")
 
@@ -105,7 +108,7 @@ def check_pytest(errors: list[str]) -> None:
         "pytest",
         "tests/test_ops_exit_signal.py",
         "tests/test_holdings_input.py",
-        "tests/test_rotation_compass.py",
+        "tests/test_home_status.py",
         "-q",
         "--tb=line",
     ]

@@ -38,7 +38,13 @@ def resolve_proposal_sector_limit_pct(data_dir: Path) -> float:
     try:
         from alpha_system.loader import load_config
 
-        root = data_dir.parent if data_dir.name == "data" else data_dir
+        p = Path(data_dir)
+        if p.name == "data":
+            root = p.parent
+        elif p.parent.name == "books" and p.parent.parent.name == "data":
+            root = p.parent.parent.parent
+        else:
+            root = p.parent
         cfg_path = root / "alpha_system" / "config" / "alpha_system.yaml"
         cfg = load_config(cfg_path if cfg_path.exists() else None)
         return float(cfg.sizing.sector_weight_cap) * 100.0

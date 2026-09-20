@@ -122,7 +122,7 @@ def test_build_queue_assigns_panel_kinds() -> None:
     assert reduce.payload["weight_pct"] == 42.0
 
 
-def test_build_queue_execute_panel_for_ready_tranche() -> None:
+def test_build_queue_omits_retired_capital_tranche_execute() -> None:
     status = MagicMock()
     status.tranche_id = TrancheId.T1
     status.state = TrancheState.READY
@@ -148,9 +148,7 @@ def test_build_queue_execute_panel_for_ready_tranche() -> None:
         stale_sources=[],
         pre_launch=False,
     )
-    exec_items = [i for i in items if i.panel_kind == "execute"]
-    assert exec_items
-    assert all(i.payload.get("tranche_id") == "T1" for i in exec_items)
+    assert [i for i in items if i.panel_kind == "execute"] == []
 
 
 def test_panel_journal_kinds_categorized() -> None:

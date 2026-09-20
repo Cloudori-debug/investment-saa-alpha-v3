@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from typing import Collection, Mapping, Sequence
 
 from alpha_system.schema import AlphaSystemConfig, TrancheId
 from alpha_system.scoring.engine import NameScore
+from alpha_system.sizing.cyclical_theme import is_cyclical_heavy
+from alpha_system.sizing.qual_overlay import QualOverlay, apply_qual_overlay, norm_ticker
 from alpha_system.sizing.sector_map import concentration_bucket
 
 
@@ -29,6 +31,7 @@ class TrancheAllocationResult:
     target_names: int = 6
     shortfall_names: int = 0  # max(0, target - eligible)
     warnings: list[str] = field(default_factory=list)
+    skip_reasons: dict[str, str] = field(default_factory=dict)
 
     @property
     def weights(self) -> dict[str, float]:
@@ -53,45 +56,116 @@ def select_eligible(
     *,
     target_names: int,
     max_names_per_sector: int = 2,
+    overlay: QualOverlay | None = None,
+    exclude_tickers: Collection[str] | None = None,
+    cyclical_theme_max: int = 2,
+    hakedaka_skip: Collection[str] | None = None,
+    skip_reasons: dict[str, str] | None = None,
 ) -> tuple[list[NameScore], list[str]]:
     """
     Eligible = eligibility is True (absolute cutoff passed).
     Never force-fill with eligibility False/None.
 
-    After cutoff, greedily take top weight_input subject to
-    max_names_per_sector per normalized sector_group, then stop at
-    target_names. Shortfall is allowed — do not relax cutoff or sector cap.
+    After cutoff, apply optional qual overlay (gates / ±K swaps) without
+    changing scores, then drop names already at/above justified take-profit,
+    then the Hakedaka sequential gate, then greedily take that order subject
+    to max_names_per_sector and cyclical_theme_max, then stop at target_names.
+    Shortfall is allowed — do not relax cutoff or caps.
     """
     warnings: list[str] = []
+    reasons = skip_reasons if skip_reasons is not None else {}
     passed = [s for s in scores if s.eligibility is True]
     if any(s.eligibility is None for s in scores):
         warnings.append(
             "some names have eligibility=None (score_cutoff TODO) — excluded from sizing"
         )
     passed.sort(key=lambda s: s.weight_input, reverse=True)
+    before_overlay = list(passed)
+    passed, overlay_warnings = apply_qual_overlay(passed, overlay)
+    warnings.extend(overlay_warnings)
+    kept_after_overlay = {norm_ticker(s.ticker) for s in passed}
+    for row in before_overlay:
+        ticker = norm_ticker(row.ticker)
+        if ticker not in kept_after_overlay:
+            reasons.setdefault(ticker, "정성 게이트")
+
+    blocked = {norm_ticker(t) for t in (exclude_tickers or []) if str(t).strip()}
+    if blocked:
+        dropped = [norm_ticker(s.ticker) for s in passed if norm_ticker(s.ticker) in blocked]
+        passed = [s for s in passed if norm_ticker(s.ticker) not in blocked]
+        if dropped:
+            for ticker in dropped:
+                reasons.setdefault(ticker, "현재가 ≥ 혼합 목표가")
+            warnings.append(
+                "target gate: excluded "
+                + ", ".join(dropped)
+                + " (at/above justified target; next eligible may fill)"
+            )
+
+    hakedaka_blocked = {
+        norm_ticker(t) for t in (hakedaka_skip or []) if str(t).strip()
+    }
+    if hakedaka_blocked:
+        dropped_hk = [
+            norm_ticker(s.ticker)
+            for s in passed
+            if norm_ticker(s.ticker) in hakedaka_blocked
+        ]
+        passed = [
+            s for s in passed if norm_ticker(s.ticker) not in hakedaka_blocked
+        ]
+        if dropped_hk:
+            for ticker in dropped_hk:
+                reasons[ticker] = "하케다카 게이트 (지표 미달)"
+            warnings.append(
+                "hakedaka gate: excluded "
+                + ", ".join(dropped_hk)
+                + " (sequential hits; next eligible may fill)"
+            )
 
     selected: list[NameScore] = []
     sector_counts: dict[str, int] = {}
+    cyclical_count = 0
     sector_skips = 0
+    theme_skips = 0
+    theme_max = int(cyclical_theme_max or 0)
     for s in passed:
         if len(selected) >= target_names:
             break
+        ticker = norm_ticker(s.ticker)
         bucket = _sector_bucket(s)
         if sector_counts.get(bucket, 0) >= max_names_per_sector:
             sector_skips += 1
+            reasons.setdefault(ticker, "업종 한도")
+            continue
+        cyclical = is_cyclical_heavy(
+            sector=getattr(s, "sector", "") or "",
+            name=getattr(s, "name", "") or "",
+        )
+        if theme_max > 0 and cyclical and cyclical_count >= theme_max:
+            theme_skips += 1
+            reasons[ticker] = "경기민감 테마 상한"
             continue
         selected.append(s)
         sector_counts[bucket] = sector_counts.get(bucket, 0) + 1
+        if cyclical:
+            cyclical_count += 1
 
     if sector_skips:
         warnings.append(
             f"sector cap: skipped {sector_skips} eligible name(s) "
             f"(max_names_per_sector={max_names_per_sector})"
         )
+    if theme_skips:
+        warnings.append(
+            f"cyclical theme cap: skipped {theme_skips} eligible name(s) "
+            f"(cyclical_theme_max={theme_max})"
+        )
     if len(passed) > len(selected):
         warnings.append(
             f"eligible={len(passed)} selected={len(selected)} "
-            f"(target_names={target_names}, sector_cap={max_names_per_sector})"
+            f"(target_names={target_names}, sector_cap={max_names_per_sector}, "
+            f"cyclical_theme_max={theme_max})"
         )
     return selected, warnings
 
@@ -152,6 +226,9 @@ def allocate_tranche(
     scores: Sequence[NameScore],
     existing_weights: Mapping[str, float] | None = None,
     tranche_budget: float | None = None,
+    overlay: QualOverlay | None = None,
+    exclude_tickers: Collection[str] | None = None,
+    hakedaka_skip: Collection[str] | None = None,
 ) -> TrancheAllocationResult:
     """
     Allocate one tranche budget across eligible names.
@@ -166,17 +243,29 @@ def allocate_tranche(
     target_names, initial_cap, _mv_cap = locked_sizing(cfg)
     max_per_sector = int(getattr(cfg.sizing, "max_names_per_sector", 2) or 2)
     sector_cap = float(getattr(cfg.sizing, "sector_weight_cap", 0.35) or 0.35)
+    theme_max = int(getattr(cfg.sizing, "cyclical_theme_max", 2) or 0)
+    hakedaka_on = bool(getattr(cfg.sizing, "hakedaka_gate_enabled", True))
     budget = (
         float(tranche_budget)
         if tranche_budget is not None
-        else float(cfg.tranches[tranche_id.value].weight)
+        else float(
+            cfg.tranches[tranche_id.value].weight
+            if tranche_id.value in cfg.tranches
+            else 1.0
+        )
     )
     existing = {k: float(v) for k, v in (existing_weights or {}).items()}
 
+    skip_reasons: dict[str, str] = {}
     eligible, warnings = select_eligible(
         scores,
         target_names=target_names,
         max_names_per_sector=max_per_sector,
+        overlay=overlay,
+        exclude_tickers=exclude_tickers,
+        cyclical_theme_max=theme_max,
+        hakedaka_skip=hakedaka_skip if hakedaka_on else None,
+        skip_reasons=skip_reasons,
     )
     shortfall = max(0, target_names - len(eligible))
     if shortfall:
@@ -192,6 +281,7 @@ def allocate_tranche(
         target_names=target_names,
         shortfall_names=shortfall,
         warnings=list(warnings),
+        skip_reasons=dict(skip_reasons),
     )
 
     if not eligible or budget <= 0:

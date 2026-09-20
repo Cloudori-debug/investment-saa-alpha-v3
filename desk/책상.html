@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>책상</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3efe6;
+      --ink: #1c1a16;
+      --muted: #6f6a60;
+      --line: #dcd4c6;
+      --panel: #faf7f1;
+      --keep: #2d4a3c;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); }
+    body {
+      font-family: Pretendard, "Noto Sans KR", sans-serif;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 36px 24px 72px; }
+    .brand { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    h1 { margin: 4px 0 0; font-size: 28px; font-weight: 650; letter-spacing: -0.03em; }
+    .mast { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 22px; }
+    .lead { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 12px 0 0; }
+    .cards { display: grid; gap: 12px; }
+    @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+    a.card {
+      display: block;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px 16px 16px;
+      text-decoration: none;
+      color: inherit;
+    }
+    a.card:hover, a.card:focus { border-color: var(--ink); }
+    .kicker { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .card h2 { margin: 6px 0 8px; font-size: 18px; font-weight: 650; }
+    .card p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .note { margin-top: 22px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .note b { color: var(--keep); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="mast">
+      <div class="brand">로컬 책상</div>
+      <h1>두 프로그램</h1>
+      <p class="lead">점수는 섞이지 않습니다. 각각 다른 창·다른 데이터입니다.</p>
+    </div>
+    <div class="cards">
+      <a class="card" href="http://127.0.0.1:8501">
+        <div class="kicker">스크리너</div>
+        <h2>알파 스크리너</h2>
+        <p>QVM 순위 · 확인 · 포트폴리오. 포트 8501.</p>
+      </a>
+      <a class="card" href="http://127.0.0.1:8000">
+        <div class="kicker">연기금 편승</div>
+        <h2>수급 브리핑</h2>
+        <p>KRX 연기금 등 연속 순매수. 포트 8000.</p>
+      </a>
+    </div>
+    <p class="note">카드가 안 열리면 <b>책상.bat</b>으로 두 서버를 먼저 켜 두세요. 수급 폴더가 없으면 알파만 켜집니다.</p>
+  </div>
+</body>
+</html>

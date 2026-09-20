@@ -7,7 +7,11 @@ from alpha_system.ui.services.portfolio_metrics import (
     price_bar_view,
     weight_bar_view,
 )
-from alpha_system.ui.services.portfolio_widgets import render_price_bar_html, render_weight_bar_html
+from alpha_system.ui.services.portfolio_widgets import (
+    _rung_now_idx,
+    render_price_bar_html,
+    render_weight_bar_html,
+)
 from alpha_system.ui.services.context import PortfolioRow
 
 
@@ -107,3 +111,55 @@ def test_quant_caption_on_screen_pending() -> None:
     assert "정량초안" in html
     assert "1.70" in html
     assert "45,000원" in html
+
+
+def test_ladder_gauge_shows_floor_ceiling_rungs_and_fill() -> None:
+    row = _row(weight=10.0, progress=50.0, has_target=True)
+    row.current_price = 150.0
+    row.target_price = 200.0
+    row.extra = {
+        "ladder_ok": True,
+        "ladder_low": 100.0,
+        "ladder_high": 200.0,
+        "ladder_rungs": [100.0, 125.0, 150.0, 175.0, 200.0],
+        "ladder_labels": ["매수1", "매수2", "줄이기", "절반", "전량"],
+        "ladder_fill_pct": 50.0,
+        "ladder_high_source": "approved",
+    }
+    html = render_price_bar_html(row)
+    assert "하한" in html and "100원" in html
+    assert "상한" in html and "200원" in html
+    assert "현재" in html and "150원" in html
+    assert "매수1" in html and "전량" in html
+    assert "125원" in html
+    assert "width:50.0%" in html
+    assert "pf-bar-ladder" in html
+    assert "pf-rung-now" in html
+    assert 'class="pf-bar-cap"' not in html
+    assert _rung_now_idx(150.0, [100.0, 125.0, 150.0, 175.0, 200.0]) == 2
+
+
+def test_screen_pending_ladder_uses_quant_ceiling() -> None:
+    row = _row(weight=10.0, progress=None, has_target=False)
+    row.target_gap_kind = "screen_pending"
+    row.current_price = 30000.0
+    row.extra = {
+        "ladder_ok": True,
+        "ladder_low": 20000.0,
+        "ladder_high": 45000.0,
+        "ladder_rungs": [20000.0, 26250.0, 32500.0, 38750.0, 45000.0],
+        "ladder_labels": ["매수1", "매수2", "줄이기", "절반", "전량"],
+        "ladder_fill_pct": 40.0,
+        "ladder_high_source": "quant_draft",
+        "quant_ok": True,
+        "quant_pbr_draft": 1.70,
+        "quant_price_mid": 45000,
+    }
+    html = render_price_bar_html(row)
+    assert "스크린" in html
+    assert "상한(초안)" in html
+    assert "45,000원" in html
+    assert "하한" in html
+    assert "20,000원" in html
+    assert "width:40.0%" in html
+    assert "pf-rung-now" in html

@@ -18,7 +18,7 @@ total_score = 0.70 × factor_score_total + 0.30 × cecs   ← 초기(검토) 식
 ```
 
 > **Ops A (2026-07-25):** 운영 채택 — `scoring.yaml` 의 `total_score_blend` 를 **factor 1.0 / cecs 0.0** 으로 변경.  
-> CECS는 proposal 순위에 넣지 않고, 주간 정성 **T2·논지·목표가** 게이트만 필수로 둔다.  
+> CECS는 proposal 순위에 넣지 않고, 주간 정성 **T2·논지** 게이트 + 제안 종목 화면 목표가를 필수로 둔다.  
 > 위 0.70/0.30 식은 설계 이력·상관 검토용으로 유지.
 
 | 층 | 역할 | 구성 |

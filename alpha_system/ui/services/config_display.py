@@ -23,7 +23,7 @@ LOCKED_PREFIXES = (
     "version",
     "purpose",
     "hard_rules",
-    "tranches.",
+    "qual_gates.",
     "capital.",
     "benchmark",
 )

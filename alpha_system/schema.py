@@ -146,6 +146,11 @@ class SizingConfig(BaseModel):
     max_names_per_sector: int = Field(2, ge=1, le=8)
     # When 2+ names share a sector bucket, sum of weights ≤ this (sleeve-relative).
     sector_weight_cap: float = Field(0.35, gt=0.0, le=1.0)
+    # Extra cap across shipbuilding / defense / machinery (0 = off).
+    cyclical_theme_max: int = Field(2, ge=0, le=8)
+    # Sequential Hakedaka gate after QVM. Does not blend into total_score.
+    hakedaka_gate_enabled: bool = True
+    hakedaka_min_hits: int = Field(2, ge=1, le=4)
 
     @model_validator(mode="after")
     def _lock_confirmed_sizing(self) -> SizingConfig:

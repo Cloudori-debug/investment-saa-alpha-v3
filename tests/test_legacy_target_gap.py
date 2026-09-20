@@ -18,6 +18,7 @@ def test_portfolio_copy_distinguishes_legacy() -> None:
     load_ui_copy.cache_clear()
     assert "레거시 보유" in copy_get("portfolio", "target_missing_legacy")
     assert "편입 규칙 위반" in copy_get("portfolio", "target_missing_violation")
+    assert "제안에서 제외" in copy_get("portfolio", "target_above_gate_caption")
 
 
 def test_cuckoo_and_hgf_are_legacy_pending_not_violation(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-# SAA 알파 v3 — 배포·일상 실행
+# 코스피 알파 스크리너 v3 — 배포·일상 실행
 
 **이 저장소 = 활성 v3.** 자동매매·증권사 API 없음. Review-only 실투자 보조.
 
@@ -11,7 +11,7 @@
 | `run_ui_direct.bat` | `http://localhost:8501` |
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
+cd C:\Cursor\investment\investment-alpha-screener
 .\투자나침반.bat
 ```
 
@@ -43,12 +43,8 @@ DART 키·이식 zip·Go-Live 점검은 **나중에도 됩니다.**
 **USB 2덩어리(앱+장부):** [`V3_CARRY_KIT.md`](V3_CARRY_KIT.md)
 
 ```powershell
-# 포터블(+venv) 빌드
-powershell -ExecutionPolicy Bypass -File scripts\bundle_runtime.ps1 -Zip
-# USB 키트: 01_App + 02_Backup
-powershell -ExecutionPolicy Bypass -File scripts\build_carry_kit.ps1
-# 장부 유지 업데이트
-.\업데이트.bat path\to\saa-alpha-update.zip
+# 다른 PC용 포터블 (키 없음 · embed Python)
+python scripts/pack_portable.py --zip
 ```
 
 ### (선택) 백업·업데이트 전 점검
@@ -56,7 +52,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build_carry_kit.ps1
 필수 기능이 아닙니다. 포맷/이사·버전 올리기 전에만 쓰면 됩니다.
 
 - [`V3_GO_LIVE.md`](V3_GO_LIVE.md)
-- `go_live_backup.bat` / `python scripts/go_live_check.py`
+- `장부_내보내기.bat` / `python scripts/go_live_check.py`
 
 ## 원격
 

@@ -56,7 +56,7 @@ def apply_gate(row: pd.Series, gate_cfg: dict) -> GateResult:
         reasons.append("audit_issue")
 
     verified_raw = str(row.get("verified", "")).strip().lower()
-    if verified_raw not in {"true", "1", "yes", "y", "stub"}:
+    if verified_raw not in {"true", "1", "yes", "y", "stub", "dart"}:
         reasons.append("unverified")
 
     if reasons:

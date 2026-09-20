@@ -52,6 +52,6 @@ def test_freshness_line_mixed() -> None:
         ),
     ]
     line, attention = freshness_line(sources, today)
-    assert line == "종가 어제 · 레짐 35일 전 · T3 59일 전"
+    assert line == "종가 어제"
     assert attention is True
     assert age_ko(date(2026, 8, 28), today) == "오늘"

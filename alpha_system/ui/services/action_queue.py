@@ -8,12 +8,10 @@ from typing import Any, Mapping
 from datetime import date
 
 from alpha_system.entry.evaluate import EntryEvaluation
-from alpha_system.entry.models import EntryActionType, TrancheState
 from alpha_system.exit.evaluate import ExitEvaluation
 from alpha_system.swap.observe import SwapObserveEvaluation
 from alpha_system.ui.services.data_freshness import SourceStatus
-from alpha_system.ui.services.judgment_copy import action_sentence, explain_tranche
-from alpha_system.ui.services.ui_copy import format_tranche_label
+from alpha_system.ui.services.judgment_copy import action_sentence
 
 
 class ActionSeverity(str, Enum):
@@ -47,8 +45,8 @@ def build_action_queue(
     window_end: date | None = None,
     pending_rescores: list[dict[str, Any]] | None = None,
 ) -> list[ActionItem]:
+    items: list[ActionItem] = []
     if pre_launch:
-        items: list[ActionItem] = []
         for item in checklist_blocking or []:
             items.append(
                 ActionItem(
@@ -66,11 +64,6 @@ def build_action_queue(
                     payload={"check_key": item.key, "todo": item.todo, "why": item.why},
                 )
             )
-        # Still surface rescore reviews in pre-launch (CECS work continues)
-        items.extend(_rescore_items(pending_rescores))
-        return _dedupe(items)
-
-    items: list[ActionItem] = []
 
     # §5 window_end — wind-down at top of queue
     past_end = False
@@ -161,54 +154,6 @@ def build_action_queue(
                     "held_score": cand.held_score,
                     "cand_score": cand.candidate_score,
                 },
-            )
-        )
-
-    for st in entry_eval.statuses:
-        tid = st.tranche_id.value if hasattr(st.tranche_id, "value") else str(st.tranche_id)
-        label = format_tranche_label(tid)
-        judgment = explain_tranche(st, pre_launch=False)
-        if st.state in (TrancheState.READY, TrancheState.PARTIAL_EXECUTED) and st.trigger_met:
-            items.append(
-                ActionItem(
-                    key=f"tranche_{tid}",
-                    title=f"집행 대기 — {label}",
-                    detail=action_sentence(
-                        "tranche_ready", name=label, why=judgment.headline
-                    ),
-                    severity=ActionSeverity.WARN,
-                    source="entry",
-                    panel_kind="execute",
-                    payload={"tranche_id": tid},
-                )
-            )
-        for act in entry_eval.actions:
-            if act.tranche_id == st.tranche_id and act.action_type == EntryActionType.EXECUTE:
-                if not act.blocked:
-                    items.append(
-                        ActionItem(
-                            key=f"exec_{tid}",
-                            title=f"집행 신호 — {label}",
-                            detail=action_sentence(
-                                "tranche_ready", name=label, why=judgment.headline
-                            ),
-                            severity=ActionSeverity.WARN,
-                            source="entry",
-                            panel_kind="execute",
-                            payload={"tranche_id": tid},
-                        )
-                    )
-
-    for line in pending_executions or []:
-        items.append(
-            ActionItem(
-                key=f"pending_{hash(line) % 10**8}",
-                title="집행 대기",
-                detail=str(line),
-                severity=ActionSeverity.WARN,
-                source="runtime",
-                panel_kind="execute",
-                payload={"note": line},
             )
         )
 

@@ -145,12 +145,12 @@ def test_status_report_includes_tranches_scores_discretionary(cfg, tmp_path: Pat
         ),
     )
     assert "트랜치 상태" in text
-    assert "T1" in text
+    assert "자본 T1~T4 봉투 폐기" in text
+    assert "capital_tranches_retired" in text
     assert "eligibility" in text
     assert "재량 이탈" in text
     assert "test deviation" in text
     assert "benchmark" in text
-    assert "[TODO]" in text or "TODO" in text
     out = write_status_report(
         cfg,
         StatusReportInput(as_of=date(2026, 7, 16), entry=entry),

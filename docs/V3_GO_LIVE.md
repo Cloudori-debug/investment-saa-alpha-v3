@@ -14,12 +14,12 @@
 - [ ] ETF Executable / kr_alpha·하케다카·수급 = **Review-only** (주문 API 없음)
 - [ ] FASTJUSIK 금지 — PyKRX·DART만
 - [ ] Core에서 `score_m` 제외
-- [ ] 홈「월 리밸」= Review-only
+- [ ] 월 리밸 = Review-only
 
 자동화 점검:
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
+cd C:\Cursor\investment\investment-alpha-screener
 python scripts/go_live_check.py
 ```
 
@@ -56,8 +56,8 @@ python scripts/go_live_check.py
 ### 원클릭
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
-.\go_live_backup.bat
+cd C:\Cursor\investment\investment-alpha-screener
+.\장부_내보내기.bat
 ```
 
 또는:
@@ -92,13 +92,13 @@ python scripts/make_ops_backup.py --with-secrets
 ## 3. 배포 전 스모크 (태그/업데이트 직전)
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
+cd C:\Cursor\investment\investment-alpha-screener
 python scripts/go_live_check.py --pytest
 .\투자나침반.bat
 ```
 
 - [ ] UI가 `http://localhost:8501` 기동
-- [ ] 홈에 오늘 할 일 · 후보 표시
+- [ ] 확인(정량·정성) 후 포트폴리오 후보·보유 표시
 - [ ] 보유 › 저장된 알파 / 종목별 안내 표시
 - [ ] 자동매매·target 자동기입 버튼 없음 재확인
 

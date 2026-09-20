@@ -31,9 +31,39 @@ def naver_fchart_link(ticker: str, name: str | None = None) -> str:
     label = label.replace("#", " ").strip() or str(ticker)
     return f"{url}#{label}"
 
+
+def naver_name_chart_html(ticker: str, name: str | None = None) -> str:
+    """Plain name + 차트 link (Naver daily chart, new tab)."""
+    from html import escape
+
+    label = escape(str(name or ticker or "").strip() or str(ticker))
+    code = escape(str(ticker or "").zfill(6) if str(ticker).isdigit() else str(ticker or ""))
+    url = escape(naver_fchart_url(ticker), quote=True)
+    digits = "".join(ch for ch in str(ticker or "") if ch.isdigit())
+    if not digits:
+        return f"<strong>{label}</strong> <span class=\"pf-ticker\">{code}</span>"
+    return (
+        f"<strong>{label}</strong> "
+        f'<a class="pf-chart-hint" href="{url}" target="_blank" rel="noopener noreferrer" title="네이버 일봉">차트</a> '
+        f'<span class="pf-ticker">{code}</span>'
+    )
+
+
 TONE_PROPOSAL = "제안"
 TONE_ELIGIBLE = "적격"
+TONE_BLOCKED = "제외"
 TONE_WATCH = "관찰"
+TONE_DISPLAY = {
+    TONE_PROPOSAL: "최종 제안",
+    TONE_ELIGIBLE: "컷 통과",
+    TONE_BLOCKED: "편입 제외",
+    TONE_WATCH: "관찰",
+}
+
+
+def watch_tone_label(tone: object) -> str:
+    key = str(tone or "").strip()
+    return TONE_DISPLAY.get(key, key or TONE_WATCH)
 
 
 @dataclass(frozen=True)
@@ -73,7 +103,6 @@ class WatchTableRow:
     in_proposal: bool
     eligibility: Optional[bool]
     tone: str
-    judgment: str
     per: Optional[float]
     pbr: Optional[float]
     roe: Optional[float]
@@ -138,10 +167,11 @@ def watch_preview_tone(
     eligible_rank: int | None,
     target_n: int,
     in_proposal: bool | None = None,
+    blocked: bool = False,
 ) -> str:
     """Color band for the observation table (preview, not yaml confirm).
 
-    제안 = 실제 제안 북(있으면) 또는 컷 통과 중 상위 target_n.
+    제안 = 실제 제안 북. 제외 = 상위이나 편입하지 않음.
     적격 = 컷 통과·북 밖. 관찰 = 컷 미달.
     cutoff is None → treat scored names as passing (provisional).
     """
@@ -150,6 +180,8 @@ def watch_preview_tone(
         return TONE_WATCH
     if in_proposal is True:
         return TONE_PROPOSAL
+    if blocked:
+        return TONE_BLOCKED
     if cutoff is None:
         if in_proposal is False:
             return TONE_ELIGIBLE
@@ -424,13 +456,13 @@ def build_watch_table_rows(
     sector_labels: Mapping[str, str] | None = None,
     cutoff: float | None = None,
     target_n: int = 6,
+    blocked_tickers: set[str] | None = None,
 ) -> tuple[WatchTableRow, ...]:
     """Join fundamentals + preview tone onto the observation board."""
-    from alpha_system.ui.services.ko_display import format_ineligibility_reason
-
     metrics = metrics or {}
     extra_by_ticker = extra_by_ticker or {}
     sector_labels = sector_labels or {}
+    blocked = {_norm_ticker(t) for t in (blocked_tickers or set())}
     ranks = eligible_ranks_for_cutoff(board.rows, cutoff)
     out: list[WatchTableRow] = []
     for row in board.rows:
@@ -447,16 +479,9 @@ def build_watch_table_rows(
             eligible_rank=ranks.get(row.ticker),
             target_n=target_n,
             in_proposal=row.in_proposal,
+            blocked=row.ticker in blocked,
         )
         sector = str(sector_labels.get(row.ticker) or row.sector or "").strip()
-        if row.eligibility is True:
-            judgment = "적격"
-        elif row.eligibility is False:
-            judgment = format_ineligibility_reason(
-                getattr(row, "eligibility_reason", "") or ""
-            )
-        else:
-            judgment = "—"
         out.append(
             WatchTableRow(
                 rank=row.rank,
@@ -468,7 +493,6 @@ def build_watch_table_rows(
                 in_proposal=row.in_proposal,
                 eligibility=row.eligibility,
                 tone=tone,
-                judgment=judgment,
                 per=_as_float(met.get("per")),
                 pbr=_as_float(met.get("pbr")),
                 roe=_as_float(met.get("roe")),

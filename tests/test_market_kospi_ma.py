@@ -30,3 +30,14 @@ def test_compute_kospi_metrics_preserves_prev_on_jump():
     metrics, warnings = _compute_kospi_metrics(closes, existing=existing)
     assert metrics["kospi_200ma"] == 7724.72
     assert warnings
+
+
+def test_compute_kospi_metrics_recent_high_uses_252_window():
+    import numpy as np
+
+    spike = np.full(20, 9114.0)
+    later = np.full(252, 6700.0)
+    closes = pd.DataFrame({"종가": np.concatenate([spike, later])})
+    metrics, _ = _compute_kospi_metrics(closes)
+    assert metrics["kospi"] == 6700.0
+    assert metrics["kospi_recent_high"] == 6700.0

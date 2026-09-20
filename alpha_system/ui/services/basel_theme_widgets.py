@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 
+from alpha_system.ui.services.approval_chrome import ap_subhead
 from alpha_system.ui.services.basel_theme_board import (
     PH4_CHECKLIST,
     build_basel_theme_board,
@@ -24,10 +25,12 @@ def render_basel_theme_board(ctx: Any, *, key_prefix: str = "basel") -> None:
     board = build_basel_theme_board(root, as_of=as_of)
 
     with st.container(border=True):
-        st.subheader("바젤·건전성 테마 시계열")
-        st.caption(
-            "방향 Hard · 날짜 Soft · 선진입=목표 6개월 전 관찰만 · "
-            "자동매매·Core 순위·목표 포트 변경 없음"
+        ap_subhead(
+            "바젤·건전성 테마 시계열",
+            desc=(
+                "방향 Hard · 날짜 Soft · 선진입=목표 6개월 전 관찰만 · "
+                "자동매매·Core 순위·목표 포트 변경 없음"
+            ),
         )
         st.caption(board.summary)
         if board.active_themes:

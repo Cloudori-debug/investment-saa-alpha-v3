@@ -26,6 +26,7 @@
 | `V3_AGENT_START.md` | 새 채팅/에이전트 시작 (짧은 핸드오프) |
 | `V3_HYGIENE.md` | 이 정책 |
 | `V3_DEPLOY.md` / `V3_GO_LIVE.md` | 배포·선택 Go-Live |
+| `DESK_PORTAL.md` | 수급 브리핑과 **프로세스만** 나란히 (시스템 혼합 금지) |
 | `V3_WINDOWS_PACKAGING.md` | Setup·포터블·업데이트 |
 | `V3_CARRY_KIT.md` | USB 앱+장부 2덩어리 |
 | `FACTOR_WEIGHT_LITERATURE_AND_B_SPEC.md` | 팩터 가중 문헌 · SR 흡수 B안 |

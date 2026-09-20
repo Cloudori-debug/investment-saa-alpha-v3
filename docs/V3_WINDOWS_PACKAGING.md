@@ -1,83 +1,55 @@
-# v3 Windows 패키징 — 설치 · 업데이트 · 사용
+# v3 Windows 패키징 — 다른 PC에 설치
 
-> **제품:** 개인 운용 비서 (자동매매 아님)  
-> **코드 루트:** `C:\Cursor\investment-saa-alpha-v3`
+> **제품:** 알파 스크리너 (자동매매 아님)  
+> **코드 루트:** `C:\Cursor\investment\investment-alpha-screener`
 
 ---
 
 ## 한 줄
 
+다른 PC에는 **폴더(또는 zip)** 를 복사합니다. 미서명 Setup.exe는 쓰지 않습니다(SmartScreen).  
+패키지에 **API 키·실보유·가동 런타임은 넣지 않습니다.**
+
 | 역할 | 파일 |
 |------|------|
+| 이 PC에서 패키지 만들기 | `python scripts/pack_portable.py --zip` |
+| 다른 PC에서 실행 | `투자나침반.bat` 또는 `Launch_SAA.bat` |
+| 시작 메뉴에 넣기 | `install.bat` |
 | 매일 실행 | `투자나침반.bat` |
-| 메뉴(설치·백업·업데이트) | `START_OPS_ASSISTANT.bat` |
-| 장부 유지 업데이트 | `업데이트.bat` + `saa-alpha-update.zip` |
-| 포터블 빌드 | `scripts\bundle_runtime.ps1` |
-| 설치기(Setup.exe) | `packaging\saa_alpha.iss` (Inno Setup) |
 
-런처는 **`.venv\Scripts\python.exe`가 있으면 그걸 우선** 사용합니다. 없으면 시스템 Python.
+다른 PC에 **Python을 따로 설치하지 않습니다.** 공식 embed Python(`runtime\python\python.exe`, PSF 서명)이 들어갑니다.
 
 ---
 
-## A. 개발 PC에서 포터블 만들기
+## A. 이 PC에서 만들기
 
 ```powershell
-cd C:\Cursor\investment-saa-alpha-v3
-powershell -ExecutionPolicy Bypass -File scripts\bundle_runtime.ps1 -Zip
+cd C:\Cursor\investment\investment-alpha-screener
+python scripts/pack_portable.py --zip
 ```
 
 결과:
 
-- `dist\SAA-Alpha-portable\` — 폴더 통째 복사해도 동작(내장 venv)
-- `dist\SAA-Alpha-portable-YYYYMMDD.zip` — (`-Zip` 시)
+- `dist\AlphaScreener-portable\` — 폴더 통째 USB 복사
+- `dist\AlphaScreener-portable.zip` — (`--zip` 시)
 
-이 zip을 다른 PC에 풀어 `투자나침반.bat`만 실행하면 됩니다(시스템 Python 불필요).
-
----
-
-## B. Setup.exe (Inno Setup)
-
-1. [Inno Setup](https://jrsoftware.org/isinfo.php) 설치  
-2. `bundle_runtime.ps1` 으로 `dist\SAA-Alpha-portable` 생성  
-3. `packaging\saa_alpha.iss` 열어 **Compile**  
-4. 산출: `packaging\Output\SAAAlphaSetup-3.0.1.exe`
-
-설치 기본 경로: `%LOCALAPPDATA%\SAA-Alpha` (관리자 권한 불필요)  
-업그레이드 시 `data\` 는 **onlyifdoesntexist** — 기존 장부 유지.
+들어가지 않는 것: `data/local/user_secrets.json`, `.env`, `positions.csv`, `alpha_dashboard_runtime.json`, `.venv`, `.git`.
 
 ---
 
-## C. 사용 중 업데이트 (장부 보존)
+## B. 다른 PC
 
-1. 새 포터블 zip을 `saa-alpha-update.zip` 으로 설치 폴더에 두거나  
-2. `업데이트.bat` 실행 (또는 `업데이트.bat D:\path\update.zip`)  
-3. UI를 끄고 다시 `투자나침반.bat`
+1. zip이면 속성 → **차단 해제** 후 압축 해제 (인터넷에서 받은 경우). USB로 복사하면 이 단계가 없습니다.
+2. `install.bat` → `%LOCALAPPDATA%\AlphaScreener` 복사 + 시작 메뉴 `Alpha Screener`
+3. 또는 폴더에서 `Launch_SAA.bat` / `투자나침반.bat`만 실행
+4. 설정에서 DART·KRX 키를 **그 PC에만** 입력
+5. 확인 › ③ 가동 한 번 선언 → ① 정량 갱신
 
-동작 요약 (`scripts\apply_update.ps1`):
-
-- 업데이트 전 `data\local\backups\pre_update_*` 에 핵심 장부 스냅샷  
-- **`data\` 디렉터리 전체를 덮어쓰지 않음**  
-- 없는 seed 파일만 data에 추가  
-- (선택) `-AlsoRefreshVenv` 로 런타임 교체
-
----
-
-## D. 장부 백업 (포맷·이사)
-
-기존과 동일: 메뉴 `[4] Backup` / 설정 › 이식·백업 / `docs\OPS_ASSISTANT_WINDOWS_PORTABLE.md`
-
----
-
-## 범위
-
-| 포함 | 미포함 |
-|------|--------|
-| 포터블 zip · Setup.exe 초안 · data 보존 업데이트 | 앱스토어 · 단일 exe(PyInstaller) · 자동매매 |
-| 시작메뉴·바로가기 | Mac/Linux 패키지 |
+Inno Setup / `SAAAlphaSetup.exe`는 선택이며, 미서명이라 Smart App Control에 걸릴 수 있습니다. 기본 경로는 위 폴더 복사입니다.
 
 ---
 
 ## 불변
 
 - `proposal_mode: pure_qvm` · `target_portfolio.csv` 사람만  
-- Review-only (kr_alpha) · FASTJUSIK 금지
+- Review-only · FASTJUSIK 금지

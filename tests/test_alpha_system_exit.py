@@ -53,8 +53,11 @@ def test_thesis_damage_exits_held_not_entry_freeze(cfg) -> None:
 
 def test_score_below_cutoff_requires_cutoff(tmp_path: Path, cfg) -> None:
     # Without cutoff: warn, no score-exit action
+    cfg_unset = cfg.model_copy(
+        update={"scoring": cfg.scoring.model_copy(update={"score_cutoff": None})}
+    )
     ev = evaluate_exits(
-        cfg,
+        cfg_unset,
         ExitSnapshot(
             as_of=date(2026, 7, 16),
             positions=[PositionView(ticker="A", total_score=10.0)],

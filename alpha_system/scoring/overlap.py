@@ -135,7 +135,7 @@ def render_overlap_markdown(items: tuple[OverlapItem, ...] = T2_CECS_OVERLAPS) -
     lines.append("")
     lines.append(
         "- **적용됨**: high 2항목은 CECS 가중에서 제외, "
-        "`tranches.T2.event_candidate_sources`로 매핑. "
+        "`qual_gates.event_candidate_sources`로 매핑. "
         "스코어 축은 5팩터로 재구성 "
         "(`docs/ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md`)."
     )

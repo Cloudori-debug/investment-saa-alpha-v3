@@ -51,6 +51,8 @@ def test_sizing_locks(cfg) -> None:
     assert mv_cap == 0.35
     assert int(getattr(cfg.sizing, "max_names_per_sector", 2)) == 2
     assert float(getattr(cfg.sizing, "sector_weight_cap", 0.35)) == 0.35
+    assert int(getattr(cfg.sizing, "cyclical_theme_max", 2)) == 2
+    assert bool(getattr(cfg.sizing, "hakedaka_gate_enabled", True)) is True
 
 
 def test_sizing_accepts_design_band_count(tmp_path: Path, cfg) -> None:

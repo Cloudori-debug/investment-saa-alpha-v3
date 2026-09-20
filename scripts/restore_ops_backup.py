@@ -1,4 +1,4 @@
-"""CLI: restore SAA 알파 backup zip OR backup folder."""
+"""CLI: restore 코스피 알파 스크리너 backup zip OR backup folder."""
 
 from __future__ import annotations
 

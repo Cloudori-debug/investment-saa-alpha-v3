@@ -79,7 +79,7 @@ def test_cutoff_mismatch_is_first_blocker() -> None:
 
 
 def test_cecs_incomplete_does_not_block_pipeline() -> None:
-    """Ops A: incomplete CECS is advisory warn, not a hard blocker."""
+    """Retired 30-name CECS scoring is not a pipeline gate."""
     cfg = load_config()
     cfg = cfg.model_copy(
         update={"scoring": cfg.scoring.model_copy(update={"score_cutoff": 60.0})}
@@ -87,8 +87,9 @@ def test_cecs_incomplete_does_not_block_pipeline() -> None:
     ctx = _ctx(cfg=cfg, cecs_final_count=10, cecs_total=30, proposal_count=0)
     stages = build_pipeline_stages(ctx)
     cecs_stage = next(s for s in stages if s.key == "cecs")
-    assert cecs_stage.status == "warn"
+    assert cecs_stage.status == "ok"
     assert cecs_stage.blocks_next is False
+    assert "제안 종목" in cecs_stage.reason
     blocker = first_blocker(stages)
     assert blocker is None or blocker.key != "cecs"
 
@@ -107,14 +108,13 @@ def test_home_overview_shows_only_quant_action_first(tmp_path: Path) -> None:
     overview = build_home_overview(ctx)
     assert len(overview.preparation) == 2
     assert overview.preparation[0].status == "warn"
-    assert overview.preparation[1].status == "missing"
+    assert overview.preparation[1].status == "ok"
+    assert "이슈" in overview.preparation[1].summary
     assert overview.next_action is not None
     assert overview.next_action.key == "quant"
 
 
-def test_home_overview_routes_uploaded_report_to_one_approval_action(
-    tmp_path: Path,
-) -> None:
+def test_home_overview_ignores_uploaded_weekly_draft(tmp_path: Path) -> None:
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "weekly_qual_suggestions.json").write_text(
         """
@@ -138,8 +138,38 @@ def test_home_overview_routes_uploaded_report_to_one_approval_action(
     )
     ctx = _ctx(root=tmp_path)
     overview = build_home_overview(ctx)
-    assert overview.pending_approvals == 2
+    assert overview.pending_approvals == 0
+    assert overview.next_action is None or overview.next_action.key != "weekly_approve"
+
+
+def test_home_overview_watch_hits_do_not_block_next(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "killswitch_watch.json").write_text(
+        """
+{
+  "version": 1,
+  "fetched_at": "2026-08-31T12:00:00+00:00",
+  "as_of": "2026-08-31",
+  "feeds": [],
+  "hits": [
+    {
+      "event_id": "ifrs18_domestic_adoption_schedule_confirmed",
+      "title": "IFRS 18 확정 고시",
+      "url": "https://www.fsc.go.kr/no010101/x",
+      "published": "",
+      "feed_id": "fsc_press",
+      "note": "키워드 후보"
+    }
+  ]
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    ctx = _ctx(root=tmp_path)
+    overview = build_home_overview(ctx)
     assert overview.preparation[1].status == "warn"
+    assert "후보" in overview.preparation[1].summary
     assert overview.next_action is not None
-    assert overview.next_action.key == "weekly_approve"
-    assert "2영역" in overview.next_action.reason
+    assert overview.next_action.key == "weekly_watch"
+    assert overview.next_action.blocks_next is False
+    assert "확정은 아닙니다" in overview.next_action.reason

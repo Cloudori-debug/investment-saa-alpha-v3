@@ -95,7 +95,7 @@ def test_release_after_required_gates(tmp_path: Path) -> None:
 
     assert maybe_release_after_required_gates(
         root,
-        {"approved": {"t2": True, "thesis": True, "targets": True, "cecs": False}},
+        {"approved": {"t2": True, "thesis": True, "targets": False, "cecs": False}},
     ) is True
     assert not is_freeze_active(root)
     fr = load_freeze(root)

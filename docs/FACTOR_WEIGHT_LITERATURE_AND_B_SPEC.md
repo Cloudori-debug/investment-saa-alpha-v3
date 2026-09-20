@@ -109,7 +109,7 @@
 
 ### 3.6 비범위
 - pension·purpose 순위 편입  
-- CECS blend 복원  
+- CECS blend 복원 (게이트·±K 오버레이가 대체)  
 - score_m Core 복원  
 - 가중 자동 최적화 UI  
 

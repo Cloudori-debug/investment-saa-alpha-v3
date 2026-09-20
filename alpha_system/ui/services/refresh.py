@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
 import subprocess
 import sys
 import time
 from typing import Any
+
+from alpha_system.screen_book import normalize_market, provenance_rel
+
+QUANT_PROVENANCE_REL = Path("data") / "alpha_quant_snapshot_provenance.json"
+_KST = timezone(timedelta(hours=9))
 
 
 @dataclass
@@ -15,6 +22,30 @@ class RefreshResult:
     ok: bool
     message: str
     detail: dict[str, Any]
+
+
+def quant_refresh_when(root: Path, *, market: str | None = None) -> str | None:
+    """Last quant snapshot wall time in KST, or None if never run."""
+    path = Path(root) / provenance_rel(market)
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    generated = str(raw.get("generated_at") or "").strip()
+    if generated:
+        try:
+            dt = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(_KST).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            pass
+    as_of = str(raw.get("as_of") or "").strip()[:10]
+    return as_of or None
 
 
 def _is_krx_timeout(exc: BaseException) -> bool:
@@ -32,24 +63,43 @@ def _format_refresh_error(exc: BaseException) -> str:
     return str(exc)
 
 
-def _sync_operational_prices_from_alpha_snapshot(root: Path) -> int:
-    """Copy close/mcap/tv20 from alpha snapshot into data/prices.csv. No KRX."""
+def _sync_operational_prices_from_alpha_snapshot(
+    root: Path, *, market: str | None = None
+) -> int:
+    """Copy close/mcap/tv20 from alpha snapshot into the book prices.csv. No KRX."""
     import pandas as pd
 
-    snap_path = root / "alpha_portfolio" / "data" / "raw" / "price_snapshot.csv"
-    dest_path = root / "data" / "prices.csv"
-    if not snap_path.exists() or not dest_path.exists():
+    from alpha_system.screen_book import alpha_data_dir, operational_data_dir
+
+    snap_path = alpha_data_dir(root, market) / "raw" / "price_snapshot.csv"
+    dest_path = operational_data_dir(root, market) / "prices.csv"
+    if not snap_path.exists():
         return 0
     try:
         snap = pd.read_csv(snap_path, dtype=str, keep_default_na=False)
-        dest = pd.read_csv(dest_path, dtype=str, keep_default_na=False)
     except Exception:
         return 0
-    if snap.empty or dest.empty or "ticker" not in snap.columns or "ticker" not in dest.columns:
+    if snap.empty or "ticker" not in snap.columns:
         return 0
     snap["ticker"] = snap["ticker"].astype(str).str.zfill(6)
-    dest["ticker"] = dest["ticker"].astype(str).str.zfill(6)
     by_t = snap.drop_duplicates("ticker", keep="last").set_index("ticker")
+
+    dest = None
+    if dest_path.exists():
+        try:
+            dest = pd.read_csv(dest_path, dtype=str, keep_default_na=False)
+        except Exception:
+            dest = None
+    if dest is None or dest.empty or "ticker" not in dest.columns:
+        dest = pd.DataFrame(
+            columns=["date", "ticker", "close", "market_cap", "trading_value_20d"]
+        )
+    else:
+        dest["ticker"] = dest["ticker"].astype(str).str.zfill(6)
+        for col in ("date", "close", "market_cap", "trading_value_20d"):
+            if col not in dest.columns:
+                dest[col] = ""
+
     n = 0
     for idx, row in dest.iterrows():
         t = str(row["ticker"])
@@ -66,9 +116,53 @@ def _sync_operational_prices_from_alpha_snapshot(root: Path) -> int:
         if tv is not None and str(tv).strip():
             dest.at[idx, "trading_value_20d"] = tv
         n += 1
+
+    existing = set(dest["ticker"].astype(str)) if "ticker" in dest.columns else set()
+    additions: list[dict[str, str]] = []
+    for t, src in by_t.iterrows():
+        if t in existing:
+            continue
+        additions.append(
+            {
+                "date": str(src["as_of"])[:10] if "as_of" in src.index else "",
+                "ticker": t,
+                "close": str(src["close"]) if "close" in src.index else "",
+                "market_cap": str(src["market_cap"]) if "market_cap" in src.index else "",
+                "trading_value_20d": (
+                    str(src["avg_trading_value_20d"])
+                    if "avg_trading_value_20d" in src.index
+                    else ""
+                ),
+            }
+        )
+    if additions:
+        dest = pd.concat([dest, pd.DataFrame(additions)], ignore_index=True)
+        n += len(additions)
     if n:
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
         dest.to_csv(dest_path, index=False, encoding="utf-8-sig")
     return n
+
+
+def _sync_operational_fundamentals_from_alpha(
+    root: Path, *, market: str | None = None
+) -> int:
+    """KOSDAQ book only — do not overwrite the live KOSPI bulk fundamentals."""
+    from alpha_system.screen_book import (
+        alpha_data_dir,
+        is_kosdaq,
+        operational_data_dir,
+    )
+
+    if not is_kosdaq(market):
+        return 0
+    src = alpha_data_dir(root, market) / "raw" / "fundamentals.csv"
+    dest = operational_data_dir(root, market) / "fundamentals.csv"
+    if not src.exists():
+        return 0
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(src.read_bytes())
+    return 1
 
 
 def run_data_refresh(data_dir: Path, *, scope: str = "holdings") -> RefreshResult:
@@ -138,6 +232,7 @@ def run_quant_snapshot_refresh(
     root: Path,
     *,
     collect_scope: str = "liquid",
+    market: str | None = None,
 ) -> RefreshResult:
     """One KRX pass via alpha collect (liquid). Does not run holdings bulk first.
 
@@ -161,6 +256,7 @@ def run_quant_snapshot_refresh(
             )
 
     script = root / "scripts" / "run_alpha_quant_snapshot.py"
+    book = normalize_market(market)
     command = [
         sys.executable,
         str(script),
@@ -169,6 +265,8 @@ def run_quant_snapshot_refresh(
         "--collect",
         "--collect-scope",
         collect_scope,
+        "--market",
+        book,
     ]
     try:
         completed = subprocess.run(
@@ -188,12 +286,16 @@ def run_quant_snapshot_refresh(
             detail={"error": str(exc), "krx_pass": "single"},
         )
 
-    synced = _sync_operational_prices_from_alpha_snapshot(root)
+    synced = _sync_operational_prices_from_alpha_snapshot(root, market=book)
+    _sync_operational_fundamentals_from_alpha(root, market=book)
     detail: dict[str, Any] = {
         "krx_pass": "single",
+        "market": book,
         "operational_synced_rows": synced,
         "command": "run_alpha_quant_snapshot.py --collect --collect-scope "
-        + collect_scope,
+        + collect_scope
+        + " --market "
+        + book,
         "stdout": completed.stdout.strip(),
         "stderr": completed.stderr.strip(),
         "target_portfolio_written": False,
@@ -205,14 +307,35 @@ def run_quant_snapshot_refresh(
             detail=detail,
         )
 
-    provenance = root / "data" / "alpha_quant_snapshot_provenance.json"
+    provenance = root / provenance_rel(book)
     if provenance.exists():
         try:
-            import json
-
             detail["provenance"] = json.loads(provenance.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             detail["provenance_path"] = str(provenance)
+    scored = int((detail.get("provenance") or {}).get("scored_rows") or 0)
+    gate_pass = int((detail.get("provenance") or {}).get("gate_pass") or 0)
+    if scored > 0 and gate_pass == 0:
+        return RefreshResult(
+            ok=False,
+            message=(
+                "정량 채점은 됐지만 게이트 통과가 0종입니다. "
+                "시가총액 미수집이면 전 종목이 low_market_cap으로 탈락합니다."
+            ),
+            detail=detail,
+        )
+    try:
+        from alpha_system.ui.services.killswitch_watch import refresh_killswitch_watch
+
+        watch = refresh_killswitch_watch(root)
+        detail["killswitch_watch"] = {
+            "hit_n": len(watch.hits),
+            "feeds_ok": sum(1 for f in watch.feeds if f.get("ok")),
+            "fetched_at": watch.fetched_at,
+        }
+    except Exception as exc:
+        detail["killswitch_watch_error"] = str(exc)[:200]
+
     return RefreshResult(
         ok=True,
         message="정량 데이터·alpha_scores 갱신 완료",

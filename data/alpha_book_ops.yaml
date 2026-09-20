@@ -22,15 +22,7 @@ book:
   band_rel: 0.25              # 목표 대비 ±25% 상대 밴드
   exclude_zero_qty: true      # qty=0은 실보유·밴드에서 제외
 
-# 시장 변동 → 단기채 가이던스만 (target CSV 불변 · Moreira–Muir / FTS)
-regime_cash_guidance:
-  RISK_ON: 0.10
-  NEUTRAL: 0.10
-  CAUTION: 0.20
-  RISK_OFF: 0.25
-  CRISIS: 0.30
-  YELLOW: 0.20
-  default: 0.10
+# 단기채는 book.cash_share(10%) 고정. 레짐 가이던스 없음.
 
 # 신호 우선순위 (동일 종목 충돌 시)
 signal_priority:

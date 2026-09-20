@@ -23,7 +23,7 @@ KIND_QUANT = "quant"
 KIND_COMPASS = "compass"
 
 _LABELS = {
-    KIND_QUANT: "정량 전체 갱신",
+    KIND_QUANT: "정량 갱신",
     KIND_COMPASS: "나침반·레짐 분석",
 }
 _TYPICAL_SEC = {
@@ -54,6 +54,7 @@ class JobStatus:
     journaled: bool = False
     collect_scope: str = "liquid"
     run_mode: str = "standard"
+    market: str = "KOSPI"
     detail: dict[str, Any] | None = None
 
     @property
@@ -224,6 +225,7 @@ def start_dashboard_job(
     *,
     collect_scope: str = "liquid",
     run_mode: str = "standard",
+    market: str = "KOSPI",
 ) -> Optional[str]:
     """Launch worker. Returns an error string, or None if started."""
     kind = (kind or "").strip().lower()
@@ -246,15 +248,23 @@ def start_dashboard_job(
     if not script.exists():
         return "scripts/run_dashboard_job.py 가 없습니다."
 
+    from alpha_system.screen_book import market_label, normalize_market
+
+    book = normalize_market(market)
+    label = _LABELS[kind]
+    if kind == KIND_QUANT:
+        label = f"{market_label(book)} 정량 갱신"
+
     job = JobStatus(
         kind=kind,
-        label=_LABELS[kind],
+        label=label,
         state=STATE_RUNNING,
         started_at=_now_iso(),
         phase="시작",
         typical_sec=_TYPICAL_SEC[kind],
         collect_scope=collect_scope,
         run_mode=run_mode,
+        market=book,
     )
     save_job(root, job)
 
@@ -277,6 +287,8 @@ def start_dashboard_job(
         collect_scope,
         "--run-mode",
         run_mode,
+        "--market",
+        book,
     ]
     flags = 0
     if sys.platform == "win32":

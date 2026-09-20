@@ -1,5 +1,6 @@
 ' SAA Alpha Ops Assistant - double-click daily launcher
-' Starts UI (minimized), waits until http://localhost:8501 is up, then opens browser.
+' Starts UI (minimized), waits until port 8501 is listening, then opens browser.
+' Do not HTTP-probe localhost: Windows may SYN_SENT-hang on IPv6 ::1 and even 127.0.0.1:8501.
 Option Explicit
 
 Dim sh, fso, root, bat, url, i, ok
@@ -7,22 +8,21 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 bat = root & "\run_ui_direct.bat"
-url = "http://localhost:8501"
+url = "http://127.0.0.1:8501"
 
 If Not fso.FileExists(bat) Then
-  MsgBox "Missing run_ui_direct.bat in:" & vbCrLf & root, vbCritical, "SAA Ops Assistant"
+  MsgBox "Missing run_ui_direct.bat in:" & vbCrLf & root, vbCritical, "Alpha Screener"
   WScript.Quit 1
 End If
 
-' 7 = minimized window, False = do not wait
 sh.CurrentDirectory = root
-sh.Run """" & bat & """", 7, False
+' start /min detaches so this VBS never waits on the UI console
+sh.Run "cmd.exe /c start /min """" """ & bat & """", 0, False
 
-' Poll until Streamlit answers (up to ~90s) — fixed Sleep often opens browser too early
 ok = False
 For i = 1 To 60
   WScript.Sleep 1500
-  If HttpOk(url) Then
+  If PortListening(8501) Then
     ok = True
     Exit For
   End If
@@ -31,34 +31,18 @@ Next
 If ok Then
   sh.Run url, 1, False
 Else
-  ' Show the console so the user can see Python/streamlit errors
   MsgBox "UI did not start within 90 seconds." & vbCrLf & vbCrLf & _
-    "Check the minimized 'SAA Alpha Ops Assistant UI [v3]' window," & vbCrLf & _
+    "Check the minimized 'KOSPI Alpha Screener UI [v3]' window," & vbCrLf & _
     "or run run_ui_direct.bat directly to see the error." & vbCrLf & vbCrLf & _
-    "Folder:" & vbCrLf & root, vbExclamation, "SAA Ops Assistant"
+    "Folder:" & vbCrLf & root, vbExclamation, "Alpha Screener"
 End If
 
-Function HttpOk(u)
+Function PortListening(port)
   On Error Resume Next
-  Dim xhr
-  Set xhr = CreateObject("MSXML2.XMLHTTP")
-  If Err.Number <> 0 Then
-    Err.Clear
-    Set xhr = CreateObject("Microsoft.XMLHTTP")
-  End If
-  If xhr Is Nothing Then
-    HttpOk = False
-    Exit Function
-  End If
-  xhr.Open "GET", u, False
-  xhr.setRequestHeader "Cache-Control", "no-cache"
-  xhr.Send
-  If Err.Number <> 0 Then
-    HttpOk = False
-    Err.Clear
-  Else
-    HttpOk = (xhr.Status >= 200 And xhr.Status < 500)
-  End If
-  Set xhr = Nothing
+  Dim rc
+  rc = sh.Run( _
+    "cmd.exe /c netstat -ano | findstr /C:""LISTENING"" | findstr /C:"":" & port & " """, _
+    0, True)
+  PortListening = (rc = 0)
   On Error GoTo 0
 End Function

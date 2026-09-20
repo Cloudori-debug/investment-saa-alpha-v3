@@ -1,4 +1,4 @@
-﻿"""Weekly-qual proposal freeze — pin proposal tickers; block quant refresh.
+"""Weekly-qual proposal freeze — pin proposal tickers; block quant refresh.
 
 Default: disabled via data/proposal_freeze_policy.json (enabled: false).
 When disabled, request generation does not lock quant refresh.
@@ -16,7 +16,7 @@ from typing import Any, Mapping, Sequence
 
 FREEZE_FILENAME = "weekly_qual_proposal_freeze.json"
 POLICY_FILENAME = "proposal_freeze_policy.json"
-REQUIRED_GATE_DOMAINS = ("t2", "thesis", "targets")
+REQUIRED_GATE_DOMAINS = ("t2", "thesis")
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,7 @@ def block_message(freeze: ProposalFreeze | None = None, *, root: Path | None = N
     return (
         f"주간 정성 창으로 정량 제안이 고정되어 있습니다 "
         f"(report {rid} · as_of {as_of}). "
-        f"필수 게이트(T2·논지·목표가) 승인 후 자동 해제됩니다. "
+        f"필수 게이트(T2·논지) 승인 후 자동 해제됩니다. "
         f"정량 재실행은 창이 열린 동안 차단됩니다."
     )
 
@@ -246,7 +246,7 @@ def maybe_release_after_required_gates(
     journal_path: Path | None = None,
     as_of: date | None = None,
 ) -> bool:
-    """Release when T2 · thesis · targets are all approved. CECS optional."""
+    """Release when T2 · thesis are approved. Targets live on the proposal screen."""
     approved = payload.get("approved") or {}
     if not all(bool(approved.get(d)) for d in REQUIRED_GATE_DOMAINS):
         return False
@@ -254,7 +254,7 @@ def maybe_release_after_required_gates(
         return False
     release_freeze(
         root,
-        reason="required gates approved (t2·thesis·targets)",
+        reason="required gates approved (t2·thesis)",
         journal_path=journal_path,
         as_of=as_of,
     )

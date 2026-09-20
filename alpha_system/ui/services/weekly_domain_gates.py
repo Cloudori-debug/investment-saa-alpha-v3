@@ -1,8 +1,8 @@
 """Domain-separate approval gates for weekly qualitative report.
 
-CECS / T2 / thesis / targets each require source review + explicit approve.
-Approving one domain never auto-approves another. Unapproved AI inputs are
-never consumed by eligibility / triggers / exit engines.
+Weekly required gates: T2 · thesis. Targets auto-apply justified P/B on the
+proposal book (exit YAML only). CECS is monthly / optional. Approving one
+domain never auto-approves another.
 """
 
 from __future__ import annotations
@@ -37,6 +37,11 @@ from alpha_system.ui.services.weekly_qual_report import (
 )
 
 SUGGESTIONS_NAME = "weekly_qual_suggestions.json"  # legacy alias
+AUTO_TARGET_APPROVER = "quant_damodaran"
+AUTO_TARGET_SOURCE = "quant_justified_auto"
+_DAMODARAN_PBV = (
+    "https://pages.stern.nyu.edu/~adamodar/pdfiles/eqnotes/pbv.pdf"
+)
 
 
 def mark_sources_reviewed(
@@ -403,6 +408,179 @@ def _apply_targets(
         "protected": protected,
         "yaml_path": str(path),
         "target_portfolio_hash": after_hash,
+        "target_portfolio_written": False,
+    }
+
+
+def approve_proposal_target(
+    *,
+    root: Path,
+    ticker: str,
+    pbr_max: float | None,
+    target_price: float | None,
+    fundamental_reason: str,
+    rationale: str,
+    sources: Sequence[str] | None = None,
+    as_of: date,
+    approved_by: str = "operator",
+    proposal_tickers: Sequence[str],
+    exit_targets_path: Path | None = None,
+    journal_path: Path | None = None,
+    source: str = "proposal_screen_approved",
+    name: str = "",
+) -> dict[str, Any]:
+    """Confirm of quant draft on the proposal book. Never writes target_portfolio.csv."""
+    del name
+    tk = str(ticker or "").zfill(6)
+    allowed = {str(t).zfill(6) for t in proposal_tickers if str(t).strip()}
+    if tk not in allowed:
+        raise ValueError(f"목표가 승인 거부: 제안 북에 없는 종목 {tk}")
+    if pbr_max is None and target_price is None:
+        raise ValueError("pbr_max 또는 target_price 중 하나는 숫자여야 합니다.")
+
+    path = exit_targets_path or (root / "data" / "kr_alpha_exit_targets.yaml")
+    target_portfolio = root / "data" / "target_portfolio.csv"
+    before_hash = _file_hash(target_portfolio)
+
+    data: dict[str, Any] = {}
+    if path.exists():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    tickers = data.setdefault("tickers", {})
+    existing = tickers.get(tk)
+    entry = dict(existing) if isinstance(existing, dict) else {}
+    valuation = dict(entry.get("valuation") or {})
+    if pbr_max is not None:
+        valuation["pbr_max"] = float(pbr_max)
+    if target_price is not None:
+        entry["target_price"] = float(target_price)
+    entry["valuation"] = valuation
+    entry["rationale"] = str(rationale or "").strip()
+    entry["fundamental_reason"] = str(fundamental_reason or "").strip()
+    entry["sources"] = [str(s).strip() for s in (sources or ()) if str(s).strip()]
+    entry["approved_by"] = approved_by
+    entry["approved_as_of"] = as_of.isoformat()
+    entry["source"] = str(source or "proposal_screen_approved")
+    entry.pop("revalidate_required", None)
+    entry.pop("revalidate_reason", None)
+    tickers[tk] = entry
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    after_hash = _file_hash(target_portfolio)
+    if before_hash != after_hash:
+        raise RuntimeError("불변 위반: target_portfolio.csv가 변경되었습니다.")
+
+    append_record(
+        action_kind="TARGET_VALUATION_MODIFY",
+        as_of=as_of,
+        subject=tk,
+        rationale="proposal screen target confirm → exit_targets yaml only",
+        payload={
+            "ticker": tk,
+            "pbr_max": pbr_max,
+            "target_price": target_price,
+            "approved_by": approved_by,
+            "source": source,
+            "target_portfolio_hash": after_hash,
+            "yaml_path": str(path),
+            "target_portfolio_written": False,
+        },
+        journal_path=journal_path,
+    )
+    return {
+        "applied": True,
+        "ticker": tk,
+        "yaml_path": str(path),
+        "target_portfolio_hash": after_hash,
+        "target_portfolio_written": False,
+    }
+
+
+def _same_num(left: Any, right: Any) -> bool:
+    if left is None and right is None:
+        return True
+    if left is None or right is None:
+        return False
+    try:
+        return abs(float(left) - float(right)) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
+def auto_apply_proposal_quant_targets(
+    *,
+    root: Path,
+    rows: Sequence[Any],
+    as_of: date,
+    journal_path: Path | None = None,
+) -> dict[str, Any]:
+    """Write mixed take-profit (justified 60% + sector 40%) into exit YAML.
+
+    Falls back to justified-only when the mix is missing. Overwrites prior yaml
+    numbers. Never writes target_portfolio.csv.
+    """
+    from src.alpha.quant_target_estimate import mix_target_from_extra
+
+    proposal = [
+        str(getattr(r, "ticker", "")).zfill(6)
+        for r in rows
+        if str(getattr(r, "ticker", "")).strip()
+    ]
+    path = root / "data" / "kr_alpha_exit_targets.yaml"
+    existing: dict[str, Any] = {}
+    if path.exists():
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        existing = dict(loaded.get("tickers") or {})
+
+    applied: list[str] = []
+    skipped: list[str] = []
+    unchanged: list[str] = []
+    for row in rows:
+        tk = str(getattr(row, "ticker", "") or "").strip()
+        if tk.isdigit():
+            tk = tk.zfill(6)
+        if not tk:
+            continue
+        extra = getattr(row, "extra", None) or {}
+        nums = mix_target_from_extra(extra)
+        if nums is None:
+            skipped.append(tk)
+            continue
+        pbr_max, target_price = nums
+        prev = existing.get(tk) or existing.get(str(getattr(row, "ticker", ""))) or {}
+        prev_pbr = (prev.get("valuation") or {}).get("pbr_max") if isinstance(prev, dict) else None
+        prev_px = prev.get("target_price") if isinstance(prev, dict) else None
+        if prev and _same_num(prev_pbr, pbr_max) and _same_num(prev_px, target_price):
+            unchanged.append(tk)
+            continue
+        approve_proposal_target(
+            root=root,
+            ticker=tk,
+            name=str(getattr(row, "name", "") or ""),
+            pbr_max=pbr_max,
+            target_price=target_price,
+            fundamental_reason="목표가=정당P/B 60% + 섹터중앙 40%. 순환주는 중기 ROE. r=9%·g상한=4%는 정책상수.",
+            rationale="익절 상한은 이론 공정가와 업종 거래배수를 섞습니다. 순환주는 중기 ROE.",
+            sources=(_DAMODARAN_PBV,),
+            as_of=as_of,
+            approved_by=AUTO_TARGET_APPROVER,
+            source=AUTO_TARGET_SOURCE,
+            proposal_tickers=proposal,
+            journal_path=journal_path,
+        )
+        applied.append(tk)
+        existing[tk] = {
+            "approved_by": AUTO_TARGET_APPROVER,
+            "target_price": target_price,
+            "valuation": {"pbr_max": pbr_max},
+        }
+    return {
+        "applied": applied,
+        "skipped": skipped,
+        "unchanged": unchanged,
         "target_portfolio_written": False,
     }
 

@@ -36,6 +36,7 @@ class PipelineResult:
     replace_pairs: pd.DataFrame | None = None
     watch_dart_enriched: int = 0
     watch_dart_requested: int = 0
+    hakedaka_watch_rows: int = 0
     matrix_warnings: list[str] | None = None
     tier_allocation: dict | None = None
 
@@ -173,9 +174,10 @@ def run_pipeline(
     repo = Path(root or paths["project"]).resolve().parent
     dart_requested = 0
     dart_filled = 0
+    hakedaka_watch_rows = 0
     if enrich_watch_dart:
         try:
-            from alpha_system.screen_book import watch_max
+            from alpha_system.screen_book import operational_data_dir, watch_max
             from alpha_system.ui.services.cecs_opendart_pack import (
                 apply_payout_sr4,
                 collect_payout_sr4,
@@ -183,26 +185,70 @@ def run_pipeline(
             from alpha_system.ui.services.watch_dart_fundamentals import (
                 apply_watch_dart_rows,
                 collect_watch_dart_financials,
+                load_market_caps,
+                persist_hakedaka_watch_rows,
                 persist_watch_dart_to_fundamentals,
                 watch_depth_tickers,
+                watch_round_tickers,
             )
 
-            depth = watch_depth_tickers(scores, market=book, depth=watch_max(book))
-            dart_requested = len(depth)
-            filled, dart_info = collect_watch_dart_financials(
-                depth,
-                as_of=as_of or date.today(),
-                root=repo,
-            )
-            dart_filled = int(dart_info.filled)
-            if filled:
-                screening_universe = apply_watch_dart_rows(screening_universe, filled)
-                persist_watch_dart_to_fundamentals(paths["raw"] / "fundamentals.csv", filled)
-            if dart_info.errors:
+            n_watch = watch_max(book)
+            ops_dir = operational_data_dir(repo, book)
+            caps = load_market_caps(paths["raw"] / "price_snapshot.csv")
+            if not caps:
+                caps = load_market_caps(ops_dir / "prices.csv")
+            already: set[str] = set()
+            dart_errors: list[str] = []
+            hk_all: dict = {}
+            # Two rounds max: KRX top N, then names that entered the pool after rescore.
+            # Never the full board — extras are still at most N.
+            for _round in range(2):
+                todo = watch_round_tickers(
+                    scores,
+                    already=already,
+                    market=book,
+                    depth=n_watch,
+                )
+                if not todo:
+                    break
+                already.update(todo)
+                filled, dart_info = collect_watch_dart_financials(
+                    todo,
+                    as_of=as_of or date.today(),
+                    root=repo,
+                )
+                dart_filled += int(dart_info.filled)
+                dart_errors.extend(dart_info.errors)
+                if dart_info.hakedaka:
+                    hk_all.update(dart_info.hakedaka)
+                if filled:
+                    screening_universe = apply_watch_dart_rows(
+                        screening_universe, filled
+                    )
+                    persist_watch_dart_to_fundamentals(
+                        paths["raw"] / "fundamentals.csv", filled
+                    )
+                    screening_universe = run_gate(screening_universe, gate_cfg)
+                scores, candidates = run_screener(
+                    screening_universe,
+                    gate_cfg,
+                    scoring_cfg,
+                    kr_alpha_weight=kr_alpha_weight,
+                )
+            dart_requested = len(already)
+            if hk_all:
+                hakedaka_watch_rows = persist_hakedaka_watch_rows(
+                    ops_dir / "hakedaka_fundamentals.csv",
+                    hk_all,
+                    market_caps=caps,
+                    as_of=(as_of or date.today()).isoformat()[:10],
+                )
+            if dart_errors:
                 warnings.warn(
-                    "OpenDART 관찰 풀 재무: " + "; ".join(dart_info.errors[:8]),
+                    "OpenDART 관찰 풀 재무: " + "; ".join(dart_errors[:8]),
                     RuntimeWarning,
                 )
+            depth = watch_depth_tickers(scores, market=book, depth=n_watch)
             sr4 = collect_payout_sr4(
                 repo,
                 depth,
@@ -300,4 +346,5 @@ def run_pipeline(
         tier_allocation=tier_allocation,
         watch_dart_enriched=dart_filled,
         watch_dart_requested=dart_requested,
+        hakedaka_watch_rows=hakedaka_watch_rows,
     )
