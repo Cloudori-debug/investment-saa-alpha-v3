@@ -294,7 +294,7 @@ code, pre, [data-testid="stCode"] {
 .eco-metric {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   column-gap: 0.55rem;
   row-gap: 0.12rem;
   align-items: start;
@@ -322,6 +322,79 @@ code, pre, [data-testid="stCode"] {
   color: var(--saa-muted);
   line-height: 1.35;
 }
+.eco-slide {
+  grid-column: 1 / -1;
+  margin: 0.42rem 0 0.08rem;
+}
+.eco-slide-track {
+  position: relative;
+  display: flex;
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--saa-muted-bg, #e8e8e8);
+}
+.eco-slide-seg {
+  display: block;
+  height: 100%;
+  flex: 0 0 auto;
+}
+.eco-slide-seg.eco-ok { background: color-mix(in srgb, var(--saa-ok-bg, #c8e6c9) 85%, #fff); }
+.eco-slide-seg.eco-wait { background: color-mix(in srgb, var(--saa-warn-chip, #ffe0b2) 90%, #fff); }
+.eco-slide-seg.eco-bad { background: color-mix(in srgb, var(--saa-danger-chip, #ffcdd2) 90%, #fff); }
+.eco-slide-mark {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 2.5px solid var(--saa-fg, #222);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06);
+  z-index: 2;
+  pointer-events: none;
+}
+.eco-slide-mark.eco-ok { border-color: #2e7d32; }
+.eco-slide-mark.eco-wait { border-color: #ef6c00; }
+.eco-slide-mark.eco-bad { border-color: #c62828; }
+.eco-slide-mark.eco-off { border-color: var(--saa-muted, #888); }
+.eco-slide-ticks {
+  position: relative;
+  height: 1.55rem;
+  margin-top: 0.15rem;
+}
+.eco-slide-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  text-align: center;
+  line-height: 1.1;
+}
+.eco-slide-tick-mark {
+  display: block;
+  width: 1px;
+  height: 5px;
+  margin: 0 auto 2px;
+  background: var(--saa-border, #ccc);
+}
+.eco-slide-tick-lab {
+  font-size: 0.68rem;
+  color: var(--saa-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.eco-slide.is-clamp .eco-slide-mark {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--saa-warn-chip, #ffe0b2) 70%, transparent);
+}
+.eco-m-read {
+  grid-column: 1 / -1;
+  margin-top: 0.18rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--saa-border);
+  font-size: 0.8rem;
+  color: var(--saa-fg);
+  line-height: 1.45;
+}
 .eco-date {
   grid-column: 2;
   grid-row: 2;
@@ -329,6 +402,61 @@ code, pre, [data-testid="stCode"] {
   color: var(--saa-muted);
   white-space: nowrap;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.eco-div {
+  margin: 0 0 0.55rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--saa-border-strong);
+  background: #f8fafc;
+}
+.eco-div-favor {
+  border-color: #c5d4c8;
+  background: #f4f7f4;
+}
+.eco-div-caution {
+  border-color: #f0c36a;
+  background: #fffbeb;
+}
+.eco-div-neutral {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.eco-div-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #1c1a16;
+  margin-bottom: 0.25rem;
+}
+.eco-div-favor .eco-div-title { color: #2d4a3c; }
+.eco-div-caution .eco-div-title { color: #92400e; }
+.eco-div-body {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #475569;
+}
+.eco-div-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin: 0.35rem 0 0.85rem;
+}
+.eco-div-table th,
+.eco-div-table td {
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  text-align: left;
+}
+.eco-div-table th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+}
+.eco-div-table td:nth-child(3),
+.eco-div-table td:nth-child(4),
+.eco-div-table td:nth-child(5) {
   font-variant-numeric: tabular-nums;
 }
 .eco-stress {
@@ -1467,6 +1595,116 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
 }}
 .pf-group-kicker:first-child {{
   margin-top: 0.2rem;
+}}
+
+/* Short sleeve vol-budget Review card */
+.svb-card {{
+  margin: 0.35rem 0 0.75rem;
+  padding: 0.75rem 0.9rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--saa-border-strong);
+  background: #f8fafc;
+}}
+.svb-card-calm {{
+  border-color: #c5d4c8;
+  background: #f4f7f4;
+}}
+.svb-card-elevated {{
+  border-color: #f0c36a;
+  background: #fffbeb;
+}}
+.svb-card-extreme {{
+  border-color: #f0a8a8;
+  background: #fef2f2;
+}}
+.svb-card-missing {{
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}}
+.svb-kicker {{
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}}
+.svb-card-elevated .svb-kicker {{ color: #92400e; }}
+.svb-card-extreme .svb-kicker {{ color: #991b1b; }}
+.svb-card-calm .svb-kicker {{ color: #3d5a45; }}
+.svb-head {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.55rem 1.25rem;
+  margin-bottom: 0.55rem;
+}}
+.svb-level {{
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #1c1a16;
+  line-height: 1.25;
+}}
+.svb-card-elevated .svb-level {{ color: #92400e; }}
+.svb-card-extreme .svb-level {{ color: #991b1b; }}
+.svb-card-calm .svb-level {{ color: #2d4a3c; }}
+.svb-scale-wrap {{
+  text-align: left;
+}}
+.svb-scale {{
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #1c1a16;
+}}
+.svb-card-elevated .svb-scale {{ color: #b45309; }}
+.svb-card-extreme .svb-scale {{ color: #b91c1c; }}
+.svb-scale-label {{
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-top: 0.1rem;
+}}
+.svb-row {{
+  display: grid;
+  grid-template-columns: 2.6rem 1fr;
+  gap: 0.35rem 0.55rem;
+  align-items: start;
+  margin: 0.28rem 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: #1c1a16;
+}}
+.svb-row-lab {{
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  padding-top: 0.12rem;
+}}
+.svb-metrics {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}}
+.svb-chip {{
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+}}
+.svb-foot {{
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
 }}
 
 @media (min-width: 768px) {{

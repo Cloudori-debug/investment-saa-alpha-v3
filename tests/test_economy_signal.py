@@ -108,7 +108,9 @@ def test_display_hides_fred_tickers_and_utc() -> None:
         format_metric_value,
         hero_copy,
         metric_hint,
+        metric_reading,
         metric_rows,
+        metric_slider,
         metric_title,
         stress_label,
     )
@@ -128,6 +130,14 @@ def test_display_hides_fred_tickers_and_utc() -> None:
     assert "DFII" not in metric_hint(item)
     assert "IRSTCI" not in metric_hint(item)
     assert format_metric_value(item) == "265 bp"
+    assert "신용" in metric_reading(item)
+    assert "DFII" not in metric_reading(item)
+    slide = metric_slider(item)
+    assert slide is not None
+    assert 0 <= float(slide["pct"]) <= 100
+    assert len(slide["ticks"]) == 2
+    assert slide["ticks"][0]["label"] == "350"
+    assert any(s["tone"] == "ok" for s in slide["segments"])
     fed = SignalInput(
         key="fed_hike",
         label="연준",
@@ -162,13 +172,22 @@ def test_display_hides_fred_tickers_and_utc() -> None:
     assert hero["kicker"] == "2단계"
     assert hero["equity"] == "75%"
     assert "target" not in hero["why"].lower()
-    blob = " ".join(f"{r['title']} {r['hint']} {r['value']}" for r in metric_rows(signal))
+    rows = metric_rows(signal)
+    blob = " ".join(f"{r['title']} {r['hint']} {r['reading']} {r['value']}" for r in rows)
     assert "DFII" not in blob
     assert "IRSTCI" not in blob
     assert "0/2" not in blob
+    assert all(r.get("reading") for r in rows)
+    assert all(r.get("slider") for r in rows)
+    real_row = next(r for r in rows if str(r["title"]).startswith("미국 10년 실질"))
+    assert "할인" in str(real_row["reading"])
+    assert float(real_row["slider"]["pct"]) > 50  # 2.42% past the 2% cut on -0.5..4 scale
     page = Path(__file__).resolve().parents[1].joinpath(
         "alpha_system", "ui", "pages", "economy.py"
     ).read_text(encoding="utf-8")
     assert "st.dataframe" not in page
     assert "DFII" not in page
     assert "점수" not in page
+    assert "eco-m-read" in page
+    assert "eco-slide" in page
+    assert "_slider_html" in page
