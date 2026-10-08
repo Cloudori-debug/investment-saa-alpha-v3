@@ -10,6 +10,7 @@ from alpha_system.proposal_chart import (
     analyze_ohlcv,
     cache_path,
     load_cached_charts,
+    macd_series,
     norm_ticker,
     refresh_proposal_charts,
     wilder_rsi,
@@ -30,7 +31,24 @@ def test_uptrend_is_above_ma_and_not_overbought() -> None:
     assert read.note == ""
     assert read.ma_label in {"60일선 위", "120일선 위"}
     assert read.rsi_label == "보통"
+    assert read.macd_label  # populated (골든/시그널 위 등)
+    assert read.macd_hist_label
     assert "target" not in read.advice.lower()
+
+
+def test_macd_dead_cross_in_advice() -> None:
+    """Rising then falling close → MACD turns down; advice mentions MACD or 보류."""
+    n = 120
+    close = [100.0 + i * 0.8 for i in range(80)]
+    close += [close[-1] - i * 1.2 for i in range(1, 41)]
+    idx = pd.bdate_range("2026-01-02", periods=n)
+    df = pd.DataFrame({"종가": close, "거래량": [1_000_000] * n}, index=idx)
+    line, sig, hist = macd_series(pd.Series(close, index=idx))
+    assert float(line.iloc[-1]) < float(sig.iloc[-1]) or float(hist.iloc[-1]) < 0
+    read = analyze_ohlcv(df, ticker="000001", name="하락전환")
+    assert read.macd_label in {"데드크로스", "시그널 아래"}
+    blob = f"{read.advice} {read.macd_label} {read.macd_hist_label}"
+    assert "MACD" in blob or "시그널" in blob or "히스토그램" in blob
 
 
 def test_hot_rsi_advises_no_chase() -> None:
@@ -40,7 +58,38 @@ def test_hot_rsi_advises_no_chase() -> None:
     read = analyze_ohlcv(df, ticker="000001", name="테스트")
     assert read.rsi is not None and read.rsi >= 70
     assert read.rsi_label == "과열"
-    assert "더 사지 않음" in read.advice
+    assert "결론:" in read.advice
+    assert "추가 매수 금지" in read.advice
+
+
+def test_trade_verdict_is_action_first() -> None:
+    from alpha_system.proposal_chart import ChartRead, _trade_verdict, summary_line
+
+    v, why = _trade_verdict(
+        ma_label="60일선 위",
+        rsi_label="보통",
+        bb_label="밴드 안",
+        macd_label="시그널 위",
+        macd_hist_label="히스토그램 확대",
+    )
+    assert "추격" in v or "유지" in v or "매수" in v
+    assert why
+    line = summary_line(
+        ChartRead(
+            ticker="005930",
+            name="삼성전자",
+            ma_label="60일선 위",
+            rsi_label="보통",
+            bb_label="밴드 안",
+            macd_label="시그널 위",
+            macd_hist_label="히스토그램 확대",
+            macd_div_label="저점 다이버전스",
+            advice="placeholder",
+        )
+    )
+    assert line.startswith("결론:") or "결론:" in line
+    assert "히스토그램 확대" not in line  # raw jargon not dumped
+    assert "시그널 위" not in line
 
 
 def test_refresh_writes_cache_not_target(tmp_path) -> None:
@@ -115,12 +164,16 @@ def test_summary_line_and_proposal_row_layout() -> None:
         advice="단기 과열. 추격 매수 보류.",
     )
     assert summary_tone(item) == "hot"
-    assert "지금 더 사지 않음" in summary_line(item, ladder="지금 매수2")
+    assert "추가 매수 금지" in summary_line(item, ladder="지금 매수2")
     assert "사는 칸은 사다리" not in summary_line(
         ChartRead(ticker="005930", name="삼성전자", ma_label="60일선 위", rsi_label="보통"),
         ladder="지금 매수1",
     )
-    assert "첫 매수만 검토" in summary_line(
+    assert "첫 매수" in summary_line(
+        ChartRead(ticker="005930", name="삼성전자", ma_label="60일선 위", rsi_label="보통"),
+        ladder="지금 매수1",
+    )
+    assert "결론:" in summary_line(
         ChartRead(ticker="005930", name="삼성전자", ma_label="60일선 위", rsi_label="보통"),
         ladder="지금 매수1",
     )
@@ -153,8 +206,9 @@ def test_summary_line_and_proposal_row_layout() -> None:
     html = _row_main_html(row, chart=item)
     assert html.index("pf-wchip") < html.index("pf-spot")
     assert "12,400원" in html
-    assert "pf-chart-read" in html
-    assert "pf-chart-hot" in html
-    assert "단기 과열" in html
+    assert "pf-signal" in html
+    assert "pf-signal-hot" in html
+    assert "pf-signal-headline" in html
+    assert "더 사지" in html or "추가" in html or "금지" in html
     assert "stCaption" not in html
     assert "eco-m-hint" not in html

@@ -35,6 +35,8 @@
 | `OPS_ASSISTANT_WINDOWS_PORTABLE.md` | 이식·백업 |
 | `SCALE_IN_OPS_RULE.md` / `EXIT_STEP_OPS_RULE.md` | 승인된 운영 규칙 |
 | `MOMENTUM_REVIEW_ONLY_SPEC.md` | 모멘텀 Review-only |
+| `SHORT_BOOK_SPEC.md` | 단기(위성) 북 · Core QVM과 분리 |
+| `VALUE_HOLD_EXIT_UPGRADE_PLAN.md` | 보유·매도·히스테리시스 Review 업그레이드 계획 (13F는 비범위) |
 | `WEEKLY_QUAL_CDE_PROMPT.md` / `WEEKLY_QUAL_REPORT_SPEC.md` | 주간 정성 |
 | `CONSENSUS_DATA_FEASIBILITY.md` | 컨센서스 한계 (코드 안내) |
 | `ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md` | 팩터 가중 SoT |

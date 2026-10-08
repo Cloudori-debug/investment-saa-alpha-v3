@@ -395,6 +395,96 @@ code, pre, [data-testid="stCode"] {
   color: var(--saa-fg);
   line-height: 1.45;
 }
+.eco-play {
+  border: 1px solid var(--saa-border);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem 0.7rem;
+  margin: 0 0 0.55rem;
+  background: var(--saa-card);
+}
+.eco-play-wait {
+  border-color: color-mix(in srgb, var(--saa-warn-chip, #ffe0b2) 80%, var(--saa-border));
+  background: color-mix(in srgb, var(--saa-warn-chip, #fff8e8) 35%, var(--saa-card));
+}
+.eco-play-bad {
+  border-color: color-mix(in srgb, var(--saa-danger-chip, #ffcdd2) 80%, var(--saa-border));
+  background: color-mix(in srgb, var(--saa-danger-chip, #ffebee) 30%, var(--saa-card));
+}
+.eco-play-ok {
+  border-color: color-mix(in srgb, var(--saa-ok-bg, #c8e6c9) 70%, var(--saa-border));
+}
+.eco-play-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--saa-fg);
+}
+.eco-play-split {
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: var(--saa-muted);
+  font-variant-numeric: tabular-nums;
+}
+.eco-play-list {
+  margin: 0.45rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--saa-fg);
+}
+.eco-play-list li { margin: 0.18rem 0; }
+.eco-gap-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin: 0 0 0.7rem;
+}
+@media (min-width: 900px) {
+  .eco-gap-grid { grid-template-columns: 1fr 1fr 1fr; }
+}
+.eco-gap-card {
+  border: 1px solid var(--saa-border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: var(--saa-card);
+}
+.eco-gap-out { border-left: 3px solid #c62828; }
+.eco-gap-in { border-left: 3px solid #ef6c00; }
+.eco-gap-ok { border-left: 3px solid #2e7d32; }
+.eco-gap-h {
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--saa-fg);
+}
+.eco-gap-hint {
+  margin-top: 0.12rem;
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+}
+.eco-gap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+.eco-gap-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.4rem;
+  border-radius: 4px;
+  background: var(--saa-muted-bg, #f3f3f3);
+  color: var(--saa-fg);
+}
+.eco-gap-tk {
+  font-size: 0.7rem;
+  color: var(--saa-muted);
+  font-variant-numeric: tabular-nums;
+}
+.eco-gap-empty {
+  font-size: 0.78rem;
+  color: var(--saa-muted);
+}
 .eco-date {
   grid-column: 2;
   grid-row: 2;
@@ -1167,6 +1257,82 @@ div[data-testid="stRadio"] {{
   background: #dce8dc;
   border-color: #6a8a72;
   color: #1c3324;
+}}
+.pf-signal {{
+  margin: 0.2rem 0 0.45rem;
+  padding: 0.5rem 0.6rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid #b7a88a;
+  background: #efe8d8;
+  color: #1c1a16;
+}}
+.pf-signal.pf-signal-hot {{
+  background: #f3ddb0;
+  border-color: #c9a227;
+  color: #4a3200;
+}}
+.pf-signal.pf-signal-weak {{
+  background: #dce6f0;
+  border-color: #7b93ab;
+  color: #1a334d;
+}}
+.pf-signal.pf-signal-ok {{
+  background: #dce8dc;
+  border-color: #6a8a72;
+  color: #1c3324;
+}}
+.pf-signal-headline {{
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  margin-bottom: 0.28rem;
+}}
+.pf-signal-why {{
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.45;
+  margin-bottom: 0.38rem;
+  opacity: 0.95;
+}}
+.pf-signal-evidence {{
+  font-size: 0.8rem;
+  line-height: 1.5;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 0.32rem;
+  margin-bottom: 0.15rem;
+}}
+.pf-signal-row {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.12rem;
+}}
+.pf-signal-lbl {{
+  flex: 0 0 2.1rem;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 0.75rem;
+  text-transform: none;
+}}
+.pf-signal-chips {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.35rem;
+  margin-top: 0.35rem;
+  padding-top: 0.28rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+}}
+.pf-signal-chip {{
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.08rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: inherit;
+  font-variant-numeric: tabular-nums;
 }}
 .pf-weight-ok {{ color: #2d4a3c; font-weight: 600; }}
 .pf-weight-warn {{ color: #92400e; font-weight: 700; }}

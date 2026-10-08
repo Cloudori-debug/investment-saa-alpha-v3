@@ -24,7 +24,11 @@ RSI_LEN = 14
 BB_LEN = 20
 BB_K = 2.0
 VOL_LEN = 20
-MIN_BARS = 30
+MACD_FAST = 12
+MACD_SLOW = 26
+MACD_SIGNAL = 9
+MACD_DIV_LOOKBACK = 40
+MIN_BARS = 35
 
 GetOhlcv = Callable[[str, str, str], Any]
 
@@ -55,10 +59,16 @@ class ChartRead:
     rsi: float | None = None
     vol_ratio: float | None = None
     bb_pct: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_hist: float | None = None
     ma_label: str = ""
     rsi_label: str = ""
     vol_label: str = ""
     bb_label: str = ""
+    macd_label: str = ""
+    macd_hist_label: str = ""
+    macd_div_label: str = ""
     advice: str = ""
     note: str = ""
 
@@ -153,34 +163,146 @@ def _bb_label(pct: float | None) -> str:
     return "밴드 안"
 
 
+def _trade_verdict(
+    *,
+    ma_label: str,
+    rsi_label: str,
+    bb_label: str,
+    macd_label: str = "",
+    macd_hist_label: str = "",
+    macd_div_label: str = "",
+    rung: str = "",
+) -> tuple[str, str]:
+    """Return (결론, 한줄 이유) for Review-only display — not an order."""
+    if rsi_label == "과열" or bb_label == "상단 밖":
+        return (
+            "추가 매수 금지",
+            "이미 과열(단기 과매수). 지금 사면 고점 추격에 가깝습니다.",
+        )
+    if macd_div_label == "고점 다이버전스":
+        return (
+            "추가 매수 금지 · 비중 축소 검토",
+            "주가는 버티거나 올라도 상승 힘이 약해진 구간입니다.",
+        )
+    if macd_label == "데드크로스":
+        return (
+            "신규·추가 매수 보류 · 보유는 축소 검토",
+            "단기 추세가 장기 추세 아래로 꺾였습니다.",
+        )
+    if macd_hist_label == "히스토그램 축소" and macd_label == "시그널 위":
+        return (
+            "추가 매수 보류",
+            "아직 상승 쪽이나 힘이 줄고 있습니다. 추격하지 마세요.",
+        )
+    if macd_label == "시그널 아래" or "음수" in (macd_hist_label or ""):
+        if macd_div_label == "저점 다이버전스":
+            return (
+                "소량 분할 매수만 검토",
+                "하락 힘이 약해질 조짐입니다. 전량·추격 매수는 아닙니다.",
+            )
+        return (
+            "매수 보류 · 보유는 축소·관망",
+            "하락(또는 약세) 추세입니다. 싸 보여도 바로 담지 마세요.",
+        )
+    if macd_div_label == "저점 다이버전스":
+        return (
+            "소량 분할 매수만 검토",
+            "바닥 근처 반등 후보일 수 있습니다. 한 번에 사지 마세요.",
+        )
+    if ma_label == "60일선 아래" and rsi_label == "식음":
+        return (
+            "매수 보류",
+            "이평 아래·과매도입니다. 반등 확인 전엔 관망이 낫습니다.",
+        )
+    if rung in {"줄이기", "절반", "전량"}:
+        return (
+            "추가 매수 금지 · 익절·축소 쪽 검토",
+            "가격이 목표가 구간에 들어와 있습니다.",
+        )
+    if macd_label == "골든크로스" or (
+        macd_label == "시그널 위" and macd_hist_label == "히스토그램 확대"
+    ):
+        if rung == "매수1":
+            return (
+                "첫 매수(가장 싼 칸)만 검토",
+                "상승 힘이 붙은 편입니다. 전량이 아니라 사다리 1칸만.",
+            )
+        if rung == "매수2":
+            return (
+                "남은 매수 분은 천천히만",
+                "상승 흐름이나 추격 비중은 키우지 마세요.",
+            )
+        if ma_label in {"120일선 위", "60일선 위"}:
+            return (
+                "보유 유지 · 추격 매수 금지",
+                "추세는 우호적입니다. 더 사지 말고 비중만 점검하세요.",
+            )
+        return (
+            "분할 매수 검토 · 추격 금지",
+            "단기 상승 힘이 있습니다. 한 번에 담지 마세요.",
+        )
+    if ma_label in {"120일선 위", "60일선 위"} and rsi_label == "보통":
+        if rung == "매수1":
+            return (
+                "첫 매수만 검토",
+                "이평은 위쪽입니다. 제일 싼 칸만 보세요.",
+            )
+        if rung == "매수2":
+            return (
+                "둘째 칸만 천천히",
+                "이평은 위쪽입니다. 남은 분만 나눠 보세요.",
+            )
+        return (
+            "보유 유지 · 추격 금지",
+            "큰 이상은 없습니다. 새로 크게 사지 마세요.",
+        )
+    if ma_label == "60일선 아래":
+        return (
+            "매수 속도 낮춤 · 관망 우선",
+            "이평 아래입니다. 반등·사다리 확인 후에만 검토하세요.",
+        )
+    return (
+        "관망 · 기존 규칙만 따르기",
+        "차트만으로 매매하지 마세요. 순위·게이트·목표가와 같이 보세요.",
+    )
+
+
 def _advice(
     *,
     ma_label: str,
     rsi_label: str,
     bb_label: str,
+    macd_label: str = "",
+    macd_hist_label: str = "",
+    macd_div_label: str = "",
     rung: str = "",
 ) -> str:
-    if rsi_label == "과열" or bb_label == "상단 밖":
-        return "단기 과열. 지금 더 사지 않음."
-    if ma_label == "60일선 아래" and rsi_label == "식음":
-        return "이평 아래·식음. 싸 보여도 자동 매수 아님."
-    if rung in {"줄이기", "절반", "전량"}:
-        return "목표가 쪽. 추가는 보류."
-    if ma_label in {"120일선 위", "60일선 위"} and rsi_label == "보통":
-        if rung == "매수1":
-            return "이평은 위쪽. 제일 싼 칸 — 첫 매수만 검토."
-        if rung == "매수2":
-            return "이평은 위쪽. 둘째 칸 — 남은 분만 천천히."
-        return "이평은 위쪽. RSI 보통."
-    if ma_label == "60일선 아래":
-        return "이평 아래. 나눠 사는 속도는 천천히."
-    return "참고만. 순위와 목표 파일은 그대로입니다."
+    verdict, why = _trade_verdict(
+        ma_label=ma_label,
+        rsi_label=rsi_label,
+        bb_label=bb_label,
+        macd_label=macd_label,
+        macd_hist_label=macd_hist_label,
+        macd_div_label=macd_div_label,
+        rung=rung,
+    )
+    return f"결론: {verdict} — {why}"
 
 
 def summary_tone(item: ChartRead) -> str:
-    if item.rsi_label == "과열" or item.bb_label == "상단 밖":
+    if (
+        item.rsi_label == "과열"
+        or item.bb_label == "상단 밖"
+        or item.macd_label == "데드크로스"
+        or item.macd_div_label == "고점 다이버전스"
+    ):
         return "hot"
-    if item.ma_label == "60일선 아래" or item.rsi_label == "식음":
+    if (
+        item.ma_label == "60일선 아래"
+        or item.rsi_label == "식음"
+        or item.macd_label == "시그널 아래"
+        or "음수" in (item.macd_hist_label or "")
+    ):
         return "weak"
     return "ok"
 
@@ -189,11 +311,14 @@ def summary_line(item: ChartRead, *, ladder: str = "") -> str:
     rung = (ladder or "").replace("지금 ", "").replace("사다리 ", "").strip()
     if (item.note or "").strip():
         body = item.note.strip()
-    elif item.ma_label or item.rsi_label or item.bb_label:
+    elif item.ma_label or item.rsi_label or item.bb_label or item.macd_label:
         body = _advice(
             ma_label=item.ma_label,
             rsi_label=item.rsi_label,
             bb_label=item.bb_label,
+            macd_label=item.macd_label,
+            macd_hist_label=item.macd_hist_label,
+            macd_div_label=item.macd_div_label,
             rung=rung,
         )
     else:
@@ -213,6 +338,101 @@ def wilder_rsi(close: pd.Series, length: int = RSI_LEN) -> pd.Series:
     rsi = 100.0 - (100.0 / (1.0 + rs))
     rsi = rsi.mask(avg_loss.fillna(0.0) == 0.0, 100.0)
     return rsi
+
+
+def macd_series(
+    close: pd.Series,
+    *,
+    fast: int = MACD_FAST,
+    slow: int = MACD_SLOW,
+    signal: int = MACD_SIGNAL,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    ema_fast = close.ewm(span=fast, adjust=False, min_periods=fast).mean()
+    ema_slow = close.ewm(span=slow, adjust=False, min_periods=slow).mean()
+    line = ema_fast - ema_slow
+    sig = line.ewm(span=signal, adjust=False, min_periods=signal).mean()
+    hist = line - sig
+    return line, sig, hist
+
+
+def _macd_cross_label(line: pd.Series, sig: pd.Series) -> str:
+    if len(line) < 2 or len(sig) < 2:
+        return "없음"
+    a0, a1 = float(line.iloc[-2]), float(line.iloc[-1])
+    b0, b1 = float(sig.iloc[-2]), float(sig.iloc[-1])
+    if any(x != x for x in (a0, a1, b0, b1)):  # NaN
+        return "없음"
+    d0, d1 = a0 - b0, a1 - b1
+    if d0 <= 0 < d1:
+        return "골든크로스"
+    if d0 >= 0 > d1:
+        return "데드크로스"
+    if d1 > 0:
+        return "시그널 위"
+    if d1 < 0:
+        return "시그널 아래"
+    return "시그널 접촉"
+
+
+def _macd_hist_label(hist: pd.Series) -> str:
+    if len(hist) < 2:
+        return "없음"
+    h0, h1 = float(hist.iloc[-2]), float(hist.iloc[-1])
+    if h0 != h0 or h1 != h1:
+        return "없음"
+    if h1 > 0 and h1 > h0:
+        return "히스토그램 확대"
+    if h1 > 0 and h1 < h0:
+        return "히스토그램 축소"
+    if h1 < 0 and h1 < h0:
+        return "히스토그램 음수 확대"
+    if h1 < 0 and h1 > h0:
+        return "히스토그램 음수 축소"
+    if h1 > 0:
+        return "히스토그램 양수"
+    if h1 < 0:
+        return "히스토그램 음수"
+    return "히스토그램 0"
+
+
+def _macd_div_label(close: pd.Series, hist: pd.Series, *, lookback: int = MACD_DIV_LOOKBACK) -> str:
+    """Simple peak/trough divergence — display only, not a trade trigger."""
+    n = min(len(close), len(hist), lookback)
+    if n < 20:
+        return ""
+    c = close.iloc[-n:]
+    h = hist.iloc[-n:]
+    if h.isna().all() or c.isna().all():
+        return ""
+    # Bearish: price near window high, hist peak earlier was higher
+    mid = n // 2
+    c_last = float(c.iloc[-1])
+    h_last = float(h.iloc[-1])
+    if c_last != c_last or h_last != h_last:
+        return ""
+    c_hi_early = float(c.iloc[:mid].max())
+    c_hi_late = float(c.iloc[mid:].max())
+    h_hi_early = float(h.iloc[:mid].max())
+    h_hi_late = float(h.iloc[mid:].max())
+    if (
+        c_hi_late >= c_hi_early * 0.995
+        and h_hi_late < h_hi_early * 0.92
+        and h_hi_early > 0
+        and abs(c_last - c_hi_late) / max(c_hi_late, 1e-9) < 0.02
+    ):
+        return "고점 다이버전스"
+    c_lo_early = float(c.iloc[:mid].min())
+    c_lo_late = float(c.iloc[mid:].min())
+    h_lo_early = float(h.iloc[:mid].min())
+    h_lo_late = float(h.iloc[mid:].min())
+    if (
+        c_lo_late <= c_lo_early * 1.005
+        and h_lo_late > h_lo_early * 0.92
+        and h_lo_early < 0
+        and abs(c_last - c_lo_late) / max(abs(c_lo_late), 1e-9) < 0.02
+    ):
+        return "저점 다이버전스"
+    return ""
 
 
 def analyze_ohlcv(df: pd.DataFrame, *, ticker: str, name: str) -> ChartRead:
@@ -266,7 +486,20 @@ def analyze_ohlcv(df: pd.DataFrame, *, ticker: str, name: str) -> ChartRead:
     rsi_label = _rsi_label(rsi)
     vol_label = _vol_label(vol_ratio)
     bb_label = _bb_label(bb_pct)
+    macd_line, macd_sig, macd_hist = macd_series(close)
+    macd_v, sig_v, hist_v = _f(macd_line), _f(macd_sig), _f(macd_hist)
+    macd_label = _macd_cross_label(macd_line, macd_sig)
+    macd_hist_label = _macd_hist_label(macd_hist)
+    macd_div_label = _macd_div_label(close, macd_hist)
     as_of = str(close.index[-1].date())
+    advice = _advice(
+        ma_label=ma_label,
+        rsi_label=rsi_label,
+        bb_label=bb_label,
+        macd_label=macd_label,
+        macd_hist_label=macd_hist_label,
+        macd_div_label=macd_div_label,
+    )
     return ChartRead(
         ticker=ticker,
         name=name,
@@ -278,11 +511,17 @@ def analyze_ohlcv(df: pd.DataFrame, *, ticker: str, name: str) -> ChartRead:
         rsi=None if rsi is None else round(float(rsi), 1),
         vol_ratio=vol_ratio,
         bb_pct=bb_pct,
+        macd=None if macd_v is None else round(macd_v, 2),
+        macd_signal=None if sig_v is None else round(sig_v, 2),
+        macd_hist=None if hist_v is None else round(hist_v, 2),
         ma_label=ma_label,
         rsi_label=rsi_label,
         vol_label=vol_label,
         bb_label=bb_label,
-        advice=_advice(ma_label=ma_label, rsi_label=rsi_label, bb_label=bb_label),
+        macd_label=macd_label,
+        macd_hist_label=macd_hist_label,
+        macd_div_label=macd_div_label,
+        advice=advice,
     )
 
 

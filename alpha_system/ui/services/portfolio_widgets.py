@@ -8,7 +8,7 @@ from typing import Optional
 import streamlit as st
 
 from alpha_system.journal import list_entries
-from alpha_system.proposal_chart import ChartRead, norm_ticker, summary_line, summary_tone
+from alpha_system.proposal_chart import ChartRead, norm_ticker, summary_tone
 from alpha_system.ui.services.context import DashboardContext, PortfolioRow, ScoreboardRow
 from alpha_system.ui.services.portfolio_metrics import price_bar_view, weight_bar_view
 from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
@@ -33,7 +33,13 @@ def _fmt_price(v: Optional[float]) -> str:
     return f"{v:,.0f}"
 
 
+def _is_short_ops_row(row: PortfolioRow) -> bool:
+    return str((row.extra or {}).get("ops_book") or "") == "short"
+
+
 def _quant_caption_html(row: PortfolioRow) -> str:
+    if _is_short_ops_row(row):
+        return ""
     extra = row.extra or {}
     if not extra.get("quant_ok"):
         return ""
@@ -123,6 +129,8 @@ def _header_cue(row: PortfolioRow) -> tuple[str, str]:
 
 
 def _missing_target_banner(row: PortfolioRow) -> str:
+    if _is_short_ops_row(row):
+        return ""
     if (row.extra or {}).get("proposal_eligible") is False:
         reason = str(
             (row.extra or {}).get("ineligible_reason") or row.target_detail or "부적격"
@@ -246,6 +254,9 @@ def _ladder_bar_html(row: PortfolioRow, *, show_labels: bool) -> str:
 
 def render_price_bar_html(row: PortfolioRow, *, show_labels: bool = False) -> str:
     """Price axis only — no weight/cap marker."""
+    if _is_short_ops_row(row):
+        # Momentum sleeve: badge carries the cue; no mid P/B ladder.
+        return ""
     extra = row.extra or {}
     if extra.get("proposal_eligible") is False:
         return _missing_target_banner(row)
@@ -300,22 +311,44 @@ def render_weight_bar_html(row: PortfolioRow, *, thin: bool = True) -> str:
     )
 
 
-def _ops_badge_html(row: PortfolioRow) -> str:
-    """Simple ops cue badge — only when ops_signal is set."""
-    kind = (row.ops_signal or "").strip()
-    label = (row.ops_signal_label or "").strip()
-    if not kind or not label:
-        return ""
-    cls = {
-        "hold": "alpha-badge-ok",
-        "trim": "alpha-badge-warn",
-        "cash_half": "alpha-badge-warn",
-        "exit_full": "alpha-badge-danger",
-        "missing": "alpha-badge-warn",
-        # legacy
-        "review": "alpha-badge-danger",
-    }.get(kind, "alpha-badge-warn")
-    return f'<span class="{cls} ops-cue">{label}</span> '
+def _unified_cue(row: PortfolioRow, chart: ChartRead | None = None):
+    from alpha_system.ui.services.trade_cue_merge import unify_ops_and_chart
+
+    return unify_ops_and_chart(
+        ops_kind=row.ops_signal or "",
+        ops_label=row.ops_signal_label or "",
+        chart=chart,
+        ladder=_ladder_hint(row),
+    )
+
+
+def _chart_cue_active(item: ChartRead | None) -> bool:
+    if item is None:
+        return False
+    if (item.note or "").strip():
+        return True
+    return bool(item.ma_label or item.rsi_label or item.bb_label or item.macd_label)
+
+
+def _ops_badge_html(row: PortfolioRow, chart: ChartRead | None = None) -> str:
+    """Unified action badge (+ optional short absorb chip)."""
+    cue = _unified_cue(row, chart)
+    tone_cls = {
+        "ok": "alpha-badge-ok",
+        "accent": "alpha-badge-ok",
+        "warn": "alpha-badge-warn",
+        "hot": "alpha-badge-warn",
+        "weak": "alpha-badge-warn",
+        "danger": "alpha-badge-danger",
+        "muted": "alpha-badge-warn",
+    }.get(cue.tone, "alpha-badge-warn")
+    badge_txt = cue.ops_part if _chart_cue_active(chart) else cue.action
+    parts = [f'<span class="{tone_cls} ops-cue">{escape(badge_txt)}</span>']
+    extra = row.extra or {}
+    if extra.get("absorb_review"):
+        alabel = escape(str(extra.get("absorb_label") or "흡수검토"))
+        parts.append(f'<span class="alpha-badge-warn ops-cue absorb-cue">{alabel}</span>')
+    return " ".join(parts) + " "
 
 
 def _ladder_hint(row: PortfolioRow) -> str:
@@ -338,21 +371,54 @@ def _ladder_hint(row: PortfolioRow) -> str:
 
 
 def _chart_read_html(row: PortfolioRow, item: ChartRead | None) -> str:
-    if item is None:
+    """Signal headline + why + evidence (book / chart / indicator chips)."""
+    cue = _unified_cue(row, item)
+    if not (cue.why or cue.detail):
         return ""
-    text = summary_line(item, ladder=_ladder_hint(row))
-    if not text:
-        return ""
-    tone = summary_tone(item)
+    chart_tone = {
+        "hot": "hot",
+        "danger": "hot",
+        "warn": "weak",
+        "weak": "weak",
+        "ok": "ok",
+        "accent": "ok",
+        "muted": "ok",
+    }.get(cue.tone, "ok")
+    if item is not None:
+        st = summary_tone(item)
+        if st == "hot":
+            chart_tone = "hot"
+        elif st == "weak" and chart_tone == "ok":
+            chart_tone = "weak"
+    chart_ev = cue.evidence_chart
+    if cue.chart_reason and chart_ev not in ("일봉 미읽음", "차트미읽음"):
+        if cue.chart_reason not in chart_ev:
+            chart_ev = f"{chart_ev} — {cue.chart_reason}"
+    chips = "".join(
+        f'<span class="pf-signal-chip">{escape(c)}</span>' for c in cue.chips
+    )
+    chips_blk = (
+        f'<div class="pf-signal-chips">{chips}</div>' if chips else ""
+    )
     return (
-        f'<div class="pf-chart-read pf-chart-{escape(tone)}">'
-        f"{escape(text)}"
+        f'<div class="pf-signal pf-signal-{escape(chart_tone)}">'
+        f'<div class="pf-signal-headline">{escape(cue.headline)}</div>'
+        f'<div class="pf-signal-why">{escape(cue.why)}</div>'
+        f'<div class="pf-signal-evidence">'
+        f'<div class="pf-signal-row">'
+        f'<span class="pf-signal-lbl">장부</span>'
+        f"<span>{escape(cue.evidence_ops)}</span></div>"
+        f'<div class="pf-signal-row">'
+        f'<span class="pf-signal-lbl">차트</span>'
+        f"<span>{escape(chart_ev)}</span></div>"
+        f"</div>"
+        f"{chips_blk}"
         f"</div>"
     )
 
 
 def _row_main_html(row: PortfolioRow, *, chart: ChartRead | None = None) -> str:
-    badge = _ops_badge_html(row)
+    badge = _ops_badge_html(row, chart)
     extra = row.extra or {}
     blocked = extra.get("proposal_eligible") is False
     if blocked:
@@ -427,6 +493,36 @@ def _proposal_expand_html(row: PortfolioRow) -> str:
     score = row.total_score
     score_s = f"{float(score):.2f}" if score is not None else "—"
     bits: list[str] = []
+    if _is_short_ops_row(row):
+        sm = extra.get("score_m")
+        r6 = extra.get("return_6m")
+        dd = extra.get("drawdown_52w_pct")
+        xs = extra.get("mom_xs_pct")
+        trend = extra.get("trend_sign") or "—"
+        sm_s = f"{float(sm):g}" if sm not in (None, "") else "—"
+        r6_s = f"{float(r6)*100:.1f}%" if r6 not in (None, "") else "—"
+        dd_s = f"{float(dd):+.1f}%" if dd not in (None, "") else "—"
+        xs_s = f"{float(xs):.0f}%ile" if xs not in (None, "") else "—"
+        bits.append(
+            _section(
+                "단기 제안",
+                f'<div class="pf-sec-body">'
+                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
+                f"현재 {_fmt_price(row.current_price)}원 · "
+                f"배지 {row.ops_signal_label or '—'}<br/>"
+                f"추세 {trend} · score_m {sm_s} · 6M {r6_s} · "
+                f"상대 {xs_s} · 고가대비 {dd_s}"
+                f"</div>",
+            )
+        )
+        if row.ops_signal_detail:
+            bits.append(
+                _section(
+                    "운영 신호",
+                    f'<div class="pf-sec-body">{escape(str(row.ops_signal_detail))}</div>',
+                )
+            )
+        return "".join(bits)
     if blocked:
         reason = str(extra.get("ineligible_reason") or row.target_detail or "부적격")
         bits.append(
