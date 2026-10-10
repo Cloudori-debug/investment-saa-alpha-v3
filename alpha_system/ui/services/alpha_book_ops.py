@@ -195,7 +195,7 @@ def build_alpha_actual_map(
     if not values:
         for r in ops_rows or []:
             tk = str(getattr(r, "ticker", "") or "").zfill(6)
-            if not tk:
+            if not tk or tk == "000000":
                 continue
             qty = _row_qty(r)
             val = _row_value(r)
@@ -207,6 +207,17 @@ def build_alpha_actual_map(
             values[tk] = max(0.0, val)
             names[tk] = str(getattr(r, "name", None) or tk)
 
+    # Check-only holdings (no qty/value): equal-weight proxy so cash≠“포지션 없음”
+    if not values:
+        for r in ops_rows or []:
+            tk = str(getattr(r, "ticker", "") or "").zfill(6)
+            if not tk or tk == "000000":
+                continue
+            if tk == policy.cash_ticker:
+                continue
+            values[tk] = 1.0
+            names[tk] = str(getattr(r, "name", None) or tk)
+
     total = sum(values.values())
     if total <= 1e-12:
         return {}
@@ -214,6 +225,89 @@ def build_alpha_actual_map(
         tk: (round(100.0 * v / total, 2), names.get(tk, tk))
         for tk, v in values.items()
     }
+
+
+# Review cash vs actual — warn only (no order / no YAML write).
+REVIEW_CASH_GAP_WARN_PP = 10.0
+REVIEW_CASH_GAP_ALERT_PP = 20.0
+REVIEW_CASH_STAGE_MIN = 3
+REVIEW_CASH_STAGE_FORCE = 4
+
+
+@dataclass(frozen=True)
+class CashReviewAlert:
+    """Operator warning when actual short-bond lags economy Review."""
+
+    level: str  # warn | alert
+    body: str
+
+
+def cash_review_alert(
+    *,
+    stage: int | None,
+    review_cash_pct: float | None,
+    actual_cash_pct: float | None,
+    cash_name: str,
+) -> CashReviewAlert | None:
+    """Fire when stage is elevated and cash is thin vs Review hint.
+
+    Thresholds: underweight ≥10%p → warn, ≥20%p or stage≥4 → alert.
+    Missing actual still warns from stage≥3 (prepare cash Review).
+    """
+    if stage is None or int(stage) < REVIEW_CASH_STAGE_MIN:
+        return None
+    if review_cash_pct is None:
+        return None
+    s = int(stage)
+    rev = float(review_cash_pct)
+    name = str(cash_name or "단기채")
+
+    if actual_cash_pct is None:
+        level = "alert" if s >= REVIEW_CASH_STAGE_FORCE else "warn"
+        return CashReviewAlert(
+            level=level,
+            body=(
+                f"나침반 단계 {s} · Review 단기채≈{rev:.0f}% · "
+                f"{name}을 Review 목표로 맞출지 내일 검토 "
+                f"(자동매매·target 변경 없음)."
+            ),
+        )
+
+    actual = float(actual_cash_pct)
+    under = rev - actual  # positive = cash thinner than Review
+
+    if under >= REVIEW_CASH_GAP_ALERT_PP:
+        return CashReviewAlert(
+            level="alert",
+            body=(
+                f"나침반 단계 {s} · Review 단기채≈{rev:.0f}% · "
+                f"목표 대비 부족 {under:.1f}%p · "
+                f"{name}을 Review 목표로 맞출지 내일 검토 "
+                f"(자동매매·target 변경 없음)."
+            ),
+        )
+    if under >= REVIEW_CASH_GAP_WARN_PP:
+        return CashReviewAlert(
+            level="warn",
+            body=(
+                f"나침반 단계 {s} · Review 단기채≈{rev:.0f}% · "
+                f"목표 대비 부족 {under:.1f}%p · "
+                f"{name}을 Review 목표로 맞출지 내일 검토 "
+                f"(자동매매·target 변경 없음)."
+            ),
+        )
+    if s >= REVIEW_CASH_STAGE_FORCE:
+        # Defense stage with cash already near/above Review — soft note only.
+        return CashReviewAlert(
+            level="warn",
+            body=(
+                f"나침반 단계 {s} 방어 구간 · "
+                f"Review 단기채≈{rev:.0f}% · "
+                f"신규·추격만 한 번 더 Review "
+                f"(자동매매·target 변경 없음)."
+            ),
+        )
+    return None
 
 
 def guidance_rows(

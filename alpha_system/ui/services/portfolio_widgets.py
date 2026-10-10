@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
 
-from alpha_system.journal import list_entries
 from alpha_system.proposal_chart import ChartRead, norm_ticker, summary_tone
-from alpha_system.ui.services.context import DashboardContext, PortfolioRow, ScoreboardRow
+from alpha_system.ui.services.context import DashboardContext, PortfolioRow
 from alpha_system.ui.services.portfolio_metrics import price_bar_view, weight_bar_view
 from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
 from alpha_system.ui.services.ui_copy import copy_get
@@ -417,69 +417,113 @@ def _chart_read_html(row: PortfolioRow, item: ChartRead | None) -> str:
     )
 
 
-def _row_main_html(row: PortfolioRow, *, chart: ChartRead | None = None) -> str:
+def _cross_book_chips_html(
+    row: PortfolioRow,
+    *,
+    held: set[str],
+    proposed: set[str],
+    blocked: set[str],
+    phcvs: set[str] | None = None,
+) -> str:
+    """③↔④ overlap chips — same ticker once in the other book, no duplicate body."""
+    tk = norm_ticker(row.ticker)
+    book = str((row.extra or {}).get("book") or "")
+    chips: list[str] = []
+    if book == "ops":
+        if tk in proposed:
+            chips.append(
+                '<span class="pf-xchip pf-xchip-prop">'
+                f'{escape(copy_get("portfolio", "chip_in_proposal", default="제안중"))}'
+                "</span>"
+            )
+        elif tk in blocked:
+            chips.append(
+                '<span class="pf-xchip pf-xchip-wait">'
+                f'{escape(copy_get("portfolio", "chip_in_blocked", default="대기중"))}'
+                "</span>"
+            )
+    else:
+        if tk in held:
+            chips.append(
+                '<span class="pf-xchip pf-xchip-hold">'
+                f'{escape(copy_get("portfolio", "chip_in_holdings", default="보유중"))}'
+                "</span>"
+            )
+    if phcvs and tk in phcvs:
+        chips.append(
+            '<span class="pf-xchip pf-xchip-phcvs">'
+            f'{escape(copy_get("portfolio", "chip_in_phcvs", default="PH추적"))}'
+            "</span>"
+        )
+    return "".join(chips)
+
+
+def _row_main_html(
+    row: PortfolioRow,
+    *,
+    chart: ChartRead | None = None,
+    held: set[str] | None = None,
+    proposed: set[str] | None = None,
+    blocked: set[str] | None = None,
+    phcvs: set[str] | None = None,
+) -> str:
     badge = _ops_badge_html(row, chart)
     extra = row.extra or {}
-    blocked = extra.get("proposal_eligible") is False
-    if blocked:
+    is_blocked = extra.get("proposal_eligible") is False
+    is_ops = extra.get("book") == "ops"
+    if is_blocked:
         badge = '<span class="alpha-badge-danger">부적격</span> ' + badge
     upside_txt, tone = _header_cue(row)
+    # Holdings overlapping ③: keep cue to badge + chip; drop long upside text.
+    in_proposal = is_ops and norm_ticker(row.ticker) in (proposed or set())
+    if in_proposal:
+        upside_txt, tone = "", "muted"
     wview = weight_bar_view(row.weight_pct, row.cap_pct)
     weight_cls = f"pf-weight-{wview.tone}"
-    if extra.get("book") == "ops":
-        weight_prefix = "보유"
-        weight_chip = f"{weight_prefix} {row.weight_pct:.1f}%"
-    elif blocked:
+    if is_ops:
+        weight_cls = "pf-weight-ok"
+        weight_chip = f"보유 {row.weight_pct:.1f}%"
+    elif is_blocked:
         weight_cls = "pf-weight-muted"
         weight_chip = "비중 없음"
     else:
-        weight_prefix = "제안"
-        weight_chip = f"{weight_prefix} {row.weight_pct:.1f}%"
+        weight_chip = f"제안 {row.weight_pct:.1f}%"
     spot = ""
-    if extra.get("book") == "proposal" and not blocked and row.current_price is not None:
+    if not is_blocked and row.current_price is not None:
         spot = f'<span class="pf-spot">{_fmt_price(row.current_price)}원</span>'
+    cross = _cross_book_chips_html(
+        row,
+        held=held or set(),
+        proposed=proposed or set(),
+        blocked=blocked or set(),
+        phcvs=phcvs,
+    )
+    upside_html = (
+        f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
+        if upside_txt
+        else ""
+    )
+    # Ops collapsed: proposal-like chrome; skip dense signal dump (expand has it).
+    signal_html = ""
+    if not is_blocked and not is_ops:
+        signal_html = _chart_read_html(row, chart)
+    bar_html = ""
+    if not is_blocked and not in_proposal:
+        bar_html = render_price_bar_html(row)
     return (
         f'<div class="pf-row-main">'
         f'<div class="pf-bullet-top">'
         f'<span class="pf-id">{badge}'
         f"{naver_name_chart_html(row.ticker, row.name)}</span>"
+        f"{cross}"
         f'<span class="{weight_cls} pf-wchip">{weight_chip}</span>'
         f"{spot}"
-        f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
+        f"{upside_html}"
         f"</div>"
-        f"{'' if blocked else _chart_read_html(row, chart)}"
-        f"{'' if blocked else render_price_bar_html(row)}"
+        f"{signal_html}"
+        f"{bar_html}"
         f"</div>"
     )
-
-
-def _cecs_subs(sc: Optional[ScoreboardRow], cecs_df_row: Optional[dict]) -> dict[str, Optional[float]]:
-    keys = ("execution_continuity", "pension_flow_score", "investment_purpose_flag")
-    out: dict[str, Optional[float]] = {k: None for k in keys}
-    if cecs_df_row:
-        for k in keys:
-            raw = cecs_df_row.get(k)
-            try:
-                if raw is not None and str(raw).strip() != "":
-                    out[k] = float(raw)
-            except (TypeError, ValueError):
-                pass
-    return out
-
-
-def _load_cecs_row(ctx: DashboardContext, ticker: str) -> Optional[dict]:
-    path = ctx.root / "data" / "cecs_manual_scoring_template.csv"
-    if not path.exists():
-        return None
-    import pandas as pd
-
-    df = pd.read_csv(path, dtype=str)
-    if df.empty or "ticker" not in df.columns:
-        return None
-    hit = df[df["ticker"].astype(str).str.zfill(6) == ticker]
-    if hit.empty:
-        return None
-    return hit.iloc[0].to_dict()
 
 
 def _section(title: str, body_html: str = "") -> str:
@@ -570,186 +614,109 @@ def _proposal_expand_html(row: PortfolioRow) -> str:
     return f'<div class="pf-extend">{"".join(bits)}</div>'
 
 
+def _ops_expand_html(row: PortfolioRow) -> str:
+    """Short expand for holdings — ops-only cues; no CECS/journal dump."""
+    extra = row.extra or {}
+    score = row.total_score
+    score_s = f"{float(score):.2f}" if score is not None else "—"
+    bits: list[str] = []
+
+    if _is_short_ops_row(row):
+        sm = extra.get("score_m")
+        r6 = extra.get("return_6m")
+        dd = extra.get("drawdown_52w_pct")
+        xs = extra.get("mom_xs_pct")
+        trend = extra.get("trend_sign") or "—"
+        sm_s = f"{float(sm):g}" if sm not in (None, "") else "—"
+        r6_s = f"{float(r6)*100:.1f}%" if r6 not in (None, "") else "—"
+        dd_s = f"{float(dd):+.1f}%" if dd not in (None, "") else "—"
+        xs_s = f"{float(xs):.0f}%ile" if xs not in (None, "") else "—"
+        bits.append(
+            _section(
+                "단기 보유",
+                f'<div class="pf-sec-body">'
+                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
+                f"현재 {_fmt_price(row.current_price)}원 · "
+                f"배지 {row.ops_signal_label or '—'}<br/>"
+                f"추세 {trend} · score_m {sm_s} · 6M {r6_s} · "
+                f"상대 {xs_s} · 고가대비 {dd_s}"
+                f"</div>",
+            )
+        )
+    else:
+        cue_line = ""
+        if row.ops_signal_label:
+            detail = (row.ops_signal_detail or "").strip()
+            cue_line = f"<br/>{escape(str(row.ops_signal_label))}"
+            if detail and detail != row.ops_signal_label:
+                # Keep one short clause — full dump lives in ③ when overlapping.
+                cue_line += f" · {escape(detail[:80])}"
+        bits.append(
+            _section(
+                "보유",
+                f'<div class="pf-sec-body">'
+                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
+                f"현재 {_fmt_price(row.current_price)} · 목표 {_fmt_price(row.target_price)}"
+                f"{cue_line}"
+                f"</div>",
+            )
+        )
+        if extra.get("quant_ok") and not row.has_target:
+            pbr_d = extra.get("quant_pbr_draft")
+            mid = extra.get("quant_price_mid")
+            d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
+            mid_s = _won(mid)
+            mid_s = f"{mid_s}원" if mid_s != "—" else "—"
+            bits.append(
+                _section(
+                    "혼합 목표가",
+                    f'<div class="pf-sec-body">PBR {d_s} · {mid_s}</div>',
+                )
+            )
+
+    he_state = str(extra.get("hold_exit_label") or "").strip()
+    he_why = str(extra.get("hold_exit_why") or "").strip()
+    if he_state or he_why:
+        bits.append(
+            _section(
+                "보유 Review",
+                f'<div class="pf-sec-body">'
+                f"{escape(he_state or '—')}"
+                f"{(' · ' + escape(he_why)) if he_why else ''}"
+                f"</div>",
+            )
+        )
+
+    allowed = str(extra.get("ops_allowed") or "").strip()
+    trigger = str(extra.get("ops_trigger") or "").strip()
+    if allowed or trigger:
+        bits.append(
+            _section(
+                "허용·트리거",
+                f'<div class="pf-sec-body">'
+                f"{escape(allowed or '—')}"
+                f"{(' · ' + escape(trigger)) if trigger else ''}"
+                f"</div>",
+            )
+        )
+
+    if row.ops_signal_detail and _is_short_ops_row(row):
+        bits.append(
+            _section(
+                "운영 신호",
+                f'<div class="pf-sec-body">{escape(str(row.ops_signal_detail))}</div>',
+            )
+        )
+    return f'<div class="pf-extend">{"".join(bits)}</div>'
+
+
 def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
     """Expanded area as parent-row extension — no nested card boxes."""
+    _ = ctx
     extra = row.extra or {}
     if extra.get("book") == "proposal":
         return _proposal_expand_html(row)
-
-    wview = weight_bar_view(row.weight_pct, row.cap_pct)
-    book = (row.extra or {}).get("book")
-    weight_word = "보유 비중" if book == "ops" else "제안 비중"
-    extra_row = row.extra or {}
-    step = extra_row.get("ops_step_id") or ""
-    rungs = extra_row.get("ladder_rungs") or []
-    def _rung_won(idx: int) -> str:
-        if idx < len(rungs):
-            return f"{_won(rungs[idx])}원"
-        return ""
-    step_line = ""
-    if row.ops_signal == "cash_half":
-        px = _rung_won(4)
-        if not px and extra_row.get("ladder_high"):
-            px = f"{_won(extra_row.get('ladder_high'))}원"
-        step_line = (
-            f"<br/>절반 {px} · 잔여 도달 후 4주"
-            if px
-            else "<br/>절반 환금 · 잔여 도달 후 4주"
-        )
-    elif row.ops_signal == "exit_full":
-        px = _rung_won(4)
-        if step == "S2c" and px:
-            step_line = f"<br/>전량 {px} · 도달 후 4주"
-        else:
-            step_line = f"<br/>스텝 {step or 'S2/S0'}: 잔여·전량 환금 · 로테이션/테제"
-    elif row.ops_signal == "trim":
-        px = _rung_won(2)
-        step_line = f"<br/>줄이기 {px} (25%)" if px else "<br/>줄이기 25%"
-    nums = (
-        f'<div class="pf-sec-body">'
-        f"{weight_word} {row.weight_pct:.1f}% "
-        f"(상한 {row.cap_pct:.0f}%) · total_score "
-        f"{row.total_score if row.total_score is not None else '—'}<br/>"
-        f"현재 {_fmt_price(row.current_price)} · "
-        f"목표 {_fmt_price(row.target_price)}"
-        + (
-            f"<br/>운영 신호: <strong>{row.ops_signal_label}</strong> — {row.ops_signal_detail}"
-            if row.ops_signal_label
-            else ""
-        )
-        + step_line
-        + f"</div>"
-    )
-    extra = row.extra or {}
-    quant_html = ""
-    if extra.get("quant_ok"):
-        pbr_j = extra.get("quant_pbr_justified")
-        pbr_d = extra.get("quant_pbr_draft")
-        mid = extra.get("quant_price_mid")
-        method = extra.get("quant_method") or ""
-        note = extra.get("quant_note") or ""
-        mid_s = "—"
-        if mid not in (None, ""):
-            try:
-                mid_s = f"{int(round(float(mid))):,}원"
-            except (TypeError, ValueError):
-                mid_s = "—"
-        j_s = f"{float(pbr_j):.2f}" if pbr_j not in (None, "") else "—"
-        d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
-        yaml_px = row.target_price
-        yaml_bit = ""
-        if yaml_px is not None:
-            yaml_bit = f" · 저장 {int(round(float(yaml_px))):,}원"
-        quant_html = _section(
-            "정량 초안 (익절 상한)",
-            f'<div class="pf-sec-body">지금 혼합 {d_s} · 이론 정당 {j_s} · {mid_s}{yaml_bit}'
-            f"<br/>{method}<br/>{note}</div>",
-        )
-    hk_html = ""
-    hk_detail = extra.get("hakedaka_detail")
-    if hk_detail:
-        theme = " · 경기민감 테마" if extra.get("cyclical_theme") else ""
-        hk_html = _section(
-            "하케다카 게이트 (점수 불변)",
-            f'<div class="pf-sec-body">{hk_detail}{theme}</div>',
-        )
-    bars = render_price_bar_html(row, show_labels=True)
-
-    sc = next((s for s in ctx.scoreboard_rows if s.ticker == row.ticker), None)
-    score_bits = (
-        f"트랜치 {row.tranche_source} · total_score "
-        f"{row.total_score if row.total_score is not None else '—'}"
-    )
-    if wview.reduce_signal:
-        score_bits += ' · <span class="alpha-badge-danger">비중 한도 초과 · 감축 신호</span>'
-
-    rescores = [
-        e
-        for e in list_entries()
-        if e.subject == row.ticker
-        and e.action_kind in {"RESCORE", "TARGET_VALUATION_MODIFY", "WARN_TARGET_VALUATION_MODIFY"}
-    ]
-    rescores = sorted(rescores, key=lambda e: e.recorded_at, reverse=True)
-    if rescores:
-        trend = " → ".join(
-            f"{e.recorded_at[:10]}:{e.score_snapshot.get('total_score', e.action_kind)}"
-            for e in rescores[:5]
-        )
-        trend_html = f'<div class="pf-sec-body">{trend}</div>'
-    else:
-        trend_html = '<div class="pf-sec-body muted">재채점 이력 없음</div>'
-
-    entries = [
-        e
-        for e in list_entries()
-        if e.subject == row.ticker
-        and e.action_kind in {
-            "ENTRY_JOURNAL",
-            "TARGET_VALUATION_MODIFY",
-            "WARN_TARGET_VALUATION_MODIFY",
-        }
-    ]
-    entry_j = [e for e in entries if e.action_kind == "ENTRY_JOURNAL"]
-    modify_j = [e for e in entries if e.action_kind != "ENTRY_JOURNAL"]
-
-    if entry_j:
-        journal_html = "".join(
-            f'<div class="pf-sec-body">{j.recorded_at[:10]} — '
-            f"{(j.rationale or '(내용 없음)')[:240]}</div>"
-            for j in entry_j[-3:]
-        )
-    elif row.target_gap_kind == "legacy_pending":
-        journal_html = (
-            f'<div class="pf-sec-body muted">'
-            f'{copy_get("portfolio", "entry_journal_legacy", default="신규 시스템 편입 절차 미경유 (레거시 보유)")}'
-            f"</div>"
-        )
-    else:
-        journal_html = (
-            f'<div class="pf-sec-body muted">'
-            f'{copy_get("portfolio", "entry_journal_empty", default="편입 저널 없음")}'
-            f"</div>"
-        )
-
-    cecs_raw = _load_cecs_row(ctx, row.ticker)
-    subs = _cecs_subs(sc, cecs_raw)
-
-    def _sub(v: Optional[float]) -> str:
-        return f"{v:.2f}" if v is not None else "—"
-
-    cecs_html = (
-        f'<div class="pf-sec-body">'
-        f"execution {_sub(subs['execution_continuity'])} · "
-        f"pension {_sub(subs['pension_flow_score'])} · "
-        f"purpose {_sub(subs['investment_purpose_flag'])}"
-        f"</div>"
-    )
-
-    modify_html = ""
-    if modify_j:
-        modify_html = _section(
-            "목표가 수정 이력",
-            "".join(
-                f'<div class="pf-sec-body">{j.recorded_at[:10]}'
-                f'{" (WARN)" if "WARN" in j.action_kind else ""}: '
-                f"{(j.rationale or j.discretionary_reason or '')[:240]}</div>"
-                for j in sorted(modify_j, key=lambda x: x.recorded_at, reverse=True)[:5]
-            ),
-        )
-
-    return (
-        f'<div class="pf-extend">'
-        f"{_section('수치', nums)}"
-        f"{_section('게이지', bars)}"
-        f"{_section('스코어', f'<div class=\"pf-sec-body\">{score_bits}</div>')}"
-        f"{_section('재채점 추이', trend_html)}"
-        f"{_section('편입 근거', journal_html)}"
-        f"{_section('정성 채점 하위지표', cecs_html)}"
-        f"{quant_html}"
-        f"{hk_html}"
-        f"{modify_html}"
-        f"</div>"
-    )
+    return _ops_expand_html(row)
 
 
 def render_portfolio_bullets(
@@ -783,6 +750,25 @@ def render_portfolio_bullets(
 
         chart_map = reads_by_ticker(ctx)
 
+    held_set = {
+        norm_ticker(r.ticker) for r in (getattr(ctx, "ops_portfolio_rows", None) or [])
+    }
+    proposed_set = {
+        norm_ticker(r.ticker) for r in (getattr(ctx, "portfolio_rows", None) or [])
+    }
+    blocked_set = {
+        norm_ticker(r.ticker)
+        for r in (getattr(ctx, "proposal_blocked_rows", None) or [])
+    }
+    phcvs_set: set[str] = set()
+    try:
+        from alpha_system.ui.services.phcvs_watch_board import load_phcvs_watch
+
+        phcvs_board = load_phcvs_watch(Path(ctx.root))
+        phcvs_set = {r.ticker for r in phcvs_board.rows}
+    except Exception:  # noqa: BLE001 — chip enrichment must not break portfolio
+        phcvs_set = set()
+
     st.markdown('<div class="pf-list">', unsafe_allow_html=True)
 
     for row in rows:
@@ -792,7 +778,14 @@ def render_portfolio_bullets(
         with left:
             tk = norm_ticker(row.ticker)
             st.markdown(
-                _row_main_html(row, chart=chart_map.get(tk)),
+                _row_main_html(
+                    row,
+                    chart=chart_map.get(tk),
+                    held=held_set,
+                    proposed=proposed_set,
+                    blocked=blocked_set,
+                    phcvs=phcvs_set,
+                ),
                 unsafe_allow_html=True,
             )
         with right:

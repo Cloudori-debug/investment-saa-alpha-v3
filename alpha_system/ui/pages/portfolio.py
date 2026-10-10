@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date as _date
+from pathlib import Path
 
 import html
 import pandas as pd
@@ -20,7 +22,7 @@ from alpha_system.sizing.qual_overlay import (
     save_qual_overlay,
 )
 from alpha_system.sizing.target_gate import collect_above_justified_target_tickers_from_root
-from alpha_system.ui.services.context import DashboardContext
+from alpha_system.ui.services.context import DashboardContext, PortfolioRow
 from alpha_system.ui.services.cecs_workbench import (
     build_relative_cutoff_ladder,
     confirm_score_cutoff,
@@ -38,15 +40,33 @@ from alpha_system.ui.services.rank_watchboard import (
     naver_name_chart_html,
     watch_tone_label,
 )
-from alpha_system.ui.services.approval_chrome import ap_subhead, page_head
+from alpha_system.ui.services.approval_chrome import page_head
 from alpha_system.ui.services.ui_copy import copy_get
 from alpha_system.ui.services.screen_market import render_screen_market_nav
-from alpha_system.screen_book import is_kosdaq, save_kosdaq_policy, target_names_band, watch_max
+from alpha_system.ui.services.screen_horizon import render_screen_horizon_nav
+from alpha_system.screen_book import (
+    is_kosdaq,
+    is_short,
+    save_kosdaq_policy,
+    save_short_policy,
+    target_names_band,
+    watch_max,
+)
 from alpha_system.ui.theme_prefs import watch_row_styles
 
-def _watch_session_keys(ctx: DashboardContext) -> tuple[str, str, str]:
+def _book_keys(ctx: DashboardContext) -> str:
     mkt = str(getattr(ctx, "screen_market", "KOSPI") or "KOSPI")
-    return f"pf_watch_{mkt}", f"pf_watch_{mkt}_sig", f"pf_watch_{mkt}_last"
+    hz = str(getattr(ctx, "screen_horizon", "mid") or "mid")
+    return f"{mkt}_{hz}"
+
+
+def _source_dir(ctx: DashboardContext):
+    return getattr(ctx, "source_data_dir", None) or ctx.data_dir
+
+
+def _watch_session_keys(ctx: DashboardContext) -> tuple[str, str, str]:
+    tag = _book_keys(ctx)
+    return f"pf_watch_{tag}", f"pf_watch_{tag}_sig", f"pf_watch_{tag}_last"
 
 
 def _reset_watch_picker(ctx: DashboardContext, tickers: list[str]) -> None:
@@ -56,32 +76,57 @@ def _reset_watch_picker(ctx: DashboardContext, tickers: list[str]) -> None:
 
 
 
-def render_portfolio(ctx: DashboardContext) -> None:
+def render_portfolio(
+    ctx: DashboardContext,
+    *,
+    proposal_eligible_sorter: Callable[
+        [list[PortfolioRow], DashboardContext], list[PortfolioRow]
+    ]
+    | None = None,
+    proposal_final_sort_label: str | None = None,
+) -> None:
     consume_focus()  # confirmation CTAs land here; no sub-tabs
     if "holdings_input_open" not in st.session_state:
         st.session_state["holdings_input_open"] = True
 
     page_head(
         kicker=copy_get("portfolio", "page_kicker", default="포트폴리오"),
-        title=copy_get("portfolio", "page_title", default="후보 · 제안 · 보유"),
+        title=copy_get(
+            "portfolio", "page_title", default="제안 · 보유"
+        ),
         lead=copy_get(
             "portfolio",
             "page_lead",
             default=(
-                "관찰 풀에서 체크하면 보유에 등록됩니다. "
-                "제안은 컷·편입 수 확정. 자동매매·target 변경 없음."
+                "결정면=③제안·④보유 · ①②는 입력. "
+                "Review-only · target 자동기입 없음."
             ),
         ),
     )
     render_screen_market_nav(ctx.root)
-    if is_kosdaq(getattr(ctx, "screen_market", None)) and not (ctx.scoreboard_rows or []):
-        st.caption(
-            "이 장부는 아직 정량이 없습니다. 확인 → ① 숫자에서 「코스닥 정량 갱신」을 누르세요."
+    render_screen_horizon_nav(ctx.root)
+    if is_short(getattr(ctx, "screen_horizon", None)):
+        _render_short_vol_budget_banner(ctx)
+    if not (ctx.scoreboard_rows or []):
+        _render_status_card(
+            "이 시장 정량이 없습니다. 확인 → ① 숫자에서 정량 갱신 · "
+            "단기 북은 같은 스냅샷을 재랭크합니다.",
+            tone="warn",
         )
+    # 워크플로 ①→②→③→④ 유지 · 시각 무게만 ③·④ (pf-tier-1)
+    st.markdown('<div class="pf-tier-2">', unsafe_allow_html=True)
     preview_cutoff, preview_n = _render_cutoff_bar(ctx)
     _render_watch_pool(ctx, preview_cutoff, preview_n)
-    _render_proposal_book(ctx)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="pf-tier-1">', unsafe_allow_html=True)
+    _render_proposal_book(
+        ctx,
+        proposal_eligible_sorter=proposal_eligible_sorter,
+        proposal_final_sort_label=proposal_final_sort_label,
+    )
     _render_holdings_book(ctx)
+    st.markdown("</div>", unsafe_allow_html=True)
+    _render_phcvs_watch(ctx)
 
 
 def _fmt_num(val, *, integers: bool = False) -> str:
@@ -96,6 +141,92 @@ def _fmt_num(val, *, integers: bool = False) -> str:
     return f"{n:.2f}"
 
 
+def _render_phcvs_watch(ctx: DashboardContext) -> None:
+    """External PH-CVS observation list — always open, Review-only."""
+    from alpha_system.review.phcvs_auto_eval import run_and_write
+    from alpha_system.ui.services.phcvs_watch_board import (
+        _is_attention,
+        load_phcvs_watch,
+        phcvs_watch_html,
+    )
+
+    held = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+    board = load_phcvs_watch(
+        ctx.root,
+        proposal_rows=getattr(ctx, "portfolio_rows", None),
+        holdings_rows=held,
+    )
+    title = copy_get("portfolio", "sec_phcvs", default="PH-CVS 추적")
+    attn_n = sum(1 for r in board.rows if _is_attention(r))
+    chips: list[tuple[str, str]] = []
+    if attn_n:
+        chips.append((f"지금 볼 것 {attn_n}", "warn"))
+    else:
+        chips.append(("즉시 Review 없음", "muted"))
+    if board.as_of_prices:
+        chips.append((f"가격 {board.as_of_prices}", "muted"))
+    chips.append(("Review-only", "muted"))
+    with st.container(border=True):
+        _render_section_head(
+            title,
+            summary=copy_get(
+                "portfolio",
+                "phcvs_caption",
+                default=(
+                    "상단「지금 볼 것」만 먼저 · 겹침·가격/유동 PASS · "
+                    "나머지는 추적 · 현금=시드 · 매수·자동편입 없음"
+                ),
+            ),
+            chips=chips,
+            tier="input",
+        )
+        rerun = st.button(
+            copy_get("portfolio", "phcvs_reeval", default="다시 평가"),
+            key="phcvs_auto_reeval",
+            help=copy_get(
+                "portfolio",
+                "phcvs_reeval_help",
+                default=(
+                    "prices.csv 기준 S00/S03·유동성 재계산. "
+                    "target_portfolio·QVM 순위는 변경하지 않습니다."
+                ),
+            ),
+        )
+        if rerun:
+            try:
+                watch_path, snap_path = run_and_write(Path(ctx.root))
+                st.success(
+                    copy_get(
+                        "portfolio",
+                        "phcvs_reeval_ok",
+                        default="PH-CVS 자동평가 완료 (watch·snapshot만 갱신).",
+                    )
+                    + f" · {watch_path.name} · {snap_path.name}"
+                )
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001 — surface to operator
+                st.error(f"PH-CVS 자동평가 실패: {exc}")
+        st.markdown(phcvs_watch_html(board), unsafe_allow_html=True)
+
+
+def _observation_pool_tickers(ctx: DashboardContext, *, band_max: int) -> list[str]:
+    """Candidate watch board tickers only — not the full scoreboard universe."""
+    from alpha_system.ui.services.rank_watchboard import build_rank_watchboard
+
+    saved = _saved_kr_alpha_rows(ctx)
+    board = build_rank_watchboard(
+        ctx.scoreboard_rows or [],
+        proposal_tickers={str(r.ticker).zfill(6) for r in (ctx.portfolio_rows or [])},
+        held_tickers={str(r["ticker"]) for r in saved},
+        proposal_band_max=max(1, int(band_max)),
+        max_rows=watch_max(
+            getattr(ctx, "screen_market", None),
+            getattr(ctx, "screen_horizon", None),
+        ),
+    )
+    return [str(r.ticker).zfill(6) for r in board.rows]
+
+
 def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     """OpenDART on the watch pool: 경영참여 게이트 + 최대주주 + Review-only 선행 트리거."""
     from alpha_system.ui.services.cecs_opendart_pack import (
@@ -104,18 +235,20 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
         watch_needs_refresh,
     )
 
-    watch_rows = list(ctx.scoreboard_rows or [])
+    band = int(getattr(ctx.cfg.sizing, "target_names", 6) or 6)
+    tickers = _observation_pool_tickers(ctx, band_max=band)
     proposal_rows = list(ctx.portfolio_rows or [])
-    if not watch_rows and not proposal_rows:
+    if not tickers and not proposal_rows:
         return
-    tickers = [str(r.ticker).zfill(6) for r in (watch_rows or proposal_rows)]
+    if not tickers:
+        tickers = [str(r.ticker).zfill(6) for r in proposal_rows]
     names = {
         str(r.ticker).zfill(6): (r.name or r.ticker)
-        for r in list(watch_rows) + list(proposal_rows)
+        for r in list(ctx.scoreboard_rows or []) + proposal_rows
     }
     journal = ctx.root / "data" / "alpha_system_journal.jsonl"
     as_of = ctx.as_of if isinstance(ctx.as_of, _date) else _date.today()
-    data_dir = ctx.data_dir
+    data_dir = _source_dir(ctx)
     snap = load_opendart_watch(ctx.root, data_dir=data_dir)
     auto_key = "pf_od_auto_" + ",".join(tickers)
     need = watch_needs_refresh(snap, tickers)
@@ -152,7 +285,7 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     if snap.missing_key:
         st.warning("Open DART API 키가 없습니다. 설정에 키를 넣은 뒤 다시 탐색하세요.")
     flags = list(snap.flag_models())
-    path = overlay_path(ctx.data_dir)
+    path = overlay_path(_source_dir(ctx))
     overlay = load_qual_overlay(path)
     if flags:
         updated, applied = apply_opendart_flag_gates(overlay, flags, as_of=as_of)
@@ -237,39 +370,169 @@ def _render_proposal_target_board(ctx: DashboardContext) -> None:
         st.warning(f"정량 초안 불가 (ROE·PBR·섹터 부족): {', '.join(skipped)} · 편입 차단")
 
 
-def _render_proposal_book(ctx: DashboardContext) -> None:
+def _esc_pf(value: object) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def _chips_html(chips: list[tuple[str, str]] | None) -> str:
+    if not chips:
+        return ""
+    bits = [
+        f'<span class="pf-sec-chip pf-sec-chip-{_esc_pf(tone)}">{_esc_pf(label)}</span>'
+        for label, tone in chips
+    ]
+    return f'<div class="pf-sec-chips">{"".join(bits)}</div>'
+
+
+def _render_section_head(
+    title: str,
+    *,
+    summary: str = "",
+    chips: list[tuple[str, str]] | None = None,
+    extra_html: str = "",
+    tier: str = "",
+) -> None:
+    """Section header inside the outer container (no nested outer frame)."""
+    summary_html = (
+        f'<div class="pf-sec-summary">{_esc_pf(summary)}</div>' if summary else ""
+    )
+    tier_cls = f" pf-sec-head-{_esc_pf(tier)}" if tier else ""
+    st.markdown(
+        f'<div class="pf-sec-head{tier_cls}">'
+        f'<div class="pf-sec-title">{_esc_pf(title)}</div>'
+        f"{summary_html}{_chips_html(chips)}{extra_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_control_card(label: str, *, hint: str = "") -> None:
+    """Control label row inside the section (not a separate box)."""
+    hint_html = (
+        f'<span class="pf-ctl-hint">{_esc_pf(hint)}</span>' if hint else ""
+    )
+    st.markdown(
+        f'<div class="pf-ctl-row">'
+        f'<span class="pf-ctl-label">{_esc_pf(label)}</span>'
+        f"{hint_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_status_card(body: str, *, tone: str = "muted") -> None:
+    st.markdown(
+        f'<div class="pf-status pf-status-{_esc_pf(tone)}">'
+        f"{_esc_pf(body)}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _proposal_map_html(
+    *,
+    short: bool,
+    quality_sort: bool,
+    n_eligible: int,
+    n_blocked: int,
+    n_held: int,
+) -> str:
+    if short:
+        tiles = [
+            ("최종 제안", str(n_eligible), "단기 편입 후보", "모멘텀 재랭크", "ok"),
+            ("편입하지 않음", str(n_blocked), "제외", "게이트·적격 탈락", "warn"),
+            ("보유", str(n_held), "④ 실보유", "유지/축소/교체", "muted"),
+        ]
+        yolk = ""
+    else:
+        tiles = [
+            ("최종 제안", str(n_eligible), "편입 후보", "비중은 여기만", "ok"),
+            ("편입하지 않음", str(n_blocked), "노른자 대기", "비싸거나 게이트", "warn"),
+            ("보유", str(n_held), "④에서", "제안과 다를 수 있음", "muted"),
+        ]
+        yolk = (
+            "노른자 = 「편입하지 않음」고Q(+최종 제안 고품질). "
+            "④ 보유 전부 ≠ 노른자."
+        )
+        if quality_sort:
+            yolk = "최종 제안 Q↓·하케다카↓ · " + yolk
+    cells = "".join(
+        f'<div class="pf-map-cell pf-map-{tone}">'
+        f'<div class="pf-map-k">{_esc_pf(k)}</div>'
+        f'<div class="pf-map-n">{_esc_pf(n)}</div>'
+        f'<div class="pf-map-tag">{_esc_pf(tag)}</div>'
+        f'<div class="pf-map-body">{_esc_pf(body)}</div>'
+        f"</div>"
+        for k, n, tag, body, tone in tiles
+    )
+    note = (
+        f'<div class="pf-map-note">{_esc_pf(yolk)}</div>' if yolk else ""
+    )
+    return f'<div class="pf-map">{cells}</div>{note}'
+
+
+def _render_proposal_book(
+    ctx: DashboardContext,
+    *,
+    proposal_eligible_sorter: Callable[
+        [list[PortfolioRow], DashboardContext], list[PortfolioRow]
+    ]
+    | None = None,
+    proposal_final_sort_label: str | None = None,
+) -> None:
+    short = is_short(getattr(ctx, "screen_horizon", None))
     with st.container(border=True):
-        ap_subhead(
+        eligible = list(ctx.portfolio_rows or [])
+        if proposal_eligible_sorter and eligible:
+            eligible = proposal_eligible_sorter(eligible, ctx)
+        blocked = list(getattr(ctx, "proposal_blocked_rows", None) or [])
+        held_n = len(getattr(ctx, "ops_portfolio_rows", None) or [])
+        _render_section_head(
             copy_get("portfolio", "sec_proposal", default="③ 제안 종목"),
-            desc=copy_get(
+            summary=copy_get(
                 "portfolio",
-                "screen_book_caption",
-                default=(
-                    "최종 제안만 편입 후보입니다. "
-                    "점수 상위라도 게이트·목표가에 걸리면 아래 제외 칸에만 둡니다. "
-                    "자동매도·target 변경 없음."
-                ),
+                "screen_book_caption_short" if short else "screen_book_caption",
+                default="지도 → 편입 후보 → 대기열. 비중·실행은 사람 Review.",
+            ),
+            chips=[
+                ("편입 = 최종 제안", "ok"),
+                ("대기 = 편입하지 않음", "warn"),
+            ],
+            tier="primary",
+            extra_html=_proposal_map_html(
+                short=short,
+                quality_sort=bool(proposal_final_sort_label),
+                n_eligible=len(eligible),
+                n_blocked=len(blocked),
+                n_held=held_n,
             ),
         )
-        eligible = list(ctx.portfolio_rows or [])
-        blocked = list(getattr(ctx, "proposal_blocked_rows", None) or [])
         _render_sector_exposure(ctx)
         _render_revalidate_flags(ctx)
         _render_proposal_opendart_gates(ctx)
-        _render_proposal_target_board(ctx)
+        if not short:
+            _render_proposal_target_board(ctx)
+        else:
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "ops_cue_short_caption",
+                    default=(
+                        "단기 배지(Review-only): 제안 밖·모멘텀 붕괴·52주 −20%=교체 · "
+                        "score_m·6M·상대 약화=축소 · 정당 P/B 미사용 · 자동매도 없음"
+                    ),
+                )
+            )
+        final_heading = copy_get(
+            "portfolio", "proposal_final_heading", default="최종 제안"
+        )
+        if proposal_final_sort_label:
+            final_heading = f"{final_heading} · {proposal_final_sort_label}"
         st.markdown(
             f'<div class="pf-group-kicker">'
-            f'{copy_get("portfolio", "proposal_final_heading", default="최종 제안")}'
+            f'<span class="pf-group-badge pf-group-ok">편입</span> '
+            f"{final_heading}"
             f" · {len(eligible)}"
             f"</div>",
             unsafe_allow_html=True,
-        )
-        st.caption(
-            copy_get(
-                "portfolio",
-                "proposal_final_caption",
-                default="컷·게이트·목표가·하케다카를 통과한 편입 후보. 비중은 여기만입니다.",
-            )
         )
         if eligible:
             from alpha_system.ui.services.proposal_chart_board import render_proposal_chart_refresh
@@ -291,19 +554,18 @@ def _render_proposal_book(ctx: DashboardContext) -> None:
                 rows=eligible,
             )
         if blocked:
+            blocked_head = copy_get(
+                "portfolio", "proposal_blocked_heading", default="편입하지 않음"
+            )
+            if not short:
+                blocked_head = f"{blocked_head} · 노른자 대기"
             st.markdown(
                 f'<div class="pf-group-kicker">'
-                f'{copy_get("portfolio", "proposal_blocked_heading", default="편입하지 않음")}'
+                f'<span class="pf-group-badge pf-group-warn">대기</span> '
+                f"{blocked_head}"
                 f" · {len(blocked)}"
                 f"</div>",
                 unsafe_allow_html=True,
-            )
-            st.caption(
-                copy_get(
-                    "portfolio",
-                    "proposal_blocked_caption",
-                    default="점수 상위이지만 적격이 아니거나 게이트로 빠진 종목. 비중 없음.",
-                )
             )
             render_portfolio_bullets(
                 ctx,
@@ -314,18 +576,45 @@ def _render_proposal_book(ctx: DashboardContext) -> None:
 
 
 def _render_holdings_book(ctx: DashboardContext) -> None:
+    short = is_short(getattr(ctx, "screen_horizon", None))
     with st.container(border=True):
-        ap_subhead(
-            copy_get("portfolio", "sec_holdings", default="④ 보유 종목"),
-            desc=copy_get(
-                "portfolio",
-                "holdings_caption",
-                default=(
-                    "후보 30 표 맨 앞칸 체크와 동기화 · 종목 이름·차트 = 네이버 일봉 · "
-                    "수량 불필요 · 자동매매·target 변경 없음"
-                ),
-            ),
+        held_rows = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+        prop_tks = {
+            str(getattr(r, "ticker", "") or "").zfill(6)
+            for r in (ctx.portfolio_rows or [])
+        }
+        overlap_n = sum(
+            1
+            for r in held_rows
+            if str(getattr(r, "ticker", "") or "").zfill(6) in prop_tks
         )
+        hold_chips: list[tuple[str, str]] = [
+            (f"실보유 {len(held_rows)}", "muted"),
+        ]
+        if overlap_n:
+            hold_chips.append((f"제안중 {overlap_n}", "ok"))
+        hold_chips.append(("노른자는 ③ 대기열", "warn"))
+        _render_section_head(
+            copy_get("portfolio", "sec_holdings", default="④ 보유 종목"),
+            summary=copy_get(
+                "portfolio",
+                "holdings_caption_short" if short else "holdings_caption",
+                default="실보유 · ② 체크와 동기 · 제안과 다를 수 있음.",
+            ),
+            chips=hold_chips,
+            tier="primary",
+        )
+        if short:
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "ops_cue_short_caption",
+                    default=(
+                        "단기 배지(Review-only): 제안 밖·모멘텀 붕괴·52주 −20%=교체 · "
+                        "score_m·6M·상대 약화=축소 · 정당 P/B 미사용 · 자동매도 없음"
+                    ),
+                )
+            )
         _render_alpha_ratio_bar(ctx)
         _render_monthly_rebal_note(ctx)
         render_portfolio_bullets(
@@ -341,46 +630,329 @@ def _esc(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
-def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
-    """Equity vs 단기채 9:1 usage on the holdings book."""
-    from alpha_system.ui.services.alpha_book_ops import (
-        build_alpha_actual_map,
-        load_alpha_book_ops,
+def _render_short_vol_budget_banner(ctx: DashboardContext) -> None:
+    """Review-only: short sleeve budget card (not per-name weight)."""
+    if not is_short(getattr(ctx, "screen_horizon", None)):
+        return
+    advice = getattr(ctx, "short_vol_budget", None)
+    if advice is None:
+        return
+
+    level = str(getattr(advice, "level", "") or "") or "missing"
+    as_of = str(getattr(advice, "as_of", "") or "")
+    action = str(getattr(advice, "action", "") or "")
+    scale = float(getattr(advice, "scale", 1.0) or 1.0)
+    vix = getattr(advice, "vix", None)
+    dd = getattr(advice, "kospi_dd_pct", None)
+
+    level_label = {
+        "calm": copy_get("portfolio", "short_vol_level_calm", default="평온"),
+        "elevated": copy_get("portfolio", "short_vol_level_elevated", default="고변동"),
+        "extreme": copy_get("portfolio", "short_vol_level_extreme", default="극단 변동"),
+        "missing": copy_get("portfolio", "short_vol_level_missing", default="데이터없음"),
+    }.get(level, level)
+
+    tone = {
+        "calm": "calm",
+        "elevated": "elevated",
+        "extreme": "extreme",
+        "missing": "missing",
+    }.get(level, "missing")
+
+    scale_pct = int(round(scale * 100))
+    if level == "calm":
+        scale_line = copy_get(
+            "portfolio",
+            "short_vol_scale_full",
+            default="평소 100%",
+        )
+        scale_sub = copy_get(
+            "portfolio",
+            "short_vol_scale_sub_ok",
+            default="위성 예산 유지",
+        )
+    elif level == "missing":
+        scale_line = "—"
+        scale_sub = copy_get(
+            "portfolio",
+            "short_vol_scale_sub_na",
+            default="권고 불가",
+        )
+    else:
+        scale_line = f"{scale_pct}%"
+        scale_sub = copy_get(
+            "portfolio",
+            "short_vol_scale_sub_cut",
+            default="평소 대비 목표",
+        )
+
+    if not action:
+        if level == "missing":
+            action = copy_get(
+                "portfolio",
+                "short_vol_action_missing",
+                default="시장 지표 갱신 후 재확인",
+            )
+        else:
+            action = copy_get(
+                "portfolio",
+                "short_vol_action_ok",
+                default="평소 단기 예산 유지 가능",
+            )
+
+    chips: list[str] = []
+    if vix is not None:
+        try:
+            chips.append(f"VIX {float(vix):g}")
+        except (TypeError, ValueError):
+            pass
+    if dd is not None:
+        try:
+            chips.append(f"코스피 고가대비 {float(dd):+.1f}%")
+        except (TypeError, ValueError):
+            pass
+    if as_of:
+        chips.append(f"as_of {as_of}")
+    chips_html = (
+        "".join(f'<span class="svb-chip">{_esc(c)}</span>' for c in chips)
+        if chips
+        else f'<span class="svb-chip">{_esc(copy_get("portfolio", "short_vol_chip_empty", default="지표 없음"))}</span>'
     )
 
-    policy = load_alpha_book_ops(ctx.root)
-    actual = build_alpha_actual_map(ctx.root, list(ctx.ops_portfolio_rows or []), policy)
-    if not actual:
-        return
-    cash_pct = actual.get(policy.cash_ticker, (0.0, policy.cash_name))[0]
-    equity_pct = max(0.0, 100.0 - cash_pct)
-    n_equity = sum(1 for tk in actual if tk != policy.cash_ticker)
-    tgt_cash = policy.cash_share * 100.0
-    tgt_equity = policy.equity_share * 100.0
-    gap_cash = cash_pct - tgt_cash
-    gap_equity = equity_pct - tgt_equity
+    kicker = copy_get(
+        "portfolio",
+        "short_vol_kicker",
+        default="단기 위성 예산",
+    )
+    do_lab = copy_get("portfolio", "short_vol_row_do", default="할 일")
+    why_lab = copy_get("portfolio", "short_vol_row_why", default="근거")
+    foot = copy_get(
+        "portfolio",
+        "short_vol_foot",
+        default="종목당 비중·단기채 비율이 아님 · Review-only · 자동매도 없음",
+    )
 
-    if abs(gap_cash) >= 20.0:
+    html_block = (
+        f'<div class="svb-card svb-card-{_esc(tone)}">'
+        f'<div class="svb-kicker">{_esc(kicker)}</div>'
+        f'<div class="svb-head">'
+        f'<div class="svb-level">{_esc(level_label)}</div>'
+        f'<div class="svb-scale-wrap">'
+        f'<div class="svb-scale">{_esc(scale_line)}</div>'
+        f'<span class="svb-scale-label">{_esc(scale_sub)}</span>'
+        f"</div></div>"
+        f'<div class="svb-row"><span class="svb-row-lab">{_esc(do_lab)}</span>'
+        f"<div>{_esc(action)}</div></div>"
+        f'<div class="svb-row"><span class="svb-row-lab">{_esc(why_lab)}</span>'
+        f'<div class="svb-metrics">{chips_html}</div></div>'
+        f'<div class="svb-foot">{_esc(foot)}</div>'
+        f"</div>"
+    )
+    st.markdown(html_block, unsafe_allow_html=True)
+
+
+def _cash_defense_row_html(
+    *,
+    ticker: str,
+    name: str,
+    stage: int | None,
+    review_cash: float | None,
+    review_eq: float | None,
+    actual_cash: float | None,
+    book_cash: float,
+    book_equity: float,
+    equity_actual: float | None,
+    n_equity: int,
+    alert_level: str | None,
+    alert_body: str | None,
+    cash_held: bool = False,  # noqa: ARG001 — caller may pass; targets-only UI
+    value_basis: str = "",  # noqa: ARG001 — kept for call-site compat
+) -> str:
+    """Cash defense card: target ratios on top, supporting Review notes below.
+
+    Actual % is not shown in the headline (Review-only, no auto trade).
+    """
+    from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
+
+    _ = cash_held
+    _ = value_basis
+    _ = equity_actual
+    head = naver_name_chart_html(ticker, name)
+    badge = '<span class="alpha-badge-warn">장부방어</span> '
+    rev_s = f"≈{review_cash:.0f}%" if review_cash is not None else "—"
+    book_s = f"장부 {book_cash:.0f}%"
+
+    if alert_level == "alert":
+        tone = "hot"
+        upside = "내일 검토"
+        read_cls = "pf-chart-read pf-chart-hot"
+    elif alert_level == "warn":
+        tone = "warn"
+        upside = "내일 검토"
+        read_cls = "pf-chart-read pf-chart-hot"
+    else:
+        tone = "ok"
+        upside = "목표 유지"
+        read_cls = "pf-chart-read"
+
+    stage_s = f"단계 {stage}" if stage is not None else "단계 —"
+    eq_rev = f"≈{review_eq:.0f}%" if review_eq is not None else "—"
+    cue_body = (
+        alert_body
+        if alert_body
+        else "장부 단기채 · Review-only · 자동매매·target 변경 없음"
+    )
+    cue = f'<div class="{read_cls}">{_esc(cue_body)}</div>'
+
+    meta = (
+        f"목표보유 개별주 {book_equity:.0f}% / 단기채 {book_cash:.0f}% · "
+        f"나침반 Review 개별주 {eq_rev} / 단기채 {rev_s} ({stage_s})"
+    )
+    if n_equity > 0:
+        meta += f" · 보유 개별주 {n_equity}종"
+
+    # Bar width = Review equity target (policy cue), tone from alert/gap vs actual.
+    cash_for_gap = None if actual_cash is None else float(actual_cash)
+    if (
+        cash_for_gap is not None
+        and review_cash is not None
+        and (float(review_cash) - cash_for_gap) >= 20.0
+    ) or alert_level == "alert":
         fill = "home-usage-fill-danger"
-        tone = "경보"
-    elif abs(gap_cash) >= 10.0:
+    elif (
+        cash_for_gap is not None
+        and review_cash is not None
+        and (float(review_cash) - cash_for_gap) >= 10.0
+    ) or alert_level == "warn":
         fill = "home-usage-fill-warn"
-        tone = "주의"
     else:
         fill = ""
-        tone = "정상"
+    if review_eq is not None:
+        width = max(0.0, min(100.0, float(review_eq)))
+        bar = (
+            '<div class="home-usage-track pf-cash-track">'
+            f'<div class="home-usage-fill {fill}" style="width:{width:.1f}%"></div>'
+            "</div>"
+        )
+    else:
+        bar = ""
 
-    width = max(0.0, min(100.0, equity_pct))
+    return (
+        f'<div class="pf-list pf-cash-defense">'
+        f'<div class="pf-row-main">'
+        f'<div class="pf-bullet-top">'
+        f'<span class="pf-id">{badge}{head}</span>'
+        f'<span class="pf-xchip pf-xchip-wait">Review 단기채</span>'
+        f'<span class="pf-wchip pf-weight-ok">목표 {_esc(rev_s)}</span>'
+        f'<span class="pf-wchip">{_esc(book_s)}</span>'
+        f'<span class="pf-upside pf-tone-{tone}">{_esc(upside)}</span>'
+        f"</div>"
+        f"{cue}"
+        f'<div class="pf-cash-meta">{_esc(meta)}</div>'
+        f"{bar}"
+        f"</div></div>"
+    )
+
+
+def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
+    """Alpha-book defense dial: equity vs 단기채 (not forest bonds).
+
+    Shows actual vs book policy target, plus economy-stage Review cash hint.
+    Does not rewrite target_portfolio or book YAML.
+    """
+    from alpha_system.economy_compass.cache import load_compass_snapshot
+    from alpha_system.ui.services.alpha_book_ops import (
+        build_alpha_actual_map,
+        cash_review_alert,
+        load_alpha_book_ops,
+    )
+    from alpha_system.ui.services.economy_playbook import stage_playbook
+
+    policy = load_alpha_book_ops(ctx.root)
+    ops_rows = list(ctx.ops_portfolio_rows or [])
+    actual = build_alpha_actual_map(ctx.root, ops_rows, policy)
+    tgt_cash = policy.cash_share * 100.0
+    tgt_equity = policy.equity_share * 100.0
+
+    snap = load_compass_snapshot(ctx.root) or {}
+    stage_raw = snap.get("stage")
+    try:
+        stage = int(stage_raw) if stage_raw is not None else None
+    except (TypeError, ValueError):
+        stage = None
+    play = stage_playbook(stage)
+    review_cash = play.cash_pct
+    review_eq = play.equity_pct
+
+    st.caption(
+        copy_get(
+            "portfolio",
+            "alpha_defense_caption",
+            default=(
+                "장부 방어 = 단기채만 · 국채·금은 경제 나침반(숲) · "
+                "장부목표≠나침반 Review · target 자동변경 없음"
+            ),
+        )
+    )
+
+    cash_held = policy.cash_ticker in actual
+    cash_pct: float | None
+    if actual:
+        cash_pct = float(actual.get(policy.cash_ticker, (0.0, policy.cash_name))[0])
+    else:
+        cash_pct = None
+
+    alert = cash_review_alert(
+        stage=stage,
+        review_cash_pct=review_cash,
+        actual_cash_pct=cash_pct,
+        cash_name=policy.cash_name,
+    )
+
+    equity_pct: float | None = None
+    n_equity = 0
+    value_basis = ""
+    if actual and cash_pct is not None:
+        equity_pct = max(0.0, 100.0 - cash_pct)
+        n_equity = sum(1 for tk in actual if tk != policy.cash_ticker)
+        if not cash_held and n_equity > 0:
+            value_basis = ""
+    else:
+        n_equity = sum(
+            1
+            for r in ops_rows
+            if str(getattr(r, "ticker", "") or "").zfill(6)
+            not in {"", "000000", policy.cash_ticker}
+        )
+        if n_equity > 0:
+            equity_pct = 100.0
+            cash_pct = 0.0
+            cash_held = False
+            value_basis = "등가추정"
+            alert = cash_review_alert(
+                stage=stage,
+                review_cash_pct=review_cash,
+                actual_cash_pct=0.0,
+                cash_name=policy.cash_name,
+            )
+
     st.markdown(
-        '<div class="home-usage">'
-        f'<div class="home-usage-meta">{_esc(tone)} · 개별주 {equity_pct:.1f}% '
-        f"({n_equity}종, 목표 {tgt_equity:.0f}%) · {_esc(policy.cash_name)} "
-        f"{cash_pct:.1f}% (목표 {tgt_cash:.0f}%) · 괴리 주식 {gap_equity:+.1f}%p / "
-        f"단기채 {gap_cash:+.1f}%p</div>"
-        '<div class="home-usage-track">'
-        f'<div class="home-usage-fill {fill}" style="width:{width:.1f}%"></div>'
-        "</div>"
-        "</div>",
+        _cash_defense_row_html(
+            ticker=policy.cash_ticker,
+            name=policy.cash_name,
+            stage=stage,
+            review_cash=review_cash,
+            review_eq=review_eq,
+            actual_cash=cash_pct,
+            book_cash=tgt_cash,
+            book_equity=tgt_equity,
+            equity_actual=equity_pct,
+            n_equity=n_equity,
+            alert_level=alert.level if alert else None,
+            alert_body=alert.body if alert else None,
+            cash_held=cash_held,
+            value_basis=value_basis,
+        ),
         unsafe_allow_html=True,
     )
 
@@ -520,6 +1092,31 @@ def _style_watch_df(frame: pd.DataFrame):
     return frame.style.apply(_hl, axis=1)
 
 
+def _watch_hakedaka_by_ticker(
+    ctx: DashboardContext, tickers: list[str]
+) -> dict[str, str]:
+    """Gate summary for the observation table. Not score_sr / not a 0–100 score."""
+    from alpha_system.sizing.hakedaka_screen import (
+        evaluate_hakedaka,
+        hits_label_short,
+        load_hakedaka_inputs,
+    )
+
+    if is_short(getattr(ctx, "screen_horizon", None)):
+        return {str(t).zfill(6) if str(t).isdigit() else str(t): "단기 미적용" for t in tickers}
+    if not bool(getattr(ctx.cfg.sizing, "hakedaka_gate_enabled", True)):
+        return {str(t).zfill(6) if str(t).isdigit() else str(t): "게이트 off" for t in tickers}
+
+    book = _source_dir(ctx)
+    inputs = load_hakedaka_inputs(ctx.root, data_dir=book)
+    min_hits = int(getattr(ctx.cfg.sizing, "hakedaka_min_hits", 2) or 2)
+    out: dict[str, str] = {}
+    for raw in tickers:
+        tk = str(raw).zfill(6) if str(raw).isdigit() else str(raw)
+        out[tk] = hits_label_short(evaluate_hakedaka(tk, inputs, min_hits=min_hits))
+    return out
+
+
 def _render_watch_pool(
     ctx: DashboardContext,
     preview_cutoff: float | None,
@@ -538,9 +1135,13 @@ def _render_watch_pool(
         proposal_tickers=proposal_tickers,
         held_tickers=saved_tickers,
         proposal_band_max=int(preview_n),
-        max_rows=watch_max(getattr(ctx, "screen_market", None)),
+        max_rows=watch_max(
+            getattr(ctx, "screen_market", None),
+            getattr(ctx, "screen_horizon", None),
+        ),
     )
-    metrics = load_watch_metrics(ctx.root, data_dir=ctx.data_dir)
+    metrics = load_watch_metrics(ctx.root, data_dir=_source_dir(ctx))
+    hk_map = _watch_hakedaka_by_ticker(ctx, [r.ticker for r in board.rows])
     table_rows = build_watch_table_rows(
         board,
         metrics=metrics,
@@ -549,22 +1150,12 @@ def _render_watch_pool(
         cutoff=preview_cutoff,
         target_n=int(preview_n),
         blocked_tickers=blocked_tickers,
+        hakedaka_by_ticker=hk_map,
     )
 
+    short_watch = is_short(getattr(ctx, "screen_horizon", None))
     with st.container(border=True):
-        ap_subhead(
-            copy_get("portfolio", "sec_watch", default="② 후보"),
-            desc=copy_get(
-                "portfolio",
-                "watch_intro",
-                default=(
-                    "스크린 상위 관찰 풀 · 이 30종만 OpenDART 재무 보강 · "
-                    "종목 이름 = 네이버 차트 · "
-                    "맨 앞칸 체크 = 실보유 등록 (바로 저장) · target·자동매매 없음"
-                ),
-            ),
-        )
-        st.markdown(
+        legend = (
             '<div class="pf-watch-legend">'
             '<span><span class="pf-swatch pf-swatch-proposal"></span>'
             f"{copy_get('portfolio', 'watch_legend_proposal', default='최종 제안')}</span>"
@@ -574,8 +1165,22 @@ def _render_watch_pool(
             f"{copy_get('portfolio', 'watch_legend_blocked', default='편입 제외')}</span>"
             '<span><span class="pf-swatch pf-swatch-watch"></span>'
             f"{copy_get('portfolio', 'watch_legend_watch', default='관찰')}</span>"
-            "</div>",
-            unsafe_allow_html=True,
+            "</div>"
+        )
+        _render_section_head(
+            copy_get("portfolio", "sec_watch", default="② 후보"),
+            summary=copy_get(
+                "portfolio",
+                "watch_intro_short" if short_watch else "watch_intro",
+                default=(
+                    "관찰 풀 · 맨 앞칸 체크 = ④ 실보유 등록."
+                    if short_watch
+                    else "관찰 풀 · 맨 앞칸 체크 = ④ 실보유 · 표 색 = ① 컷·③ 제안 관계."
+                ),
+            ),
+            chips=[("맨 앞칸 체크 → ④ 보유", "ok")],
+            extra_html=legend,
+            tier="input",
         )
         if board.warnings:
             for w in board.warnings:
@@ -585,21 +1190,36 @@ def _render_watch_pool(
                 f"{r.name} ({r.ticker}) {r.rank}위" for r in board.held_outside
             )
             st.warning(
-                f"관찰 {watch_max(getattr(ctx, 'screen_market', None))} 밖 — "
+                f"관찰 {watch_max(getattr(ctx, 'screen_market', None), getattr(ctx, 'screen_horizon', None))} 밖 — "
                 f"잔류하지 않음: {outside}. "
                 "표에서 체크를 바꾸면 알파에서 빠집니다."
             )
         if not table_rows:
             st.info("스크린된 관찰 종목이 없습니다. 점수판·컷오프를 확인하세요.")
         else:
-            records = [
-                {
+            records = []
+            short = is_short(getattr(ctx, "screen_horizon", None))
+            absorb_map = {}
+            if short:
+                from alpha_system.ui.services.short_absorb_signal import (
+                    absorb_label_for_ticker,
+                    build_absorb_map,
+                )
+
+                absorb_map = build_absorb_map(
+                    ctx.root, getattr(ctx, "screen_market", None)
+                )
+            for r in table_rows:
+                rec = {
                     "순위": r.rank,
                     "구분": watch_tone_label(r.tone),
                     "종목": r.name,
                     "차트": naver_fchart_url(r.ticker),
                     "코드": r.ticker,
                     "점수": r.total_score,
+                    "SR": r.score_sr,
+                    "배당%": r.dividend_yield,
+                    "하케다카": r.hakedaka or "—",
                     "섹터": r.sector or "—",
                     "PER": r.per,
                     "PBR": r.pbr,
@@ -607,8 +1227,9 @@ def _render_watch_pool(
                     "현재가": r.current_price,
                     "목표가": r.target_price,
                 }
-                for r in table_rows
-            ]
+                if short:
+                    rec["흡수"] = absorb_label_for_ticker(absorb_map, r.ticker)
+                records.append(rec)
             frame = pd.DataFrame.from_records(records)
             held_idx = [
                 i for i, r in enumerate(table_rows) if r.ticker in saved_tickers
@@ -641,6 +1262,32 @@ def _render_watch_pool(
                         display_text="차트",
                     ),
                     "점수": st.column_config.NumberColumn("점수", format="%.2f"),
+                    "SR": st.column_config.NumberColumn(
+                        "SR",
+                        format="%.1f",
+                        help="환원 score_sr (배당·성향·자사주·연속성) · 합계 25%",
+                    ),
+                    "배당%": st.column_config.NumberColumn(
+                        "배당%",
+                        format="%.2f",
+                        help="배당수익률(%) · 후보 30 안에서만 표시",
+                    ),
+                    "하케다카": st.column_config.TextColumn(
+                        "하케다카",
+                        help=(
+                            "순차 게이트 · 절대 4축(순현금·자사주·최대주주·순환출자). "
+                            "예: 2/4 통과 · 미측정 1 = 충족 2, 미측정 1, 나머지 불충족. "
+                            "×는 ‘측정됐는데 아님’ · 미측정과 다름. "
+                            "합계·환원(score_sr)과 별개 · 단기 북은 미적용."
+                        ),
+                    ),
+                    "흡수": st.column_config.TextColumn(
+                        "흡수",
+                        help=(
+                            "단기 Review · 거래대금≥20일평균 3배 and 1M 수익률≤+3% "
+                            "(급락 −20% 미만 제외). 매집 단정 아님 · 자동매수 없음."
+                        ),
+                    ),
                     "PER": st.column_config.NumberColumn("PER", format="%.2f"),
                     "PBR": st.column_config.NumberColumn("PBR", format="%.2f"),
                     "ROE": st.column_config.NumberColumn("ROE", format="%.1f"),
@@ -648,6 +1295,39 @@ def _render_watch_pool(
                     "목표가": st.column_config.NumberColumn("목표가", format="%.0f"),
                 },
             )
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "watch_hakedaka_caption",
+                    default=(
+                        "하케다카 = 게이트 · 절대 /4 · SR·배당% = 환원 참고(점수 혼합 아님) · "
+                        "미달이면 중기 최종 제안에서 제외될 수 있음 · "
+                        "순환출자는 True만 측정(대부분 미측정이 정상)"
+                    ),
+                )
+            )
+            from alpha_system.sizing.hakedaka_screen import (
+                coverage_for_tickers,
+                load_hakedaka_inputs,
+            )
+
+            cov = coverage_for_tickers(
+                [r.ticker for r in board.rows],
+                load_hakedaka_inputs(ctx.root, data_dir=_source_dir(ctx)),
+                min_hits=int(getattr(ctx.cfg.sizing, "hakedaka_min_hits", 2) or 2),
+            )
+            st.caption(cov.caption())
+            if cov.n and cov.owner == 0:
+                st.caption(
+                    copy_get(
+                        "portfolio",
+                        "watch_hakedaka_owner_gap",
+                        default=(
+                            "최대주주 0% — OpenDART「다시 탐색」으로 관찰 풀만 보강 "
+                            "(corp 코드 캐시·API). 전 유니버스가 아님."
+                        ),
+                    )
+                )
             sel_rows = list(getattr(getattr(event, "selection", None), "rows", None) or [])
             sel_tickers = []
             for i in sel_rows:
@@ -687,7 +1367,7 @@ def _render_candidate_ai_export(
         table_rows=table_rows,
         scoreboard_rows=ctx.scoreboard_rows or [],
         root=ctx.root,
-        data_dir=ctx.data_dir,
+        data_dir=_source_dir(ctx),
         hakedaka_min_hits=int(getattr(ctx.cfg.sizing, "hakedaka_min_hits", 2) or 2),
     )
     mkt = str(getattr(ctx, "screen_market", "KOSPI") or "KOSPI")
@@ -816,7 +1496,7 @@ def _render_sector_exposure(ctx: DashboardContext) -> None:
     rows = ctx.portfolio_rows or []
     if not rows:
         return
-    exposures = assess_sector_weight_caps(rows, data_dir=ctx.data_dir)
+    exposures = assess_sector_weight_caps(rows, data_dir=_source_dir(ctx))
     overs = [e for e in exposures if e.over]
     if overs:
         for e in overs:
@@ -877,29 +1557,39 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
     rec = recommended_absolute_cutoff_option(ladder, scored)
 
     yaml_n = current_n
-    n_min, n_max, n_default = target_names_band(getattr(ctx, "screen_market", None))
+    n_min, n_max, n_default = target_names_band(
+        getattr(ctx, "screen_market", None),
+        getattr(ctx, "screen_horizon", None),
+    )
     if yaml_n < n_min or yaml_n > n_max:
         yaml_n = n_default
 
-    mkt = str(getattr(ctx, "screen_market", "KOSPI") or "KOSPI")
+    mkt = _book_keys(ctx)
     cutoff_key = f"portfolio_cutoff_natural_break_{mkt}"
     count_key = f"portfolio_target_names_band_{mkt}"
 
     with st.container(border=True):
-        ap_subhead(
+        yaml_label = (
+            f"{current_cutoff:.2f}" if current_cutoff is not None else "미확정"
+        )
+        _render_section_head(
             copy_get("portfolio", "sec_cutoff", default="① 선정 규칙"),
-            desc=copy_get(
+            summary=copy_get(
                 "portfolio",
                 "cutoff_caption",
-                default="합격선·편입 수는 여기서 확정합니다. YAML은 확정 전까지 그대로입니다.",
+                default="합격선·편입 수를 고른 뒤 아래에서 확정. 확정 전 YAML·제안 북은 그대로.",
             ),
+            chips=[
+                (f"저장 컷 {yaml_label}", "muted"),
+                (f"편입 {current_n}종", "muted"),
+            ],
+            tier="input",
         )
         if not ladder or rec is None:
-            yaml_label = (
-                f"{current_cutoff:.2f}" if current_cutoff is not None else "미확정"
+            _render_status_card(
+                "컷오프를 계산할 유효 스코어가 없습니다. 확인 → ① 정량을 갱신하세요.",
+                tone="warn",
             )
-            st.caption(f"저장 컷 {yaml_label} · 편입 {current_n}종")
-            st.warning("컷오프를 계산할 유효 스코어가 없습니다.")
             return current_cutoff, yaml_n
 
         natural = [option for option in ladder if option.is_natural_break]
@@ -935,6 +1625,10 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
         if _session_rank(count_key, set(range(n_min, n_max + 1))) is None:
             st.session_state[count_key] = yaml_n
 
+        _render_control_card(
+            "점수 컷오프",
+            hint="합격선 · 아래 선택 · 표 색만 미리보기",
+        )
         picked = st.radio(
             "점수 컷오프",
             options=break_ranks,
@@ -944,14 +1638,19 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
             ),
             horizontal=True,
             key=cutoff_key,
+            label_visibility="collapsed",
         )
         cutoff_opt = by_rank[int(picked)]
+        _render_control_card(
+            "제안 편입 수",
+            hint="컷 통과 종목 중 제안에 담을 최대 수",
+        )
         target_n = st.radio(
             "제안 편입 수",
             options=list(range(n_min, n_max + 1)),
             horizontal=True,
             key=count_key,
-            help="컷을 통과한 종목 중 제안 북에 담을 최대 수. 표의 제안 밴드 색이 같이 바뀝니다.",
+            label_visibility="collapsed",
         )
 
         preview_scores = [
@@ -984,7 +1683,7 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
             scores=preview_scores,
             existing_weights={},
             tranche_budget=1.0,
-            overlay=load_qual_overlay(overlay_path(ctx.data_dir)),
+            overlay=load_qual_overlay(overlay_path(_source_dir(ctx))),
             exclude_tickers=collect_above_justified_target_tickers_from_root(
                 [s.ticker for s in preview_scores],
                 ctx.root,
@@ -993,16 +1692,11 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
         selected_n = sum(
             1 for a in preview_alloc.allocated if a.incremental_weight > 0
         )
-        yaml_label = (
-            f"{current_cutoff:.2f}" if current_cutoff is not None else "미확정"
-        )
-        st.caption(
-            f"미리보기 컷 **{cutoff_opt.cutoff:.2f}** · "
-            f"적격 **{cutoff_opt.eligible_count}종** · "
-            f"편입 **{int(target_n)}종** · "
-            f"제안 예상 **{selected_n}종** "
-            f"(저장 {yaml_label} / {current_n}종). "
-            "표 색만 바뀝니다. 확정 전 제안 북·yaml은 그대로입니다."
+        _render_status_card(
+            f"미리보기 컷 {cutoff_opt.cutoff:.2f} · 적격 {cutoff_opt.eligible_count}종 · "
+            f"편입 {int(target_n)}종 · 제안 예상 {selected_n}종 "
+            f"(저장 {yaml_label} / {current_n}종) · 확정 전 YAML·제안 북 불변",
+            tone="ok",
         )
 
         changed = (
@@ -1011,16 +1705,17 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
             or abs(float(current_cutoff) - cutoff_opt.cutoff) > 1e-9
         )
         with st.expander("이 규칙으로 확정", expanded=current_cutoff is None):
-            st.caption(
-                f"경계 `{cutoff_opt.boundary_ticker}` {cutoff_opt.boundary_name}"
+            boundary = (
+                f"경계 {cutoff_opt.boundary_ticker} {cutoff_opt.boundary_name}"
                 + (
-                    f" · 바로 아래 `{cutoff_opt.next_ticker}` "
+                    f" · 바로 아래 {cutoff_opt.next_ticker} "
                     f"{cutoff_opt.next_name} · 갭 {cutoff_opt.margin_below:.2f}"
                     if cutoff_opt.next_ticker is not None
                     and cutoff_opt.margin_below is not None
                     else ""
                 )
             )
+            _render_status_card(boundary, tone="muted")
             if not changed:
                 st.success("현재 설정과 동일합니다.")
             else:
@@ -1041,7 +1736,14 @@ def _render_cutoff_bar(ctx: DashboardContext) -> tuple[float | None, int]:
                     key=f"portfolio_abs_cutoff_save_{mkt}",
                 ):
                     try:
-                        if is_kosdaq(getattr(ctx, "screen_market", None)):
+                        if is_short(getattr(ctx, "screen_horizon", None)):
+                            backup = save_short_policy(
+                                ctx.root,
+                                getattr(ctx, "screen_market", None),
+                                cutoff=cutoff_opt.cutoff,
+                                target_names=int(target_n),
+                            )
+                        elif is_kosdaq(getattr(ctx, "screen_market", None)):
                             backup = save_kosdaq_policy(
                                 ctx.root,
                                 cutoff=cutoff_opt.cutoff,
