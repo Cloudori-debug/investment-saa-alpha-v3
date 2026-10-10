@@ -281,6 +281,7 @@ def metric_rows(signal: EconomySignal, *, today: date | None = None) -> list[dic
     for item in signal.inputs:
         rows.append(
             {
+                "key": item.key,
                 "title": metric_title(item),
                 "hint": metric_hint(item),
                 "reading": metric_reading(item),

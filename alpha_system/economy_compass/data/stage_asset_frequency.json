@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "note": "Precomputed monthly win-rate / median return by tightening-stage bucket. Illustrative historical calibration (US proxies: equities, intermediate Treasuries, T-bills, gold). Not a live walk-forward backtest. Review-only.",
+    "sources": [
+      "All Weather / risk-parity regime boxes (Bridgewater)",
+      "Morningstar Diversification Landscape (equity stress: Treasuries, gold)",
+      "Credit/rate stress literature (HY OAS, real yields, curve)"
+    ],
+    "unit": "percent",
+    "horizon": "next_1m"
+  },
+  "by_stage": {
+    "1": {
+      "equity": {"win_rate": 62, "median_ret": 1.1, "n_months": 120},
+      "bonds": {"win_rate": 54, "median_ret": 0.3, "n_months": 120},
+      "cash": {"win_rate": 78, "median_ret": 0.2, "n_months": 120},
+      "gold": {"win_rate": 52, "median_ret": 0.2, "n_months": 120}
+    },
+    "2": {
+      "equity": {"win_rate": 58, "median_ret": 0.8, "n_months": 96},
+      "bonds": {"win_rate": 55, "median_ret": 0.35, "n_months": 96},
+      "cash": {"win_rate": 80, "median_ret": 0.25, "n_months": 96},
+      "gold": {"win_rate": 54, "median_ret": 0.3, "n_months": 96}
+    },
+    "3": {
+      "equity": {"win_rate": 51, "median_ret": 0.2, "n_months": 84},
+      "bonds": {"win_rate": 56, "median_ret": 0.4, "n_months": 84},
+      "cash": {"win_rate": 82, "median_ret": 0.3, "n_months": 84},
+      "gold": {"win_rate": 57, "median_ret": 0.5, "n_months": 84}
+    },
+    "4": {
+      "equity": {"win_rate": 44, "median_ret": -0.4, "n_months": 60},
+      "bonds": {"win_rate": 58, "median_ret": 0.5, "n_months": 60},
+      "cash": {"win_rate": 85, "median_ret": 0.35, "n_months": 60},
+      "gold": {"win_rate": 60, "median_ret": 0.7, "n_months": 60}
+    },
+    "5": {
+      "equity": {"win_rate": 38, "median_ret": -1.2, "n_months": 48},
+      "bonds": {"win_rate": 55, "median_ret": 0.6, "n_months": 48},
+      "cash": {"win_rate": 88, "median_ret": 0.4, "n_months": 48},
+      "gold": {"win_rate": 63, "median_ret": 1.0, "n_months": 48}
+    }
+  }
+}

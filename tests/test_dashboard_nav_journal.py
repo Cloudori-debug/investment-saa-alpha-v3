@@ -43,12 +43,12 @@ def test_primary_pages_sellable_ia_order() -> None:
     assert PAGE_DISPLAY_NAMES["포트폴리오"] == "포트폴리오"
     assert "홈" not in PAGE_DISPLAY_NAMES
     assert page_display_name("결재함", badge=3) == "확인 · 3"
-    assert NAV_MAIN_PAGES == ("결재함", "포트폴리오")
+    assert NAV_MAIN_PAGES == ("결재함", "포트폴리오", "경제시그널")
     assert "저널" in NAV_MORE_PAGES
     assert "설정" in NAV_MORE_PAGES
-    assert NAV_MORE_PAGES[0] == "경제시그널"
+    assert "경제시그널" not in NAV_MORE_PAGES
     assert "레짐" not in NAV_MORE_PAGES
-    assert PAGE_DISPLAY_NAMES["경제시그널"] == "경제 시그널"
+    assert PAGE_DISPLAY_NAMES["경제시그널"] == "경제 나침반"
     assert "홈" not in NAV_MAIN_PAGES
 
 

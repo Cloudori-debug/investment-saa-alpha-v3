@@ -21,7 +21,7 @@ PAGE_SCORES = PAGE_APPROVAL
 PAGE_RULES = PAGE_APPROVAL
 PAGE_CECS = PAGE_APPROVAL
 
-# Sellable IA order: 확인 → 포트폴리오 first; 저널·설정 in 더보기.
+# Sellable IA order: 확인 → 포트폴리오 → 경제 시그널; 저널·설정 in 더보기.
 PRIMARY_PAGES = (
     PAGE_APPROVAL,
     PAGE_PORTFOLIO,
@@ -34,7 +34,7 @@ PRIMARY_PAGES = (
 PAGE_HINTS: dict[str, str] = {
     PAGE_APPROVAL: "정량 · 정성",
     PAGE_PORTFOLIO: "관찰 · 제안 · 실보유",
-    PAGE_ECONOMY: "비중 제안 · 미적용",
+    PAGE_ECONOMY: "나침반 · 슬리브 Review",
     PAGE_JOURNAL: "판정·승인 기록",
     PAGE_SETTINGS: "화면 · API · 도구",
 }
@@ -43,14 +43,14 @@ PAGE_HINTS: dict[str, str] = {
 PAGE_DISPLAY_NAMES: dict[str, str] = {
     PAGE_APPROVAL: "확인",
     PAGE_PORTFOLIO: "포트폴리오",
-    PAGE_ECONOMY: "경제 시그널",
+    PAGE_ECONOMY: "경제 나침반",
     PAGE_JOURNAL: "저널",
     PAGE_SETTINGS: "설정",
 }
 
 # Primary strip vs folded "더보기".
-NAV_MAIN_PAGES: tuple[str, ...] = (PAGE_APPROVAL, PAGE_PORTFOLIO)
-NAV_MORE_PAGES: tuple[str, ...] = (PAGE_ECONOMY, PAGE_JOURNAL, PAGE_SETTINGS)
+NAV_MAIN_PAGES: tuple[str, ...] = (PAGE_APPROVAL, PAGE_PORTFOLIO, PAGE_ECONOMY)
+NAV_MORE_PAGES: tuple[str, ...] = (PAGE_JOURNAL, PAGE_SETTINGS)
 
 
 def page_display_name(page: str, *, badge: int | None = None) -> str:

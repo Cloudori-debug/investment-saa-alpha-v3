@@ -395,43 +395,114 @@ code, pre, [data-testid="stCode"] {
   color: var(--saa-fg);
   line-height: 1.45;
 }
-.eco-play {
+.eco-todo {
   border: 1px solid var(--saa-border);
   border-radius: 8px;
-  padding: 0.75rem 0.85rem 0.7rem;
+  padding: 0.7rem 0.75rem 0.65rem;
   margin: 0 0 0.55rem;
   background: var(--saa-card);
 }
-.eco-play-wait {
+.eco-todo-wait {
   border-color: color-mix(in srgb, var(--saa-warn-chip, #ffe0b2) 80%, var(--saa-border));
-  background: color-mix(in srgb, var(--saa-warn-chip, #fff8e8) 35%, var(--saa-card));
+  background: color-mix(in srgb, var(--saa-warn-chip, #fff8e8) 28%, var(--saa-card));
 }
-.eco-play-bad {
+.eco-todo-bad {
   border-color: color-mix(in srgb, var(--saa-danger-chip, #ffcdd2) 80%, var(--saa-border));
-  background: color-mix(in srgb, var(--saa-danger-chip, #ffebee) 30%, var(--saa-card));
+  background: color-mix(in srgb, var(--saa-danger-chip, #ffebee) 24%, var(--saa-card));
 }
-.eco-play-ok {
+.eco-todo-ok {
   border-color: color-mix(in srgb, var(--saa-ok-bg, #c8e6c9) 70%, var(--saa-border));
 }
-.eco-play-title {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--saa-fg);
+.eco-todo-forest {
+  border-style: dashed;
 }
-.eco-play-split {
-  margin-top: 0.2rem;
-  font-size: 0.82rem;
+.eco-todo-head { margin-bottom: 0.55rem; }
+.eco-todo-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--saa-fg);
+  letter-spacing: -0.02em;
+}
+.eco-todo-sub {
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
   color: var(--saa-muted);
   font-variant-numeric: tabular-nums;
 }
-.eco-play-list {
-  margin: 0.45rem 0 0;
-  padding-left: 1.15rem;
-  font-size: 0.84rem;
-  line-height: 1.45;
-  color: var(--saa-fg);
+.eco-todo-bar {
+  display: flex;
+  width: 100%;
+  height: 1.55rem;
+  margin-top: 0.45rem;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--saa-border) 80%, transparent);
+  background: var(--saa-bg, #f5f5f5);
 }
-.eco-play-list li { margin: 0.18rem 0; }
+.eco-todo-bar-eq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: color-mix(in srgb, var(--saa-accent, #3d6e8f) 42%, #fff);
+}
+.eco-todo-bar-cash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: color-mix(in srgb, var(--saa-ok-bg, #c8e6c9) 75%, #fff);
+}
+.eco-todo-bar-lab {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--saa-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.eco-todo-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+@media (min-width: 720px) {
+  .eco-todo-grid { grid-template-columns: 1fr 1fr; }
+}
+.eco-todo-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
+  align-items: start;
+  background: var(--saa-card);
+  border: 1px solid var(--saa-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem 0.58rem;
+}
+.eco-todo-n {
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--saa-muted);
+  min-width: 1.4rem;
+}
+.eco-todo-label {
+  font-weight: 700;
+  font-size: 0.84rem;
+  color: var(--saa-fg);
+  letter-spacing: -0.01em;
+}
+.eco-todo-body {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--saa-muted);
+}
 .eco-gap-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -561,6 +632,108 @@ code, pre, [data-testid="stCode"] {
 .eco-stress.eco-wait { background: var(--saa-warn-chip); color: var(--saa-warn-fg); }
 .eco-stress.eco-bad { background: var(--saa-danger-chip); color: var(--saa-danger-fg); }
 .eco-stress.eco-off { background: var(--saa-muted-bg); color: var(--saa-muted); }
+.eco-compass-block {
+  margin: 0.35rem 0 0.85rem;
+}
+.eco-compass-empty, .eco-compass-alpha, .eco-compass-warn, .eco-kr-link {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--saa-fg);
+  margin: 0 0 0.45rem;
+}
+.eco-compass-warn {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--saa-warn-chip, #ffe0b2) 70%, #fff);
+  border-left: 3px solid #ef6c00;
+}
+.eco-compass-alpha { color: var(--saa-muted); }
+.eco-sleeve-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+@media (min-width: 900px) {
+  .eco-sleeve-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.eco-sleeve {
+  background: var(--saa-card);
+  border: 1px solid var(--saa-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border-top: 3px solid var(--saa-border);
+}
+.eco-sleeve-up { border-top-color: #2e7d32; }
+.eco-sleeve-down { border-top-color: #c62828; }
+.eco-sleeve-flat { border-top-color: #78909c; }
+.eco-sleeve-k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--saa-muted);
+  letter-spacing: 0.02em;
+}
+.eco-sleeve-pct {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 0.15rem 0 0.1rem;
+}
+.eco-sleeve-act {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.eco-sleeve-up .eco-sleeve-act { color: #2e7d32; }
+.eco-sleeve-down .eco-sleeve-act { color: #c62828; }
+.eco-sleeve-why {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--saa-muted);
+}
+.eco-hist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin: 0.2rem 0 0.4rem;
+}
+.eco-hist-table th,
+.eco-hist-table td {
+  border-bottom: 1px solid var(--saa-border);
+  padding: 0.35rem 0.4rem;
+  text-align: left;
+}
+.eco-hist-table th {
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  font-weight: 700;
+}
+.eco-hist-table .eco-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.eco-hist-note {
+  font-size: 0.74rem;
+  color: var(--saa-muted);
+  line-height: 1.4;
+}
+.eco-m-sleeve-v {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--saa-fg);
+  padding-top: 0.3rem;
+  border-top: 1px dashed var(--saa-border);
+}
+.eco-m-sleeve-list { margin: 0.35rem 0 0.7rem; }
+.eco-m-sleeve {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--saa-border);
+  font-size: 0.8rem;
+}
+.eco-m-sleeve-k { font-weight: 700; color: var(--saa-muted); }
 .pc-sec {
   font-size: 0.72rem;
   font-weight: 700;

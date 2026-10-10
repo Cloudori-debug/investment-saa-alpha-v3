@@ -41,8 +41,8 @@ def test_page_head_copy_keys() -> None:
     assert copy_get("portfolio", "sec_watch").startswith("②")
     assert copy_get("portfolio", "rebal_note")
     assert copy_get("journal", "page_kicker") == "저널"
-    assert copy_get("economy", "page_kicker") == "경제 시그널"
-    assert "개별주" in copy_get("economy", "page_title")
+    assert copy_get("economy", "page_kicker") == "경제 나침반"
+    assert "슬리브" in copy_get("economy", "page_title")
 
 
 def test_compact_layout_has_no_sidebar_toggle() -> None:
