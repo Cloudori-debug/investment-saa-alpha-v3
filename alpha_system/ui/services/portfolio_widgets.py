@@ -466,6 +466,7 @@ def _row_main_html(
     proposed: set[str] | None = None,
     blocked: set[str] | None = None,
     phcvs: set[str] | None = None,
+    flow_data_dir: Path | None = None,
 ) -> str:
     badge = _ops_badge_html(row, chart)
     extra = row.extra or {}
@@ -498,15 +499,14 @@ def _row_main_html(
         blocked=blocked or set(),
         phcvs=phcvs,
     )
+    synth_html = ""
+    if not is_blocked:
+        synth_html = _chart_flow_synth_html(row, chart, flow_data_dir)
     upside_html = (
         f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
         if upside_txt
         else ""
     )
-    # Ops collapsed: proposal-like chrome; skip dense signal dump (expand has it).
-    signal_html = ""
-    if not is_blocked and not is_ops:
-        signal_html = _chart_read_html(row, chart)
     bar_html = ""
     if not is_blocked and not in_proposal:
         bar_html = render_price_bar_html(row)
@@ -520,10 +520,422 @@ def _row_main_html(
         f"{spot}"
         f"{upside_html}"
         f"</div>"
-        f"{signal_html}"
+        f"{synth_html}"
         f"{bar_html}"
         f"</div>"
     )
+
+
+def _earn_mom_chip_html(extra: dict) -> str:
+    """Optional earnings-momentum chip when row already has a direction field."""
+    raw = (
+        extra.get("earn_mom_label")
+        or extra.get("earnings_mom_label")
+        or extra.get("earn_revision")
+        or extra.get("earnings_surprise_dir")
+    )
+    if raw in (None, ""):
+        # Derive from YoY-ish fields if both present (display-only).
+        cur = extra.get("net_income")
+        prev = extra.get("net_income_y1")
+        if cur not in (None, "") and prev not in (None, ""):
+            try:
+                c, p = float(cur), float(prev)
+                if p == 0:
+                    return ""
+                delta = (c - p) / abs(p)
+                if delta > 0.03:
+                    raw = "상향"
+                elif delta < -0.03:
+                    raw = "하향"
+                else:
+                    raw = "보합"
+            except (TypeError, ValueError):
+                return ""
+        else:
+            return ""
+    label = str(raw).strip()
+    if not label:
+        return ""
+    tone = "flat"
+    if any(x in label for x in ("상향", "개선", "서프라이즈+", "beat", "UP")):
+        tone = "up"
+    elif any(x in label for x in ("하향", "악화", "miss", "DOWN")):
+        tone = "down"
+    cls = {"up": "pf-earn-up", "down": "pf-earn-down"}.get(tone, "")
+    return (
+        f'<span class="pf-earn-chip {cls}">실적 · {escape(label)}</span>'
+    )
+
+
+def _mid_exit_parts(row: PortfolioRow) -> dict[str, str]:
+    """Exit side of mid book cue: hold / trim / cash / exit / missing."""
+    kind = str(row.ops_signal or "").strip()
+    label = (row.ops_signal_label or "").strip()
+    detail = (row.ops_signal_detail or "").strip()
+    missing_target = (not row.has_target) or kind == "missing"
+    if missing_target and not label:
+        label = "목표없음"
+        kind = kind or "missing"
+    tone = {
+        "cash_half": "hot",
+        "trim": "warn",
+        "exit_full": "hot",
+        "missing": "danger",
+        "invalid": "muted",
+        "hold": "ok",
+    }.get(kind, "muted")
+    trim = row.ops_trim_pct
+    trim_s = f" {int(trim)}%" if trim is not None else ""
+
+    if missing_target or kind == "missing":
+        banner = copy_get(
+            "portfolio",
+            "exit_missing_banner",
+            default="익절 불가 · 목표가 없음 — 상승해도 환금 신호가 안 납니다",
+        )
+        return {
+            "kind": "missing",
+            "tone": "danger",
+            "label": label or "목표없음",
+            "why": f"{banner} · E에서 목표가 채우기",
+        }
+    if not label:
+        return {"kind": "", "tone": "muted", "label": "", "why": ""}
+    if kind == "cash_half":
+        why = detail or "목표가 도달 · 보유 절반 환금 Review"
+    elif kind == "trim":
+        why = detail or "목표가 근접 · 보유 ¼ 줄이기 Review"
+    elif kind == "exit_full":
+        why = detail or "전량 환금 Review"
+    elif kind == "hold":
+        why = detail or "보유분 유지 · 하락 %=손절 아님"
+    else:
+        why = detail or "목표가 기준 Review"
+    return {
+        "kind": kind or "hold",
+        "tone": tone,
+        "label": f"{label}{trim_s}".strip(),
+        "why": why,
+    }
+
+
+def _mid_buy_parts(row: PortfolioRow) -> dict[str, str]:
+    """Add-on buy side: 매수1/2 / 없음 / 보류 — never overrides exit."""
+    extra = row.extra or {}
+    kind = str(row.ops_signal or "").strip()
+    if kind in {"cash_half", "trim", "exit_full"}:
+        return {
+            "tone": "holdoff",
+            "label": "추가 매수 보류",
+            "why": "익절·축소가 우선 · 추격 매수 금지",
+        }
+    if (not row.has_target) or kind == "missing":
+        return {
+            "tone": "muted",
+            "label": "추가 매수 대기",
+            "why": "목표가·사다리 없음",
+        }
+    if not bool(extra.get("ladder_ok")):
+        return {
+            "tone": "muted",
+            "label": "추가 매수 대기",
+            "why": "사다리 데이터 부족",
+        }
+
+    rungs = list(extra.get("ladder_rungs") or [])
+    labels = list(extra.get("ladder_labels") or ("매수1", "매수2", "줄이기", "절반", "전량"))
+    now_idx = _rung_now_idx(row.current_price, rungs)
+    buy1_px = _won(rungs[0]) if len(rungs) > 0 else "—"
+    buy2_px = _won(rungs[1]) if len(rungs) > 1 else "—"
+    buy1_s = f"{buy1_px}원" if buy1_px != "—" else "—"
+    buy2_s = f"{buy2_px}원" if buy2_px != "—" else "—"
+
+    if extra.get("ladder_under_low") or now_idx <= 0:
+        name = labels[0] if labels else "매수1"
+        return {
+            "tone": "ok",
+            "label": f"추가만 {name}",
+            "why": f"≤{buy1_s} 근처 분할 Review · 보유분은 유지",
+        }
+    if now_idx == 1:
+        name = labels[1] if len(labels) > 1 else "매수2"
+        return {
+            "tone": "ok",
+            "label": f"추가만 {name}",
+            "why": f"≤{buy2_s} 근처 분할 · 1차 {buy1_s} · 보유분은 유지",
+        }
+    if extra.get("ladder_over_high"):
+        return {
+            "tone": "holdoff",
+            "label": "추가 매수 없음",
+            "why": "상한 위 · 신규·추가 금지",
+        }
+    rung_name = labels[now_idx] if now_idx < len(labels) else "상단"
+    return {
+        "tone": "holdoff",
+        "label": "추가 매수 없음",
+        "why": f"지금은 {rung_name} 구간 · 매수1 {buy1_s} · 매수2 {buy2_s}",
+    }
+
+
+def _mid_book_cue_html(row: PortfolioRow) -> str:
+    """One mid cue: 보유처분 | 추가매수 — no competing 유지 vs 매수 strips."""
+    if _is_short_ops_row(row):
+        return ""
+    exit_p = _mid_exit_parts(row)
+    buy_p = _mid_buy_parts(row)
+    if not exit_p.get("label") and not buy_p.get("label"):
+        return ""
+
+    # Exit tone wins when actionable; else buy ok can tint mildly.
+    tone = exit_p.get("tone") or "muted"
+    if exit_p.get("kind") in {"", "hold"} and buy_p.get("tone") == "ok":
+        tone = "ok"
+
+    primary = exit_p.get("label") or "—"
+    secondary = buy_p.get("label") or "—"
+    why_bits = [exit_p.get("why") or "", buy_p.get("why") or ""]
+    why = " · ".join(b for b in why_bits if b)
+
+    return (
+        f'<div class="pf-review-card pf-review-1 pf-book-{escape(tone)}" '
+        f'title="1순위 · 보유 처분 | 추가 매수 · 자동매매 없음">'
+        f'<div class="pf-review-top">'
+        f'<span class="pf-review-kicker">1 · 운영</span>'
+        f'<span class="pf-review-hint">보유 · 추가</span>'
+        f"</div>"
+        f'<div class="pf-review-main">'
+        f'<span class="pf-review-primary">{escape(primary)}</span>'
+        f'<span class="pf-review-sep">|</span>'
+        f'<span class="pf-review-secondary">{escape(secondary)}</span>'
+        f"</div>"
+        f'<div class="pf-review-body">{escape(why)}</div>'
+        f"</div>"
+    )
+
+
+def _mid_exit_layer_html(row: PortfolioRow) -> str:
+    """Backward-compatible alias — unified book cue only."""
+    return _mid_book_cue_html(row) if not _is_short_ops_row(row) else ""
+
+
+def _mid_buy_layer_html(row: PortfolioRow) -> str:
+    """Merged into book cue; keep empty so callers do not double-render."""
+    return ""
+
+
+def _mom_pct_plain(val: object) -> str | None:
+    try:
+        if val in (None, ""):
+            return None
+        return f"{float(val) * 100:+.0f}%"
+    except (TypeError, ValueError):
+        return None
+
+
+def _mom_flow_label(
+    *,
+    r6: object = None,
+    r121: object = None,
+    xs: object = None,
+    sm: object = None,
+    trend: str = "",
+) -> tuple[str, str]:
+    """Human label + short why for momentum (no score_m / 12-1 jargon)."""
+    r6_f = None
+    r121_f = None
+    xs_f = None
+    sm_f = None
+    try:
+        if r6 not in (None, ""):
+            r6_f = float(r6)
+    except (TypeError, ValueError):
+        pass
+    try:
+        if r121 not in (None, ""):
+            r121_f = float(r121)
+    except (TypeError, ValueError):
+        pass
+    try:
+        if xs not in (None, ""):
+            xs_f = float(xs)
+    except (TypeError, ValueError):
+        pass
+    try:
+        if sm not in (None, ""):
+            sm_f = float(sm)
+    except (TypeError, ValueError):
+        pass
+
+    # Rank strength: cross-percentile preferred, else score_m as 0–100-ish.
+    strength = ""
+    if xs_f is not None:
+        if xs_f >= 60:
+            strength = "장부 안에서도 센 편"
+        elif xs_f < 40:
+            strength = "장부 안에서는 약한 편"
+        else:
+            strength = "장부 안에서는 중간"
+    elif sm_f is not None:
+        if sm_f >= 60:
+            strength = "중기 점수 좋은 편"
+        elif sm_f < 40:
+            strength = "중기 점수 약한 편"
+        else:
+            strength = "중기 점수 보통"
+
+    up = (r6_f is not None and r6_f > 0.02) or (r121_f is not None and r121_f > 0.05)
+    down = (r6_f is not None and r6_f < -0.02) or (r121_f is not None and r121_f < -0.05)
+    if trend.upper() == "UP":
+        up = True
+    if trend.upper() == "DOWN":
+        down = True
+
+    if up and not down:
+        label = "흐름 좋음"
+    elif down and not up:
+        label = "흐름 약함"
+    elif r6_f is None and r121_f is None and not strength:
+        label = "데이터 부족"
+    else:
+        label = "흐름 보통"
+
+    bits: list[str] = []
+    r6_s = _mom_pct_plain(r6_f) if r6_f is not None else None
+    r121_s = _mom_pct_plain(r121_f) if r121_f is not None else None
+    if r6_s:
+        bits.append(f"최근 반년 {r6_s}")
+    if r121_s:
+        bits.append(f"최근 1년(한 달 제외) {r121_s}")
+    if strength:
+        bits.append(strength)
+    if label == "데이터 부족":
+        why = "가격 추세 숫자가 없어 참고만"
+    elif not bits:
+        why = "추세 참고 · 순위는 바꾸지 않음"
+    else:
+        why = " · ".join(bits)
+    return label, why
+
+
+def _momentum_layer_html(row: PortfolioRow) -> str:
+    """Plain-language momentum card — Review-only, never changes QV rank."""
+    extra = row.extra or {}
+    earn = _earn_mom_chip_html(extra)
+    if _is_short_ops_row(row):
+        badge = (row.ops_signal_label or "").strip()
+        label, why = _mom_flow_label(
+            r6=extra.get("return_6m"),
+            r121=extra.get("return_12m_ex_1m"),
+            xs=extra.get("mom_xs_pct"),
+            sm=extra.get("score_m"),
+            trend=str(extra.get("trend_sign") or ""),
+        )
+        primary = badge or label
+        body = why
+        if badge and label and label != "데이터 부족":
+            body = f"{label} · {why}" if why else label
+    else:
+        label, why = _mom_flow_label(
+            r6=extra.get("return_6m"),
+            r121=extra.get("return_12m_ex_1m"),
+            xs=extra.get("mom_xs_pct"),
+            sm=extra.get("score_m"),
+        )
+        primary = label
+        body = why
+
+    tone = "ok"
+    if "약함" in primary or "약함" in (body or ""):
+        tone = "warn"
+    elif "부족" in primary:
+        tone = "muted"
+    elif "보통" in primary:
+        tone = "muted"
+
+    return (
+        f'<div class="pf-review-card pf-review-2 pf-mom-{escape(tone)}" '
+        f'title="2순위 · 중기 흐름(들어가도 되나) · 순위 불변">'
+        f'<div class="pf-review-top">'
+        f'<span class="pf-review-kicker">2 · 모멘텀</span>'
+        f'<span class="pf-review-hint">중기 타이밍</span>'
+        f"{earn}"
+        f"</div>"
+        f'<div class="pf-review-main">'
+        f'<span class="pf-review-primary">{escape(primary)}</span>'
+        f"</div>"
+        f'<div class="pf-review-body">{escape(body or "")}</div>'
+        f"</div>"
+    )
+
+
+def _chart_flow_synth_html(
+    row: PortfolioRow,
+    chart: ChartRead | None,
+    flow_data_dir: Path | None,
+) -> str:
+    """오늘 비중 → 1운영 → 2모멘텀 → 3지금. Review-only."""
+    from alpha_system.ui.services.chart_flow_merge import (
+        chart_flow_strip_html,
+        unify_chart_and_flow,
+    )
+    from alpha_system.ui.services.flow_review_board import (
+        flow_info_for_ticker,
+        flow_inline_html,
+    )
+    from alpha_system.ui.services.weight_action import (
+        resolve_weight_action,
+        weight_action_html,
+    )
+
+    head = _mid_book_cue_html(row)
+    mom = _momentum_layer_html(row)
+    info = flow_info_for_ticker(flow_data_dir, row.ticker)
+    cue = unify_chart_and_flow(chart=chart, flow_info=info)
+    if cue is not None:
+        now = chart_flow_strip_html(cue)
+        now_action = cue.action
+    else:
+        flow = flow_inline_html(flow_data_dir, row.ticker)
+        now_action = ""
+        if flow and 'class="pf-flow-kicker">' in flow:
+            now = (
+                f'<div class="pf-review-card pf-review-3 pf-mom-muted" '
+                f'title="3순위 · 오늘 컨디션">'
+                f'<div class="pf-review-top">'
+                f'<span class="pf-review-kicker">3 · 지금</span>'
+                f'<span class="pf-review-hint">오늘 컨디션</span>'
+                f"</div>"
+                f'<div class="pf-review-body pf-review-flow-fallback">{flow}</div>'
+                f"</div>"
+            )
+        else:
+            now = flow or ""
+
+    extra = row.extra or {}
+    mom_label, _ = _mom_flow_label(
+        r6=extra.get("return_6m"),
+        r121=extra.get("return_12m_ex_1m"),
+        xs=extra.get("mom_xs_pct"),
+        sm=extra.get("score_m"),
+        trend=str(extra.get("trend_sign") or ""),
+    )
+    if _is_short_ops_row(row) and (row.ops_signal_label or "").strip():
+        # Short primary already in momentum card; gate still uses flow label.
+        pass
+    wact = resolve_weight_action(
+        row,
+        mom_label=mom_label,
+        now_action=now_action,
+        exit_parts=_mid_exit_parts(row) if not _is_short_ops_row(row) else {},
+        buy_parts=_mid_buy_parts(row) if not _is_short_ops_row(row) else {},
+    )
+    top = weight_action_html(wact)
+    inner = top + head + mom + now
+    if not inner.strip():
+        return ""
+    return f'<div class="pf-review-stack">{inner}</div>'
 
 
 def _section(title: str, body_html: str = "") -> str:
@@ -745,7 +1157,8 @@ def render_portfolio_bullets(
 
     expanded = st.session_state.get(SESSION_EXPANDED)
     chart_map: dict = {}
-    if str(key_prefix).startswith("pf_proposal"):
+    # Proposal + holdings both need chart for chart×flow Review strip.
+    if str(key_prefix).startswith("pf_"):
         from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
 
         chart_map = reads_by_ticker(ctx)
@@ -769,6 +1182,10 @@ def render_portfolio_bullets(
     except Exception:  # noqa: BLE001 — chip enrichment must not break portfolio
         phcvs_set = set()
 
+    flow_data_dir = Path(
+        getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
+    )
+
     st.markdown('<div class="pf-list">', unsafe_allow_html=True)
 
     for row in rows:
@@ -785,6 +1202,7 @@ def render_portfolio_bullets(
                     proposed=proposed_set,
                     blocked=blocked_set,
                     phcvs=phcvs_set,
+                    flow_data_dir=flow_data_dir,
                 ),
                 unsafe_allow_html=True,
             )

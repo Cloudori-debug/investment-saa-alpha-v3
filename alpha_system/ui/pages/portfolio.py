@@ -615,8 +615,9 @@ def _render_holdings_book(ctx: DashboardContext) -> None:
                     ),
                 )
             )
-        _render_alpha_ratio_bar(ctx)
+        # 단기채 Review 비율·할 일 = 경제 나침반 playbook (중복 카드 없음)
         _render_monthly_rebal_note(ctx)
+        _render_weight_action_board(ctx)
         render_portfolio_bullets(
             ctx,
             mode="full",
@@ -628,6 +629,36 @@ def _render_holdings_book(ctx: DashboardContext) -> None:
 
 def _esc(value: object) -> str:
     return html.escape(str(value), quote=True)
+
+
+def _render_weight_action_board(ctx: DashboardContext) -> None:
+    """Today's ratio to-do list above holdings — Review-only."""
+    from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
+    from alpha_system.ui.services.weight_action import (
+        board_items,
+        build_weight_actions_for_rows,
+        weight_action_board_html,
+    )
+
+    rows = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+    if not rows:
+        return
+    flow_data_dir = Path(
+        getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
+    )
+    try:
+        chart_map = reads_by_ticker(ctx)
+    except Exception:  # noqa: BLE001 — board must not break holdings
+        chart_map = {}
+    pairs = build_weight_actions_for_rows(
+        rows,
+        chart_map=chart_map,
+        flow_data_dir=flow_data_dir,
+    )
+    st.markdown(
+        weight_action_board_html(board_items(pairs)),
+        unsafe_allow_html=True,
+    )
 
 
 def _render_short_vol_budget_banner(ctx: DashboardContext) -> None:
@@ -749,212 +780,6 @@ def _render_short_vol_budget_banner(ctx: DashboardContext) -> None:
         f"</div>"
     )
     st.markdown(html_block, unsafe_allow_html=True)
-
-
-def _cash_defense_row_html(
-    *,
-    ticker: str,
-    name: str,
-    stage: int | None,
-    review_cash: float | None,
-    review_eq: float | None,
-    actual_cash: float | None,
-    book_cash: float,
-    book_equity: float,
-    equity_actual: float | None,
-    n_equity: int,
-    alert_level: str | None,
-    alert_body: str | None,
-    cash_held: bool = False,  # noqa: ARG001 — caller may pass; targets-only UI
-    value_basis: str = "",  # noqa: ARG001 — kept for call-site compat
-) -> str:
-    """Cash defense card: target ratios on top, supporting Review notes below.
-
-    Actual % is not shown in the headline (Review-only, no auto trade).
-    """
-    from alpha_system.ui.services.rank_watchboard import naver_name_chart_html
-
-    _ = cash_held
-    _ = value_basis
-    _ = equity_actual
-    head = naver_name_chart_html(ticker, name)
-    badge = '<span class="alpha-badge-warn">장부방어</span> '
-    rev_s = f"≈{review_cash:.0f}%" if review_cash is not None else "—"
-    book_s = f"장부 {book_cash:.0f}%"
-
-    if alert_level == "alert":
-        tone = "hot"
-        upside = "내일 검토"
-        read_cls = "pf-chart-read pf-chart-hot"
-    elif alert_level == "warn":
-        tone = "warn"
-        upside = "내일 검토"
-        read_cls = "pf-chart-read pf-chart-hot"
-    else:
-        tone = "ok"
-        upside = "목표 유지"
-        read_cls = "pf-chart-read"
-
-    stage_s = f"단계 {stage}" if stage is not None else "단계 —"
-    eq_rev = f"≈{review_eq:.0f}%" if review_eq is not None else "—"
-    cue_body = (
-        alert_body
-        if alert_body
-        else "장부 단기채 · Review-only · 자동매매·target 변경 없음"
-    )
-    cue = f'<div class="{read_cls}">{_esc(cue_body)}</div>'
-
-    meta = (
-        f"목표보유 개별주 {book_equity:.0f}% / 단기채 {book_cash:.0f}% · "
-        f"나침반 Review 개별주 {eq_rev} / 단기채 {rev_s} ({stage_s})"
-    )
-    if n_equity > 0:
-        meta += f" · 보유 개별주 {n_equity}종"
-
-    # Bar width = Review equity target (policy cue), tone from alert/gap vs actual.
-    cash_for_gap = None if actual_cash is None else float(actual_cash)
-    if (
-        cash_for_gap is not None
-        and review_cash is not None
-        and (float(review_cash) - cash_for_gap) >= 20.0
-    ) or alert_level == "alert":
-        fill = "home-usage-fill-danger"
-    elif (
-        cash_for_gap is not None
-        and review_cash is not None
-        and (float(review_cash) - cash_for_gap) >= 10.0
-    ) or alert_level == "warn":
-        fill = "home-usage-fill-warn"
-    else:
-        fill = ""
-    if review_eq is not None:
-        width = max(0.0, min(100.0, float(review_eq)))
-        bar = (
-            '<div class="home-usage-track pf-cash-track">'
-            f'<div class="home-usage-fill {fill}" style="width:{width:.1f}%"></div>'
-            "</div>"
-        )
-    else:
-        bar = ""
-
-    return (
-        f'<div class="pf-list pf-cash-defense">'
-        f'<div class="pf-row-main">'
-        f'<div class="pf-bullet-top">'
-        f'<span class="pf-id">{badge}{head}</span>'
-        f'<span class="pf-xchip pf-xchip-wait">Review 단기채</span>'
-        f'<span class="pf-wchip pf-weight-ok">목표 {_esc(rev_s)}</span>'
-        f'<span class="pf-wchip">{_esc(book_s)}</span>'
-        f'<span class="pf-upside pf-tone-{tone}">{_esc(upside)}</span>'
-        f"</div>"
-        f"{cue}"
-        f'<div class="pf-cash-meta">{_esc(meta)}</div>'
-        f"{bar}"
-        f"</div></div>"
-    )
-
-
-def _render_alpha_ratio_bar(ctx: DashboardContext) -> None:
-    """Alpha-book defense dial: equity vs 단기채 (not forest bonds).
-
-    Shows actual vs book policy target, plus economy-stage Review cash hint.
-    Does not rewrite target_portfolio or book YAML.
-    """
-    from alpha_system.economy_compass.cache import load_compass_snapshot
-    from alpha_system.ui.services.alpha_book_ops import (
-        build_alpha_actual_map,
-        cash_review_alert,
-        load_alpha_book_ops,
-    )
-    from alpha_system.ui.services.economy_playbook import stage_playbook
-
-    policy = load_alpha_book_ops(ctx.root)
-    ops_rows = list(ctx.ops_portfolio_rows or [])
-    actual = build_alpha_actual_map(ctx.root, ops_rows, policy)
-    tgt_cash = policy.cash_share * 100.0
-    tgt_equity = policy.equity_share * 100.0
-
-    snap = load_compass_snapshot(ctx.root) or {}
-    stage_raw = snap.get("stage")
-    try:
-        stage = int(stage_raw) if stage_raw is not None else None
-    except (TypeError, ValueError):
-        stage = None
-    play = stage_playbook(stage)
-    review_cash = play.cash_pct
-    review_eq = play.equity_pct
-
-    st.caption(
-        copy_get(
-            "portfolio",
-            "alpha_defense_caption",
-            default=(
-                "장부 방어 = 단기채만 · 국채·금은 경제 나침반(숲) · "
-                "장부목표≠나침반 Review · target 자동변경 없음"
-            ),
-        )
-    )
-
-    cash_held = policy.cash_ticker in actual
-    cash_pct: float | None
-    if actual:
-        cash_pct = float(actual.get(policy.cash_ticker, (0.0, policy.cash_name))[0])
-    else:
-        cash_pct = None
-
-    alert = cash_review_alert(
-        stage=stage,
-        review_cash_pct=review_cash,
-        actual_cash_pct=cash_pct,
-        cash_name=policy.cash_name,
-    )
-
-    equity_pct: float | None = None
-    n_equity = 0
-    value_basis = ""
-    if actual and cash_pct is not None:
-        equity_pct = max(0.0, 100.0 - cash_pct)
-        n_equity = sum(1 for tk in actual if tk != policy.cash_ticker)
-        if not cash_held and n_equity > 0:
-            value_basis = ""
-    else:
-        n_equity = sum(
-            1
-            for r in ops_rows
-            if str(getattr(r, "ticker", "") or "").zfill(6)
-            not in {"", "000000", policy.cash_ticker}
-        )
-        if n_equity > 0:
-            equity_pct = 100.0
-            cash_pct = 0.0
-            cash_held = False
-            value_basis = "등가추정"
-            alert = cash_review_alert(
-                stage=stage,
-                review_cash_pct=review_cash,
-                actual_cash_pct=0.0,
-                cash_name=policy.cash_name,
-            )
-
-    st.markdown(
-        _cash_defense_row_html(
-            ticker=policy.cash_ticker,
-            name=policy.cash_name,
-            stage=stage,
-            review_cash=review_cash,
-            review_eq=review_eq,
-            actual_cash=cash_pct,
-            book_cash=tgt_cash,
-            book_equity=tgt_equity,
-            equity_actual=equity_pct,
-            n_equity=n_equity,
-            alert_level=alert.level if alert else None,
-            alert_body=alert.body if alert else None,
-            cash_held=cash_held,
-            value_basis=value_basis,
-        ),
-        unsafe_allow_html=True,
-    )
 
 
 def _render_monthly_rebal_note(ctx: DashboardContext) -> None:
