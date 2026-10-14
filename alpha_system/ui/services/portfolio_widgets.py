@@ -467,7 +467,9 @@ def _row_main_html(
     blocked: set[str] | None = None,
     phcvs: set[str] | None = None,
     flow_data_dir: Path | None = None,
+    detail: bool = False,
 ) -> str:
+    """List row. detail=False → 이름+오늘 비중만 · True → 1·2·3+사다리."""
     badge = _ops_badge_html(row, chart)
     extra = row.extra or {}
     is_blocked = extra.get("proposal_eligible") is False
@@ -501,17 +503,19 @@ def _row_main_html(
     )
     synth_html = ""
     if not is_blocked:
-        synth_html = _chart_flow_synth_html(row, chart, flow_data_dir)
+        synth_html = _chart_flow_synth_html(
+            row, chart, flow_data_dir, compact=not detail
+        )
     upside_html = (
         f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
-        if upside_txt
+        if upside_txt and detail
         else ""
     )
     bar_html = ""
-    if not is_blocked and not in_proposal:
+    if detail and not is_blocked and not in_proposal:
         bar_html = render_price_bar_html(row)
     return (
-        f'<div class="pf-row-main">'
+        f'<div class="pf-row-main{" pf-row-compact" if not detail else ""}">'
         f'<div class="pf-bullet-top">'
         f'<span class="pf-id">{badge}'
         f"{naver_name_chart_html(row.ticker, row.name)}</span>"
@@ -620,8 +624,18 @@ def _mid_exit_parts(row: PortfolioRow) -> dict[str, str]:
     }
 
 
+def _ladder_fill_hint(extra: dict) -> str:
+    """Short slider fill cue — amount is human-decided."""
+    try:
+        fill = float(extra.get("ladder_fill_pct") or 0.0)
+    except (TypeError, ValueError):
+        return "슬라이더 참고 · 금액은 사람"
+    fill = max(0.0, min(100.0, fill))
+    return f"슬라이더 {fill:.0f}% · 금액은 사람"
+
+
 def _mid_buy_parts(row: PortfolioRow) -> dict[str, str]:
-    """Add-on buy side: 매수1/2 / 없음 / 보류 — never overrides exit."""
+    """Add-on buy side: 매수1/2 price zone only — qty from slider + human."""
     extra = row.extra or {}
     kind = str(row.ops_signal or "").strip()
     if kind in {"cash_half", "trim", "exit_full"}:
@@ -650,32 +664,33 @@ def _mid_buy_parts(row: PortfolioRow) -> dict[str, str]:
     buy2_px = _won(rungs[1]) if len(rungs) > 1 else "—"
     buy1_s = f"{buy1_px}원" if buy1_px != "—" else "—"
     buy2_s = f"{buy2_px}원" if buy2_px != "—" else "—"
+    fill_h = _ladder_fill_hint(extra)
 
     if extra.get("ladder_under_low") or now_idx <= 0:
         name = labels[0] if labels else "매수1"
         return {
             "tone": "ok",
             "label": f"추가만 {name}",
-            "why": f"≤{buy1_s} 근처 분할 Review · 보유분은 유지",
+            "why": f"≤{buy1_s} · {fill_h} · 보유분 유지",
         }
     if now_idx == 1:
         name = labels[1] if len(labels) > 1 else "매수2"
         return {
             "tone": "ok",
             "label": f"추가만 {name}",
-            "why": f"≤{buy2_s} 근처 분할 · 1차 {buy1_s} · 보유분은 유지",
+            "why": f"≤{buy2_s} · 1차 {buy1_s} · {fill_h} · 보유분 유지",
         }
     if extra.get("ladder_over_high"):
         return {
             "tone": "holdoff",
             "label": "추가 매수 없음",
-            "why": "상한 위 · 신규·추가 금지",
+            "why": f"상한 위 · 신규·추가 금지 · {fill_h}",
         }
     rung_name = labels[now_idx] if now_idx < len(labels) else "상단"
     return {
         "tone": "holdoff",
         "label": "추가 매수 없음",
-        "why": f"지금은 {rung_name} 구간 · 매수1 {buy1_s} · 매수2 {buy2_s}",
+        "why": f"지금은 {rung_name} 구간 · 매수1 {buy1_s} · 매수2 {buy2_s} · {fill_h}",
     }
 
 
@@ -874,8 +889,10 @@ def _chart_flow_synth_html(
     row: PortfolioRow,
     chart: ChartRead | None,
     flow_data_dir: Path | None,
+    *,
+    compact: bool = False,
 ) -> str:
-    """오늘 비중 → 1운영 → 2모멘텀 → 3지금. Review-only."""
+    """오늘 비중 → (펼침 시) 1운영 → 2모멘텀 → 3지금. Review-only."""
     from alpha_system.ui.services.chart_flow_merge import (
         chart_flow_strip_html,
         unify_chart_and_flow,
@@ -889,8 +906,6 @@ def _chart_flow_synth_html(
         weight_action_html,
     )
 
-    head = _mid_book_cue_html(row)
-    mom = _momentum_layer_html(row)
     info = flow_info_for_ticker(flow_data_dir, row.ticker)
     cue = unify_chart_and_flow(chart=chart, flow_info=info)
     if cue is not None:
@@ -932,6 +947,13 @@ def _chart_flow_synth_html(
         buy_parts=_mid_buy_parts(row) if not _is_short_ops_row(row) else {},
     )
     top = weight_action_html(wact)
+    if compact:
+        if not top.strip():
+            return ""
+        return f'<div class="pf-review-stack pf-review-compact">{top}</div>'
+
+    head = _mid_book_cue_html(row)
+    mom = _momentum_layer_html(row)
     inner = top + head + mom + now
     if not inner.strip():
         return ""
@@ -1190,7 +1212,6 @@ def render_portfolio_bullets(
 
     for row in rows:
         is_open = mode == "full" and expanded == row.ticker
-        # Fixed column ratio always — prevents horizontal jump on expand/collapse
         left, right = st.columns([6, 1])
         with left:
             tk = norm_ticker(row.ticker)
@@ -1203,6 +1224,7 @@ def render_portfolio_bullets(
                     blocked=blocked_set,
                     phcvs=phcvs_set,
                     flow_data_dir=flow_data_dir,
+                    detail=bool(is_open),
                 ),
                 unsafe_allow_html=True,
             )

@@ -24,6 +24,7 @@ _COLS = [
     "current_value",
     "avg_price",
     "current_price",
+    "weight_pct",  # optional legacy col; not operator-edited (절대% 운영)
 ]
 
 
@@ -305,6 +306,15 @@ def upsert_kr_alpha_positions(
         elif avg is not None and d.quantity:
             value = round(float(d.quantity) * float(avg), 0)
         nm = d.name or names.get(d.ticker) or d.ticker
+        prev = existing_by_tk.get(d.ticker)
+        wp = ""
+        if prev is not None:
+            try:
+                raw_wp = prev.get("weight_pct")
+                if raw_wp not in (None, ""):
+                    wp = str(raw_wp).strip()
+            except Exception:
+                wp = ""
         alpha_rows.append(
             {
                 "ticker": d.ticker,
@@ -316,6 +326,7 @@ def upsert_kr_alpha_positions(
                 "current_value": value,
                 "avg_price": avg if avg is not None else "",
                 "current_price": cur_px if cur_px is not None else "",
+                "weight_pct": wp,
             }
         )
 
@@ -346,3 +357,4 @@ def format_drafts_as_paste(drafts: Sequence[HoldingDraft]) -> str:
         else:
             lines.append(d.ticker)
     return "\n".join(lines)
+

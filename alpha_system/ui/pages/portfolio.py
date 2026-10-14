@@ -98,8 +98,8 @@ def render_portfolio(
             "portfolio",
             "page_lead",
             default=(
-                "결정면=③제안·④보유 · ①②는 입력. "
-                "Review-only · target 자동기입 없음."
+                "한눈=③제안·④보유 · ①②·PH-CVS는 접힘 · "
+                "종목 펼침=1·2·3 근거 · Review-only."
             ),
         ),
     )
@@ -113,11 +113,26 @@ def render_portfolio(
             "단기 북은 같은 스냅샷을 재랭크합니다.",
             tone="warn",
         )
-    # 워크플로 ①→②→③→④ 유지 · 시각 무게만 ③·④ (pf-tier-1)
-    st.markdown('<div class="pf-tier-2">', unsafe_allow_html=True)
-    preview_cutoff, preview_n = _render_cutoff_bar(ctx)
-    _render_watch_pool(ctx, preview_cutoff, preview_n)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # ①② 입력은 기본 숨김 — 안쪽에 expander가 있어 st.expander로 감싸면 중첩 오류.
+    show_input = st.toggle(
+        copy_get(
+            "portfolio",
+            "input_fold_label",
+            default="①② 입력 · 컷오프 · 관찰풀",
+        ),
+        value=False,
+        key=f"pf_show_input_{_book_keys(ctx)}",
+        help="컷오프·관찰풀(입력). 기본 숨김 · 첫 화면은 ③제안·④보유.",
+    )
+    if show_input:
+        st.markdown('<div class="pf-tier-2">', unsafe_allow_html=True)
+        preview_cutoff, preview_n = _render_cutoff_bar(ctx)
+        _render_watch_pool(ctx, preview_cutoff, preview_n)
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        # 표 색·관찰 동기용 미리보기 값 (위젯 없이 YAML 기준)
+        preview_cutoff = ctx.cfg.scoring.score_cutoff
+        preview_n = int(ctx.cfg.sizing.target_names)
     st.markdown('<div class="pf-tier-1">', unsafe_allow_html=True)
     _render_proposal_book(
         ctx,
@@ -142,7 +157,7 @@ def _fmt_num(val, *, integers: bool = False) -> str:
 
 
 def _render_phcvs_watch(ctx: DashboardContext) -> None:
-    """External PH-CVS observation list — always open, Review-only."""
+    """External PH-CVS observation — folded by default, Review-only."""
     from alpha_system.review.phcvs_auto_eval import run_and_write
     from alpha_system.ui.services.phcvs_watch_board import (
         _is_attention,
@@ -158,15 +173,20 @@ def _render_phcvs_watch(ctx: DashboardContext) -> None:
     )
     title = copy_get("portfolio", "sec_phcvs", default="PH-CVS 추적")
     attn_n = sum(1 for r in board.rows if _is_attention(r))
-    chips: list[tuple[str, str]] = []
+    fold_bits = [title]
     if attn_n:
-        chips.append((f"지금 볼 것 {attn_n}", "warn"))
+        fold_bits.append(f"지금 볼 것 {attn_n}")
     else:
-        chips.append(("즉시 Review 없음", "muted"))
-    if board.as_of_prices:
-        chips.append((f"가격 {board.as_of_prices}", "muted"))
-    chips.append(("Review-only", "muted"))
-    with st.container(border=True):
+        fold_bits.append("즉시 Review 없음")
+    with st.expander(" · ".join(fold_bits), expanded=False):
+        chips: list[tuple[str, str]] = []
+        if attn_n:
+            chips.append((f"지금 볼 것 {attn_n}", "warn"))
+        else:
+            chips.append(("즉시 Review 없음", "muted"))
+        if board.as_of_prices:
+            chips.append((f"가격 {board.as_of_prices}", "muted"))
+        chips.append(("Review-only", "muted"))
         _render_section_head(
             title,
             summary=copy_get(
@@ -617,6 +637,8 @@ def _render_holdings_book(ctx: DashboardContext) -> None:
             )
         # 단기채 Review 비율·할 일 = 경제 나침반 playbook (중복 카드 없음)
         _render_monthly_rebal_note(ctx)
+        if not short:
+            _render_shadow_profit_card(ctx)
         _render_weight_action_board(ctx)
         render_portfolio_bullets(
             ctx,
@@ -658,6 +680,40 @@ def _render_weight_action_board(ctx: DashboardContext) -> None:
     st.markdown(
         weight_action_board_html(board_items(pairs)),
         unsafe_allow_html=True,
+    )
+
+
+def _render_shadow_profit_card(ctx: DashboardContext) -> None:
+    """Mid shadow P&L card — Review-only, never writes target."""
+    from alpha_system.shadow.mid_ledger import ledger_path, load_ledger
+    from alpha_system.shadow.report import shadow_card_html, shadow_report_dict
+    from alpha_system.shadow.run import run_shadow_day
+
+    market = getattr(ctx, "screen_market", None)
+    root = Path(ctx.root)
+    # Best-effort: append today's step if prices advanced (no-op if already recorded).
+    try:
+        run_shadow_day(
+            root,
+            market=market,
+            proposal_rows=list(getattr(ctx, "portfolio_rows", None) or []),
+            ops_rows=list(getattr(ctx, "ops_portfolio_rows", None) or []),
+            persist=True,
+        )
+    except Exception:  # noqa: BLE001 — shadow must not break holdings UI
+        pass
+    rows = load_ledger(ledger_path(root, market))
+    report = shadow_report_dict(rows)
+    st.markdown(shadow_card_html(report), unsafe_allow_html=True)
+    st.caption(
+        copy_get(
+            "portfolio",
+            "shadow_profit_caption",
+            default=(
+                "Shadow 손익=가상 중기 북 · QV제안+사다리+게이트 · Review-only · "
+                "target·자동주문 없음 · Go-live 전 증명용"
+            ),
+        )
     )
 
 

@@ -2579,6 +2579,19 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   gap: 0.35rem;
   margin: 0.2rem 0 0.55rem;
 }}
+.pf-review-compact {{
+  margin: 0.1rem 0 0.25rem;
+  gap: 0;
+}}
+.pf-review-compact .pf-review-body {{
+  display: none;
+}}
+.pf-review-compact .pf-review-card {{
+  padding: 0.35rem 0.55rem;
+}}
+.pf-row-compact .pf-bullet-top {{
+  margin-bottom: 0.1rem;
+}}
 .pf-review-card {{
   padding: 0.5rem 0.65rem;
   border-radius: 8px;

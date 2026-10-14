@@ -2,6 +2,10 @@
 
 Review-only — never writes scores or target_portfolio.
 Priority: 운영(exit) > 모멘텀(add gate) > 지금(same-day soften).
+
+「오늘 비중」= 종목 단위 100% 절대 비율 (보유 CSV·상대 채움 비율 사용 안 함).
+  매수1 → 누적 상한 67% (오늘≤약 33%) · 매수2 → 누적 상한 100% (오늘≤약 33%)
+  유지 → 채울 0% · 줄이기/환금/전량 → 매도할 25/50/100%
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, Literal, Optional, Sequence
 
+from alpha_system.entry.scale_in import DEFAULT_LEGS
 from alpha_system.proposal_chart import ChartRead, norm_ticker
 from alpha_system.ui.services.context import PortfolioRow
 
@@ -29,6 +34,8 @@ WeightKind = Literal[
     "idle",
 ]
 
+Stance = Literal["매수", "매도", "유지"]
+
 
 @dataclass(frozen=True)
 class WeightAction:
@@ -39,18 +46,13 @@ class WeightAction:
     priority: int  # lower = more urgent; >=100 = board skip
     delta_pct: float | None
     board_line: str
+    stance: Stance = "유지"
+    fill_pct: float | None = None  # unused in absolute mode (compat)
+    move_pct: float | None = None  # 절대 채울% or 매도할%
 
 
 def _is_short(row: PortfolioRow) -> bool:
     return str((row.extra or {}).get("ops_book") or "") == "short"
-
-
-def _approx_delta(weight_pct: float, frac: float) -> float:
-    try:
-        w = float(weight_pct)
-    except (TypeError, ValueError):
-        return 0.0
-    return round(-abs(w) * float(frac), 1)
 
 
 def _mom_weak(mom_label: str) -> bool:
@@ -66,18 +68,71 @@ def _now_hard_blocks_add(now_action: str) -> bool:
     return (now_action or "").strip() in _NOW_HARD_BLOCK
 
 
-def _now_soft_note(now_action: str) -> str:
-    """Lowest-rank layer: annotate only, never override 운영/모멘텀 primary."""
-    a = (now_action or "").strip()
-    if not a:
-        return ""
-    if a in _NOW_HARD_BLOCK:
-        return f"오늘={a} · 분할 미룸 권고"
-    if a in {"축소·교체 검토", "축소 검토", "관망", "보유·관망"}:
-        return f"오늘={a} · 당일만 참고 · 비중 결론은 운영·모멘텀"
-    if a in {"보유·소량만", "보유·관망"}:
-        return ""
-    return f"오늘={a}"
+def _sell_frac(row: PortfolioRow, default: float) -> float:
+    if row.ops_trim_pct is not None:
+        try:
+            return max(0.0, min(1.0, float(row.ops_trim_pct) / 100.0))
+        except (TypeError, ValueError):
+            pass
+    return default
+
+
+def _day_leg_pct() -> float:
+    """오늘 분할 한도(종목=100% 기준 1/n_legs). 금액은 사람."""
+    return round(100.0 / float(max(int(DEFAULT_LEGS), 2)), 0)
+
+
+def _abs_buy_fill_pct(buy_label: str) -> float:
+    """종목=100% 절대 누적 상한. 매수1=2/3 · 매수2=전량 (SCALE_IN cum)."""
+    if "매수2" in buy_label:
+        return 100.0
+    if "매수1" in buy_label:
+        legs = max(int(DEFAULT_LEGS), 2)
+        # 3-leg: buy1 cum = 2/3
+        return round(100.0 * (legs - 1) / float(legs), 0)
+    return _day_leg_pct()
+
+
+def _ratio_primary(
+    *,
+    move: float | None,
+    stance: Stance,
+    buy_ceiling: bool = False,
+) -> str:
+    if stance == "매도":
+        rem = 0.0 if move is None else float(move)
+        return f"매도할 {rem:.0f}%"
+    if move is None or float(move) <= 0:
+        return "채울 0%"
+    if buy_ceiling:
+        day = _day_leg_pct()
+        return f"누적 상한 {float(move):.0f}% (오늘≤약 {day:.0f}%)"
+    return f"채울 {float(move):.0f}%"
+
+
+def _make(
+    *,
+    kind: WeightKind,
+    stance: Stance,
+    move: float | None,
+    body: str,
+    tone: str,
+    priority: int,
+    board_line: str,
+    buy_ceiling: bool = False,
+) -> WeightAction:
+    return WeightAction(
+        kind=kind,
+        primary=_ratio_primary(move=move, stance=stance, buy_ceiling=buy_ceiling),
+        body=body,
+        tone=tone,
+        priority=priority,
+        delta_pct=None,  # 절대 %만 — 보유 대비 %p 없음
+        board_line=board_line,
+        stance=stance,
+        fill_pct=None,
+        move_pct=move,
+    )
 
 
 def resolve_weight_action(
@@ -88,8 +143,7 @@ def resolve_weight_action(
     exit_parts: Optional[dict[str, str]] = None,
     buy_parts: Optional[dict[str, str]] = None,
 ) -> WeightAction:
-    """Map three layers → one ratio action (no score mix)."""
-    w = float(row.weight_pct or 0.0)
+    """Map three layers → absolute name-unit % (no holdings CSV ratio)."""
     name = (row.name or row.ticker or "").strip()
     tk = norm_ticker(row.ticker)
 
@@ -97,197 +151,160 @@ def resolve_weight_action(
         kind = str(row.ops_signal or "").strip()
         label = (row.ops_signal_label or "").strip() or "유지"
         if kind in {"exit_full", "exit"} or label in {"교체", "전량"}:
-            return WeightAction(
+            return _make(
                 kind="short_exit",
-                primary="교체·비중 비우기 검토",
-                body="단기 테스트 · 중기 목표가 익절 미적용 · Review-only",
+                stance="매도",
+                move=100.0,
+                body="절대 100% · 단기 교체 · Review-only",
                 tone="hot",
                 priority=15,
-                delta_pct=_approx_delta(w, 1.0) if w else None,
-                board_line=f"교체 {name} {tk} · 보유 {w:.1f}%",
+                board_line=f"매도 {name} {tk} · 매도할 100%",
             )
         if kind == "trim" or label == "축소":
-            frac = 0.25
-            if row.ops_trim_pct is not None:
-                try:
-                    frac = float(row.ops_trim_pct) / 100.0
-                except (TypeError, ValueError):
-                    frac = 0.25
-            d = _approx_delta(w, frac)
-            return WeightAction(
+            sell_pct = round(_sell_frac(row, 0.25) * 100.0, 0)
+            return _make(
                 kind="short_trim",
-                primary=f"비중 축소 ≈{abs(d):.1f}%p",
-                body="단기 모멘텀 약화 · Review-only · 자동매도 없음",
+                stance="매도",
+                move=sell_pct,
+                body=f"절대 {sell_pct:.0f}% · 단기 축소 · Review-only",
                 tone="warn",
                 priority=35,
-                delta_pct=d,
-                board_line=f"축소 {name} {tk} · {w:.1f}% → ≈{max(w + d, 0):.1f}%",
+                board_line=f"매도 {name} {tk} · 매도할 {sell_pct:.0f}%",
             )
-        return WeightAction(
+        return _make(
             kind="short_hold",
-            primary="비중 유지",
-            body="단기 테스트 · 손볼 신호 없음",
+            stance="유지",
+            move=0.0,
+            body="절대 0% · 단기 유지",
             tone="ok",
             priority=100,
-            delta_pct=0.0,
             board_line="",
         )
 
-    # Mid book — prefer precomputed parts from portfolio_widgets.
     exit_p = exit_parts or {}
     buy_p = buy_parts or {}
     ek = str(exit_p.get("kind") or row.ops_signal or "").strip()
     elabel = (exit_p.get("label") or row.ops_signal_label or "").strip()
 
     if ek == "exit_full" or (elabel.startswith("전량")):
-        d = _approx_delta(w, 1.0)
-        return WeightAction(
+        return _make(
             kind="exit_full",
-            primary="전량 환금 · 비중 → 0",
-            body=exit_p.get("why") or "운영 전량 · 추가매수 없음 · Review-only",
+            stance="매도",
+            move=100.0,
+            body="절대 100% · 운영 전량 · Review-only",
             tone="hot",
             priority=10,
-            delta_pct=d,
-            board_line=f"전량 {name} {tk} · 보유 {w:.1f}% → 0",
+            board_line=f"매도 {name} {tk} · 매도할 100%",
         )
 
     if ek == "cash_half" or elabel.startswith("환금"):
-        frac = 0.5
-        if row.ops_trim_pct is not None:
-            try:
-                frac = float(row.ops_trim_pct) / 100.0
-            except (TypeError, ValueError):
-                frac = 0.5
-        d = _approx_delta(w, frac)
-        return WeightAction(
+        sell_pct = round(_sell_frac(row, 0.5) * 100.0, 0)
+        return _make(
             kind="cash_half",
-            primary=f"보유 절반↓ ≈{abs(d):.1f}%p",
-            body=exit_p.get("why") or "목표가 도달 · 추가매수 보류",
+            stance="매도",
+            move=sell_pct,
+            body=f"절대 {sell_pct:.0f}% · 목표가 환금 · Review-only",
             tone="hot",
             priority=20,
-            delta_pct=d,
-            board_line=f"환금 {name} {tk} · {w:.1f}% → ≈{max(w + d, 0):.1f}%",
+            board_line=f"매도 {name} {tk} · 매도할 {sell_pct:.0f}%",
         )
 
     if ek == "trim" or elabel.startswith("줄이기"):
-        frac = 0.25
-        if row.ops_trim_pct is not None:
-            try:
-                frac = float(row.ops_trim_pct) / 100.0
-            except (TypeError, ValueError):
-                frac = 0.25
-        d = _approx_delta(w, frac)
-        return WeightAction(
+        sell_pct = round(_sell_frac(row, 0.25) * 100.0, 0)
+        return _make(
             kind="trim",
-            primary=f"보유 ¼↓ ≈{abs(d):.1f}%p",
-            body=exit_p.get("why") or "목표가 근접 · 추가매수 보류",
+            stance="매도",
+            move=sell_pct,
+            body=f"절대 {sell_pct:.0f}% · 목표가 줄이기 · Review-only",
             tone="warn",
             priority=30,
-            delta_pct=d,
-            board_line=f"줄이기 {name} {tk} · {w:.1f}% → ≈{max(w + d, 0):.1f}%",
+            board_line=f"매도 {name} {tk} · 매도할 {sell_pct:.0f}%",
         )
 
     if ek == "missing" or (not row.has_target):
-        return WeightAction(
+        return _make(
             kind="missing",
-            primary="비중 유지 · 익절 불가",
-            body=exit_p.get("why") or "목표가 없음 · E에서 채우기 · 추격 추가 금지",
+            stance="유지",
+            move=0.0,
+            body="절대 0% · 목표가(익절) 없음 · E에서 채우기",
             tone="danger",
             priority=40,
-            delta_pct=0.0,
-            board_line=f"목표없음 {name} {tk} · 보유 {w:.1f}% · 목표가 채우기",
+            board_line=f"목표없음 {name} {tk}",
         )
 
     if bool(getattr(row, "cap_near", False)):
-        return WeightAction(
+        return _make(
             kind="cap_trim",
-            primary="상한 근접 · 추가 금지",
-            body=f"보유 {w:.1f}% · 개별 캡 점검 · 비중만 Review",
+            stance="유지",
+            move=0.0,
+            body="절대 0% · 상한 근접 · 추가 금지",
             tone="warn",
             priority=50,
-            delta_pct=0.0,
-            board_line=f"상한근접 {name} {tk} · 보유 {w:.1f}%",
+            board_line=f"상한근접 {name} {tk} · 채울 0%",
         )
 
     buy_label = (buy_p.get("label") or "").strip()
-    buy_why = buy_p.get("why") or ""
     is_add = buy_label.startswith("추가만")
+    rung_ko = buy_label.replace("추가만 ", "").strip() or "매수1"
 
     if is_add:
-        # Gate add on 모멘텀 (rank 2). 지금 (rank 3) only hard-blocks 추매/추가금지.
-        if _mom_weak(mom_label):
-            return WeightAction(
+        rem = _abs_buy_fill_pct(buy_label)
+        day = _day_leg_pct()
+        if _mom_weak(mom_label) or _now_hard_blocks_add(now_action):
+            return _make(
                 kind="add_wait",
-                primary="비중 유지 · 추가 보류",
-                body="모멘텀 약함 · 사다리는 유지 · 추격 금지",
+                stance="유지",
+                move=rem,
+                body=(
+                    f"누적 상한 {rem:.0f}% · 오늘≤약 {day:.0f}% · {rung_ko} · "
+                    f"추가 보류 · 금액은 사람"
+                ),
                 tone="muted",
                 priority=100,
-                delta_pct=0.0,
                 board_line="",
+                buy_ceiling=True,
             )
-        if _now_hard_blocks_add(now_action):
-            return WeightAction(
-                kind="add_wait",
-                primary="비중 유지 · 추가 보류",
-                body=f"오늘={now_action} · 사다리는 유지 · 추격 금지",
-                tone="muted",
-                priority=100,
-                delta_pct=0.0,
-                board_line="",
-            )
-        rung = buy_label.replace("추가만 ", "").strip() or "매수1"
-        body = (buy_why or "싸게만 분할") + " · 개별 캡까지 · Review-only"
-        soft = _now_soft_note(now_action)
-        if soft:
-            body = f"{body} · {soft}"
-        return WeightAction(
+        return _make(
             kind="add_ready",
-            primary=f"비중 유지 · {rung}만 분할",
-            body=body,
+            stance="매수",
+            move=rem,
+            body=(
+                f"누적 상한 {rem:.0f}% · 오늘≤약 {day:.0f}% · {rung_ko} 구간 · "
+                f"종목=100% · 금액은 사람 · Review-only"
+            ),
             tone="ok",
             priority=60,
-            delta_pct=None,
-            board_line=f"추가 {name} {tk} · {rung} 분할 · 보유 {w:.1f}% 유지",
+            board_line=(
+                f"매수 {name} {tk} · 누적 상한 {rem:.0f}% (오늘≤약 {day:.0f}%)"
+            ),
+            buy_ceiling=True,
         )
 
-    # hold + no add — 지금 does not invent a reduce when 운영 says hold
-    body = "손볼 신호 없음"
-    if buy_label:
-        body = f"{buy_label} · {buy_why}".strip(" ·")
-    soft = _now_soft_note(now_action)
-    if soft and "당일만 참고" in soft:
-        body = f"{body} · {soft}"
-    return WeightAction(
+    return _make(
         kind="hold",
-        primary="비중 유지",
-        body=body,
+        stance="유지",
+        move=0.0,
+        body="절대 0% · 손볼 신호 없음",
         tone="ok",
         priority=100,
-        delta_pct=0.0,
         board_line="",
     )
 
 
 def weight_action_html(action: WeightAction) -> str:
-    """Top synthesis card — conclusion for ratio investor."""
-    delta = ""
-    if action.delta_pct is not None and abs(action.delta_pct) >= 0.05:
-        sign = "+" if action.delta_pct > 0 else ""
-        delta = (
-            f'<span class="pf-review-chip">{escape(f"{sign}{action.delta_pct:.1f}%p")}</span>'
-        )
-    elif action.kind == "add_ready":
-        delta = '<span class="pf-review-chip">분할+</span>'
+    """누적 상한/매도할 절대% · 유지|매수|매도 (오늘 한도 명시)."""
+    stance = action.stance or "유지"
     return (
         f'<div class="pf-review-card pf-review-0 pf-wact-{escape(action.tone)}" '
-        f'title="비율 결론 · 1운영>2모멘텀>3지금 · 자동매매·target 없음">'
+        f'title="누적 상한≠오늘 매수량 · 오늘≤약 1/3 · 금액은 사람 · target 없음">'
         f'<div class="pf-review-top">'
         f'<span class="pf-review-kicker">오늘 비중</span>'
-        f'<span class="pf-review-hint">비율 결론</span>'
-        f"{delta}"
+        f'<span class="pf-review-hint">누적·오늘</span>'
         f"</div>"
         f'<div class="pf-review-main">'
         f'<span class="pf-review-primary">{escape(action.primary)}</span>'
+        f'<span class="pf-review-sep">·</span>'
+        f'<span class="pf-review-secondary">{escape(stance)}</span>'
         f"</div>"
         f'<div class="pf-review-body">{escape(action.body)}</div>'
         f"</div>"
@@ -333,10 +350,6 @@ def build_weight_actions_for_rows(
         if mom_label_fn is not None:
             label = mom_label_fn(row)
 
-        if _is_short_ops_row(row) and (row.ops_signal_label or "").strip():
-            # Short badge already encodes stance; keep mom for gate only.
-            pass
-
         info = flow_info_for_ticker(flow_data_dir, row.ticker)
         cue = unify_chart_and_flow(
             chart=charts.get(norm_ticker(row.ticker)),
@@ -357,9 +370,9 @@ def build_weight_actions_for_rows(
 def board_items(
     pairs: Sequence[tuple[PortfolioRow, WeightAction]],
 ) -> list[WeightAction]:
-    """Actionable only, sorted by priority then weight."""
+    """Actionable only, sorted by priority then move size."""
     items = [a for _r, a in pairs if a.priority < 100 and a.board_line]
-    items.sort(key=lambda a: (a.priority, -(abs(a.delta_pct or 0))))
+    items.sort(key=lambda a: (a.priority, -(abs(a.move_pct or 0))))
     return items
 
 
@@ -379,7 +392,7 @@ def weight_action_board_html(actions: Sequence[WeightAction]) -> str:
     return (
         '<div class="pf-wact-board">'
         '<div class="pf-wact-board-kicker">오늘 손볼 종목</div>'
-        '<div class="pf-wact-board-hint">운영 우선 · 모멘텀은 추가 게이트 · 지금은 당일만 · 자동매매·target 없음</div>'
+        '<div class="pf-wact-board-hint">누적 상한 · 오늘≤약 1/3 · 금액은 사람 · Review-only</div>'
         f"<ol class=\"pf-wact-ol\">{lis}</ol>"
         "</div>"
     )

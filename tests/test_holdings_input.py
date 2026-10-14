@@ -99,3 +99,27 @@ def test_load_positions_skips_zero_value(tmp_path: Path) -> None:
     tickers = {r.ticker for r in rows}
     assert tickers == {"CASH", "005830"}
     assert all(r.current_value > 0 for r in rows)
+
+
+def test_upsert_kr_alpha_keeps_cash_row(tmp_path: Path) -> None:
+    from alpha_system.ui.services.holdings_input import (
+        drafts_from_tickers,
+        upsert_kr_alpha_positions,
+    )
+
+    root = tmp_path
+    data = root / "data"
+    data.mkdir()
+    path = data / "positions.csv"
+    path.write_text(
+        "ticker,name,asset_group,sector,style,quantity,current_value,avg_price,current_price\n"
+        "CASH,예수금,cash_short_bond,cash,cash,1,1000000,,\n",
+        encoding="utf-8",
+    )
+    drafts = drafts_from_tickers(["030200"], root=root, quantity=0)
+    upsert_kr_alpha_positions(
+        path, drafts, root=root, replace_alpha=True, keep_zero_qty=True
+    )
+    df = pd.read_csv(path, dtype=str)
+    assert (df["asset_group"] == "cash_short_bond").any()
+    assert (df["ticker"].astype(str).str.zfill(6) == "030200").any()
