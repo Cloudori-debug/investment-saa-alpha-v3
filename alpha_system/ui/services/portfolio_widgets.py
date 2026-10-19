@@ -1,4 +1,4 @@
-"""Portfolio bullet list + accordion expand (parent-row extension, no nested cards)."""
+"""Portfolio summary table + accordion expand (parent-row extension, no nested cards)."""
 
 from __future__ import annotations
 
@@ -468,8 +468,12 @@ def _row_main_html(
     phcvs: set[str] | None = None,
     flow_data_dir: Path | None = None,
     detail: bool = False,
+    show_header: bool = True,
 ) -> str:
-    """List row. detail=False → 이름+오늘 비중만 · True → 1·2·3+사다리."""
+    """List row. detail=False → 이름+오늘 비중만 · True → 1·2·3+사다리.
+
+    show_header=False: 요약 표에 이름·비중·현재가가 있을 때 중복 헤더 생략.
+    """
     badge = _ops_badge_html(row, chart)
     extra = row.extra or {}
     is_blocked = extra.get("proposal_eligible") is False
@@ -503,27 +507,35 @@ def _row_main_html(
     )
     synth_html = ""
     if not is_blocked:
-        synth_html = _chart_flow_synth_html(
-            row, chart, flow_data_dir, compact=not detail
-        )
+        try:
+            synth_html = _chart_flow_synth_html(
+                row, chart, flow_data_dir, compact=not detail
+            )
+        except Exception:  # noqa: BLE001 — one bad row must not blank the list
+            synth_html = ""
     upside_html = (
         f'<span class="pf-upside pf-tone-{tone}">{upside_txt}</span>'
-        if upside_txt and detail
+        if upside_txt and detail and show_header
         else ""
     )
     bar_html = ""
     if detail and not is_blocked and not in_proposal:
         bar_html = render_price_bar_html(row)
+    header_html = ""
+    if show_header:
+        header_html = (
+            f'<div class="pf-bullet-top">'
+            f'<span class="pf-id">{badge}'
+            f"{naver_name_chart_html(row.ticker, row.name)}</span>"
+            f"{cross}"
+            f'<span class="{weight_cls} pf-wchip">{weight_chip}</span>'
+            f"{spot}"
+            f"{upside_html}"
+            f"</div>"
+        )
     return (
         f'<div class="pf-row-main{" pf-row-compact" if not detail else ""}">'
-        f'<div class="pf-bullet-top">'
-        f'<span class="pf-id">{badge}'
-        f"{naver_name_chart_html(row.ticker, row.name)}</span>"
-        f"{cross}"
-        f'<span class="{weight_cls} pf-wchip">{weight_chip}</span>'
-        f"{spot}"
-        f"{upside_html}"
-        f"</div>"
+        f"{header_html}"
         f"{synth_html}"
         f"{bar_html}"
         f"</div>"
@@ -964,88 +976,139 @@ def _section(title: str, body_html: str = "") -> str:
     return f'<div class="pf-sec"><div class="pf-sec-title">{title}</div>{body_html}</div>'
 
 
-def _proposal_expand_html(row: PortfolioRow) -> str:
-    """Short expand for the screen book — score, gate, target. No CECS dump."""
+def _metric_grid_html(items: list[tuple[str, str]]) -> str:
+    cells = "".join(
+        f'<div class="pf-metric">'
+        f'<span class="pf-metric-k">{escape(k)}</span>'
+        f'<span class="pf-metric-v">{escape(v)}</span>'
+        f"</div>"
+        for k, v in items
+        if v not in (None, "")
+    )
+    if not cells:
+        return ""
+    return f'<div class="pf-metric-grid">{cells}</div>'
+
+
+def _proposal_expand_html(row: PortfolioRow, *, summary_in_table: bool = False) -> str:
+    """Open panel metrics + notes for the screen book. No CECS dump.
+
+    summary_in_table=True: 요약 행에 이미 있는 비중·점수·현재·목표는 생략.
+    """
     extra = row.extra or {}
     blocked = extra.get("proposal_eligible") is False
     score = row.total_score
     score_s = f"{float(score):.2f}" if score is not None else "—"
-    bits: list[str] = []
+    notes: list[str] = []
+
     if _is_short_ops_row(row):
         sm = extra.get("score_m")
         r6 = extra.get("return_6m")
         dd = extra.get("drawdown_52w_pct")
         xs = extra.get("mom_xs_pct")
-        trend = extra.get("trend_sign") or "—"
+        trend = str(extra.get("trend_sign") or "—")
         sm_s = f"{float(sm):g}" if sm not in (None, "") else "—"
         r6_s = f"{float(r6)*100:.1f}%" if r6 not in (None, "") else "—"
         dd_s = f"{float(dd):+.1f}%" if dd not in (None, "") else "—"
         xs_s = f"{float(xs):.0f}%ile" if xs not in (None, "") else "—"
-        bits.append(
-            _section(
-                "단기 제안",
-                f'<div class="pf-sec-body">'
-                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
-                f"현재 {_fmt_price(row.current_price)}원 · "
-                f"배지 {row.ops_signal_label or '—'}<br/>"
-                f"추세 {trend} · score_m {sm_s} · 6M {r6_s} · "
-                f"상대 {xs_s} · 고가대비 {dd_s}"
-                f"</div>",
+        if summary_in_table:
+            grid = _metric_grid_html(
+                [
+                    ("추세", trend),
+                    ("score_m", sm_s),
+                    ("6M", r6_s),
+                    ("상대", xs_s),
+                    ("고가대비", dd_s),
+                ]
             )
-        )
+        else:
+            cur = _fmt_price(row.current_price)
+            cur_s = f"{cur}원" if cur != "—" else "—"
+            grid = _metric_grid_html(
+                [
+                    ("비중", f"{row.weight_pct:.1f}%"),
+                    ("점수", score_s),
+                    ("현재", cur_s),
+                    ("배지", row.ops_signal_label or "—"),
+                    ("추세", trend),
+                    ("score_m", sm_s),
+                    ("6M", r6_s),
+                    ("상대", xs_s),
+                    ("고가대비", dd_s),
+                ]
+            )
         if row.ops_signal_detail:
-            bits.append(
-                _section(
-                    "운영 신호",
-                    f'<div class="pf-sec-body">{escape(str(row.ops_signal_detail))}</div>',
-                )
+            notes.append(
+                f'<div class="pf-open-note">'
+                f'<span class="pf-open-note-k">운영</span>'
+                f"{escape(str(row.ops_signal_detail))}</div>"
             )
-        return "".join(bits)
+        return f'<div class="pf-extend pf-extend-open">{grid}{"".join(notes)}</div>'
+
     if blocked:
         reason = str(extra.get("ineligible_reason") or row.target_detail or "부적격")
-        bits.append(
-            _section(
-                "편입하지 않은 이유",
-                f'<div class="pf-sec-body">{reason}</div>',
-            )
+        grid = ""
+        if not summary_in_table:
+            grid = _metric_grid_html([("점수", score_s), ("상태", "편입하지 않음")])
+        notes.append(
+            f'<div class="pf-open-note">'
+            f'<span class="pf-open-note-k">사유</span>{escape(reason)}</div>'
         )
-        bits.append(
-            _section("점수", f'<div class="pf-sec-body">total_score {score_s}</div>')
-        )
+        return f'<div class="pf-extend pf-extend-open">{grid}{"".join(notes)}</div>'
+
+    upside = row.remaining_upside_pct
+    up_s = f"{upside:+.1f}%" if upside is not None else "—"
+    if summary_in_table:
+        # 비중·점수·현재·목표는 표에 있음 → 여유만 한 칸.
+        grid = _metric_grid_html([("여유", up_s)]) if up_s != "—" else ""
     else:
-        bits.append(
-            _section(
-                "제안",
-                f'<div class="pf-sec-body">'
-                f"비중 {row.weight_pct:.1f}% · 점수 {score_s}<br/>"
-                f"현재 {_fmt_price(row.current_price)} · 목표 {_fmt_price(row.target_price)}"
-                f"</div>",
-            )
+        cur = _fmt_price(row.current_price)
+        tgt = _fmt_price(row.target_price)
+        cur_s = f"{cur}원" if cur != "—" else "—"
+        tgt_s = f"{tgt}원" if tgt != "—" else "—"
+        grid = _metric_grid_html(
+            [
+                ("비중", f"{row.weight_pct:.1f}%"),
+                ("점수", score_s),
+                ("현재", cur_s),
+                ("목표", tgt_s),
+                ("여유", up_s),
+            ]
         )
-        if extra.get("quant_ok"):
-            pbr_d = extra.get("quant_pbr_draft")
-            mid = extra.get("quant_price_mid")
-            d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
-            mid_s = _won(mid)
-            mid_s = f"{mid_s}원" if mid_s != "—" else "—"
-            note = extra.get("quant_note") or extra.get("quant_method") or ""
-            bits.append(
-                _section(
-                    "혼합 목표가",
-                    f'<div class="pf-sec-body">PBR {d_s} · {mid_s}'
-                    f"{'<br/>' + str(note) if note else ''}</div>",
-                )
+    # 사다리 캡션에 정량초안이 있으면 혼합목표 노트는 생략.
+    if extra.get("quant_ok") and not summary_in_table:
+        pbr_d = extra.get("quant_pbr_draft")
+        mid = extra.get("quant_price_mid")
+        d_s = f"{float(pbr_d):.2f}" if pbr_d not in (None, "") else "—"
+        mid_s = _won(mid)
+        mid_s = f"{mid_s}원" if mid_s != "—" else "—"
+        note = str(extra.get("quant_note") or extra.get("quant_method") or "").strip()
+        q = f"PBR {d_s} · {mid_s}"
+        if note:
+            q = f"{q} · {note}"
+        notes.append(
+            f'<div class="pf-open-note">'
+            f'<span class="pf-open-note-k">혼합목표</span>{escape(q)}</div>'
+        )
+    elif extra.get("quant_ok") and summary_in_table:
+        note = str(extra.get("quant_note") or extra.get("quant_method") or "").strip()
+        if note:
+            notes.append(
+                f'<div class="pf-open-note">'
+                f'<span class="pf-open-note-k">혼합목표</span>{escape(note)}</div>'
             )
     hk = extra.get("hakedaka_detail")
     if hk:
         theme = " · 경기민감 테마" if extra.get("cyclical_theme") else ""
-        bits.append(
-            _section(
-                "하케다카",
-                f'<div class="pf-sec-body">{hk}{theme}</div>',
-            )
+        notes.append(
+            f'<div class="pf-open-note">'
+            f'<span class="pf-open-note-k">하케다카</span>'
+            f"{escape(str(hk))}{escape(theme)}</div>"
         )
-    return f'<div class="pf-extend">{"".join(bits)}</div>'
+    body = f"{grid}{''.join(notes)}"
+    if not body.strip():
+        return ""
+    return f'<div class="pf-extend pf-extend-open">{body}</div>'
 
 
 def _ops_expand_html(row: PortfolioRow) -> str:
@@ -1144,13 +1207,146 @@ def _ops_expand_html(row: PortfolioRow) -> str:
     return f'<div class="pf-extend">{"".join(bits)}</div>'
 
 
-def render_expanded_html(ctx: DashboardContext, row: PortfolioRow) -> str:
+def render_expanded_html(
+    ctx: DashboardContext,
+    row: PortfolioRow,
+    *,
+    summary_in_table: bool = False,
+) -> str:
     """Expanded area as parent-row extension — no nested card boxes."""
     _ = ctx
     extra = row.extra or {}
     if extra.get("book") == "proposal":
-        return _proposal_expand_html(row)
+        return _proposal_expand_html(row, summary_in_table=summary_in_table)
     return _ops_expand_html(row)
+
+
+def _fmt_score(score: object) -> str:
+    if score is None or score == "":
+        return "—"
+    try:
+        return f"{float(score):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _book_weight_cell(row: PortfolioRow) -> str:
+    extra = row.extra or {}
+    if extra.get("proposal_eligible") is False:
+        return "—"
+    return f"{row.weight_pct:.1f}%"
+
+
+def _book_reason_plain(row: PortfolioRow, *, max_len: int = 34) -> str:
+    """One-line table reason — detail lives in expand."""
+    text, _tone = _header_cue(row)
+    text = (text or "").strip()
+    if not text:
+        detail = (row.ops_signal_detail or "").strip()
+        text = detail
+    if len(text) > max_len:
+        return text[: max_len - 1] + "…"
+    return text or "—"
+
+
+def _book_cue_cell_html(row: PortfolioRow, chart: ChartRead | None = None) -> str:
+    """Front column: 유지/줄이기/부적격 only (name stays clean)."""
+    extra = row.extra or {}
+    if extra.get("proposal_eligible") is False:
+        return '<span class="pf-book-cue pf-book-cue-blocked">부적격</span>'
+    cue = _unified_cue(row, chart)
+    tone = {
+        "ok": "ok",
+        "accent": "ok",
+        "warn": "warn",
+        "hot": "warn",
+        "weak": "warn",
+        "danger": "danger",
+        "muted": "muted",
+    }.get(cue.tone, "muted")
+    label = cue.ops_part if _chart_cue_active(chart) else cue.action
+    label = (label or "—").strip() or "—"
+    # Keep one short word in the cue column.
+    if len(label) > 6:
+        label = label[:6]
+    return (
+        f'<span class="pf-book-cue pf-book-cue-{escape(tone)}">'
+        f"{escape(label)}</span>"
+    )
+
+
+def _portfolio_book_row_html(
+    row: PortfolioRow,
+    *,
+    chart: ChartRead | None = None,
+    held: set[str] | None = None,
+    proposed: set[str] | None = None,
+    blocked: set[str] | None = None,
+    phcvs: set[str] | None = None,
+    open_row: bool = False,
+) -> str:
+    """Summary: 배지 | 종목 | 점수 | 비중 | 현재 | 목표 | 사유."""
+    extra = row.extra or {}
+    is_blocked = extra.get("proposal_eligible") is False
+    cue_html = _book_cue_cell_html(row, chart)
+    cross = _cross_book_chips_html(
+        row,
+        held=held or set(),
+        proposed=proposed or set(),
+        blocked=blocked or set(),
+        phcvs=phcvs,
+    )
+    name_html = (
+        f'<span class="pf-book-name">'
+        f"{naver_name_chart_html(row.ticker, row.name)}</span>{cross}"
+    )
+    score_s = _fmt_score(row.total_score)
+    weight_s = _book_weight_cell(row)
+    if is_blocked:
+        spot_s = "—"
+        tgt_s = "—"
+    else:
+        spot_s = _fmt_price(row.current_price)
+        if spot_s != "—":
+            spot_s = f"{spot_s}"
+        tgt_s = (
+            _fmt_price(row.target_price) if row.has_target else "—"
+        )
+    reason_raw = _book_reason_plain(row)
+    reason = escape(reason_raw)
+    open_cls = " pf-book-tr-open" if open_row else ""
+    blocked_cls = " pf-book-tr-blocked" if is_blocked else ""
+    return (
+        f'<div class="pf-book-tr{open_cls}{blocked_cls}">'
+        f'<div class="pf-book-td pf-book-c-cue">{cue_html}</div>'
+        f'<div class="pf-book-td pf-book-td-name pf-book-c-name">{name_html}</div>'
+        f'<div class="pf-book-td pf-book-td-num pf-book-c-score">'
+        f'<span class="pf-book-k">점수</span>{escape(score_s)}</div>'
+        f'<div class="pf-book-td pf-book-td-num pf-book-c-wt">'
+        f'<span class="pf-book-k">비중</span>{escape(weight_s)}</div>'
+        f'<div class="pf-book-td pf-book-td-num pf-book-c-spot">'
+        f'<span class="pf-book-k">현재</span>{escape(spot_s)}</div>'
+        f'<div class="pf-book-td pf-book-td-num pf-book-c-tgt">'
+        f'<span class="pf-book-k">목표</span>{escape(tgt_s)}</div>'
+        f'<div class="pf-book-td pf-book-td-why pf-book-c-why" '
+        f'title="{reason}">'
+        f'<span class="pf-book-k">사유</span>{reason}</div>'
+        f"</div>"
+    )
+
+
+def _portfolio_book_head_html() -> str:
+    return (
+        '<div class="pf-book-tr pf-book-th">'
+        '<div class="pf-book-td pf-book-c-cue">배지</div>'
+        '<div class="pf-book-td pf-book-td-name pf-book-c-name">종목</div>'
+        '<div class="pf-book-td pf-book-c-score">점수</div>'
+        '<div class="pf-book-td pf-book-c-wt">비중</div>'
+        '<div class="pf-book-td pf-book-c-spot">현재</div>'
+        '<div class="pf-book-td pf-book-c-tgt">목표</div>'
+        '<div class="pf-book-td pf-book-td-why pf-book-c-why">사유</div>'
+        "</div>"
+    )
 
 
 def render_portfolio_bullets(
@@ -1160,13 +1356,14 @@ def render_portfolio_bullets(
     key_prefix: str = "pf",
     rows: Optional[list[PortfolioRow]] = None,
     empty_hint: Optional[str] = None,
+    always_open: bool = False,
 ) -> None:
     """
     mode:
-      - full: accordion expand on portfolio page
+      - full: summary + detail (1·2·3 · 차트 · 근거)
       - summary: compact home widget; click navigates to portfolio
-    rows:
-      override the bullet list (proposal vs ops holdings).
+    always_open:
+      True → 접힘 없이 종목마다 상세를 항상 표시 (최종 제안 5~8용)
     """
     rows = list(rows if rows is not None else ctx.portfolio_rows)
     if not rows:
@@ -1174,7 +1371,7 @@ def render_portfolio_bullets(
         return
 
     nav = st.session_state.pop(SESSION_NAV_EXPAND, None)
-    if nav and mode == "full":
+    if nav and mode == "full" and not always_open:
         st.session_state[SESSION_EXPANDED] = nav
 
     expanded = st.session_state.get(SESSION_EXPANDED)
@@ -1208,39 +1405,96 @@ def render_portfolio_bullets(
         getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
     )
 
-    st.markdown('<div class="pf-list">', unsafe_allow_html=True)
+    wrap_cls = "pf-book-table-wrap"
+    if always_open:
+        wrap_cls += " pf-book-always-open"
+    st.markdown(f'<div class="{wrap_cls}">', unsafe_allow_html=True)
 
-    for row in rows:
-        is_open = mode == "full" and expanded == row.ticker
-        left, right = st.columns([6, 1])
-        with left:
-            tk = norm_ticker(row.ticker)
+    if always_open:
+        st.markdown(_portfolio_book_head_html(), unsafe_allow_html=True)
+    else:
+        head_l, head_r = st.columns([10, 1])
+        with head_l:
+            st.markdown(_portfolio_book_head_html(), unsafe_allow_html=True)
+        with head_r:
             st.markdown(
-                _row_main_html(
-                    row,
-                    chart=chart_map.get(tk),
-                    held=held_set,
-                    proposed=proposed_set,
-                    blocked=blocked_set,
-                    phcvs=phcvs_set,
-                    flow_data_dir=flow_data_dir,
-                    detail=bool(is_open),
-                ),
+                '<div class="pf-book-th-spacer">근거</div>',
                 unsafe_allow_html=True,
             )
+
+    for row in rows:
+        is_open = always_open or (mode == "full" and expanded == row.ticker)
+        tk = norm_ticker(row.ticker)
+        row_html = _portfolio_book_row_html(
+            row,
+            chart=chart_map.get(tk),
+            held=held_set,
+            proposed=proposed_set,
+            blocked=blocked_set,
+            phcvs=phcvs_set,
+            open_row=bool(is_open),
+        )
+
+        if always_open:
+            # 한 markdown = 요약+본문 (이름·비중·가격은 요약 행만).
+            detail_body = _row_main_html(
+                row,
+                chart=chart_map.get(tk),
+                held=held_set,
+                proposed=proposed_set,
+                blocked=blocked_set,
+                phcvs=phcvs_set,
+                flow_data_dir=flow_data_dir,
+                detail=True,
+                show_header=False,
+            )
+            expand_body = render_expanded_html(
+                ctx, row, summary_in_table=True
+            )
+            st.markdown(
+                f'<div class="pf-book-open-card">{row_html}'
+                f'<div class="pf-book-detail pf-book-detail-open">'
+                f"{detail_body}{expand_body}</div></div>",
+                unsafe_allow_html=True,
+            )
+            continue
+
+        left, right = st.columns([10, 1])
+        with left:
+            st.markdown(row_html, unsafe_allow_html=True)
         with right:
             if mode == "summary":
-                if st.button("→", key=f"{key_prefix}_go_{row.ticker}", help=f"{row.name} 상세"):
+                if st.button(
+                    "→",
+                    key=f"{key_prefix}_go_{row.ticker}",
+                    help=f"{row.name} 상세",
+                ):
                     navigate_to_portfolio(row.ticker)
             else:
                 toggle_label = "접기" if is_open else "펼침"
                 if st.button(toggle_label, key=f"{key_prefix}_tog_{row.ticker}"):
-                    st.session_state[SESSION_EXPANDED] = None if is_open else row.ticker
+                    st.session_state[SESSION_EXPANDED] = (
+                        None if is_open else row.ticker
+                    )
                     st.rerun()
 
         if is_open:
-            st.markdown(render_expanded_html(ctx, row), unsafe_allow_html=True)
-
-        st.markdown('<div class="pf-hairline"></div>', unsafe_allow_html=True)
+            # Detail keeps _row_main_html so hold_exit monkeypatch still applies.
+            detail_body = _row_main_html(
+                row,
+                chart=chart_map.get(tk),
+                held=held_set,
+                proposed=proposed_set,
+                blocked=blocked_set,
+                phcvs=phcvs_set,
+                flow_data_dir=flow_data_dir,
+                detail=True,
+                show_header=True,
+            )
+            expand_body = render_expanded_html(ctx, row)
+            st.markdown(
+                f'<div class="pf-book-detail">{detail_body}{expand_body}</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("</div>", unsafe_allow_html=True)

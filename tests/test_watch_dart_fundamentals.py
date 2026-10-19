@@ -172,3 +172,58 @@ def test_hakedaka_from_accounts_owner_and_aliases() -> None:
     assert out["net_cash"] == 1e9
     assert out["treasury_share_ratio"] == 0.5
     assert out["largest_shareholder_pct"] == 16.2
+
+
+def test_sync_hakedaka_from_payout_and_owners(tmp_path) -> None:
+    import json
+
+    from alpha_system.sizing.hakedaka_screen import evaluate_hakedaka, load_hakedaka_inputs
+    from alpha_system.ui.services.watch_dart_fundamentals import (
+        sync_hakedaka_from_opendart_caches,
+    )
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "opendart_payout_sr4.json").write_text(
+        json.dumps({"rows": {"005930": {"buyback_3y": True, "quarters_hit": 2}}}),
+        encoding="utf-8",
+    )
+    (data / "opendart_proposal_watch.json").write_text(
+        json.dumps(
+            {
+                "metrics": [
+                    {"ticker": "005930", "largest_shareholder_pct": 18.5},
+                    {"ticker": "000660", "largest_shareholder_pct": None},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    n = sync_hakedaka_from_opendart_caches(
+        tmp_path, data_dir=data, as_of="2026-09-24", owner_rows={}
+    )
+    assert n >= 1
+    inputs = load_hakedaka_inputs(tmp_path, data_dir=data)
+    assert inputs.owner_pct["005930"] == 18.5
+    assert inputs.buyback["005930"] is True
+    v = evaluate_hakedaka("005930", inputs, min_hits=2)
+    assert v.treasury is True
+    assert v.owner_band is True
+    assert v.known >= 2
+
+
+def test_hyslr_prefers_total_row() -> None:
+    from datetime import date
+
+    from alpha_system.ui.services.cecs_opendart_pack import _hyslr_owner_pct
+
+    def dart_get(path, params, **kwargs):
+        assert path == "hyslrSttus.json"
+        return {
+            "list": [
+                {"nm": "홍길동", "stock_knd": "보통주", "trmend_posesn_stock_rt": "10"},
+                {"nm": "합계", "trmend_posesn_stock_rt": "21.5"},
+            ]
+        }
+
+    assert _hyslr_owner_pct(dart_get, "001", date(2026, 9, 24)) == 21.5

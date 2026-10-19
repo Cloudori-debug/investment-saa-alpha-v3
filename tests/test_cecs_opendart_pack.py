@@ -161,7 +161,8 @@ def test_prompt_c_forbids_html_viewers() -> None:
     assert "KIND" in prompt
 
 
-def test_proposal_watch_skips_payout_and_does_not_fire(tmp_path: Path) -> None:
+def test_proposal_watch_evidence_layer_and_does_not_fire(tmp_path: Path) -> None:
+    """Watch now pulls list.json for Review evidence; still no score/target write."""
     from alpha_system.journal import clear_entries, list_entries
     from alpha_system.ui.services.cecs_opendart_pack import (
         load_opendart_watch,
@@ -176,7 +177,25 @@ def test_proposal_watch_skips_payout_and_does_not_fire(tmp_path: Path) -> None:
         del params
         called.append(path)
         if path == "list.json":
-            raise AssertionError("proposal watch must not call list.json")
+            return {
+                "list": [
+                    {
+                        "report_nm": "자기주식취득결정",
+                        "rcept_dt": "20260515",
+                        "rcept_no": "20260515000001",
+                    }
+                ]
+            }
+        if path == "tsstkAqDecsn.json":
+            return {
+                "list": [
+                    {
+                        "rcept_no": "20260515000001",
+                        "aqpln_prc_ostk": "5000000000",
+                        "aqpln_prc_estk": "-",
+                    }
+                ]
+            }
         if path == "majorstock.json":
             return {
                 "list": [
@@ -210,12 +229,24 @@ def test_proposal_watch_skips_payout_and_does_not_fire(tmp_path: Path) -> None:
         corp_map={"005930": "00126380", "000660": "00164779"},
         journal_path=tmp_path / "j.jsonl",
     )
-    assert "list.json" not in called
+    assert "list.json" in called
     assert snap.flags
+    assert snap.version == 3
+    assert snap.evidence
+    assert any(
+        e.get("ticker") == "005930" and e.get("data_status") == "ok"
+        for e in snap.evidence
+    )
+    samp = next(e for e in snap.evidence if e.get("ticker") == "005930")
+    ev0 = (samp.get("events") or [{}])[0]
+    assert ev0.get("amount_krw") == 5_000_000_000
+    assert "tsstkAqDecsn" in str(ev0.get("amount_note") or "")
+    assert "tsstkAqDecsn.json" in called
     assert all("fired" not in f for f in snap.flags)
     loaded = load_opendart_watch(tmp_path)
     assert loaded is not None
     assert loaded.tickers == ["005930", "000660"]
+    assert loaded.evidence
     assert not watch_needs_refresh(loaded, ["005930", "000660"])
     assert watch_needs_refresh(loaded, ["005930"])
     assert list_entries(action_kind="OPENDART_WATCH")

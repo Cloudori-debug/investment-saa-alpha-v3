@@ -189,6 +189,7 @@ def persist_hakedaka_watch_rows(
         "net_cash_to_market_cap",
         "treasury_share_ratio",
         "largest_shareholder_pct",
+        "buyback_3y",
         "related_party_risk_flag",
         "governance_event_flag",
         "enriched_at",
@@ -224,7 +225,13 @@ def persist_hakedaka_watch_rows(
                 ncm = round(net_cash / cap * 100.0, 4)
         tre = _as_float(payload.get("treasury_share_ratio"))
         owner = _as_float(payload.get("largest_shareholder_pct"))
-        if all(v is None for v in (net_cash, ncm, tre, owner)):
+        buy_raw = payload.get("buyback_3y")
+        buy = None
+        if buy_raw is True or str(buy_raw).strip().lower() in {"true", "1", "yes", "y"}:
+            buy = True
+        elif buy_raw is False or str(buy_raw).strip().lower() in {"false", "0", "no", "n"}:
+            buy = False
+        if all(v is None for v in (net_cash, ncm, tre, owner, buy)):
             continue
         row = dict(existing.get(ticker) or {"ticker": ticker})
         row["ticker"] = ticker
@@ -238,6 +245,10 @@ def persist_hakedaka_watch_rows(
             row["treasury_share_ratio"] = str(tre)
         if owner is not None:
             row["largest_shareholder_pct"] = str(owner)
+        if buy is True:
+            row["buyback_3y"] = "true"
+        elif buy is False:
+            row["buyback_3y"] = "false"
         row["enriched_at"] = stamp
         existing[ticker] = row
         wrote += 1
@@ -258,6 +269,87 @@ def persist_hakedaka_watch_rows(
         for ticker in sorted(existing):
             writer.writerow({k: existing[ticker].get(k, "") for k in write_fields})
     return wrote
+
+
+def sync_hakedaka_from_opendart_caches(
+    root: Path,
+    *,
+    data_dir: Path | None = None,
+    as_of: str = "",
+    owner_rows: Mapping[str, Mapping[str, Any]] | None = None,
+    market_caps: Mapping[str, float] | None = None,
+) -> int:
+    """Merge OpenDART watch owners + payout buybacks into hakedaka_fundamentals.csv.
+
+    Does not call the network. Does not change QVM scores or target_portfolio.
+    """
+    import json
+
+    root = Path(root)
+    book = Path(data_dir) if data_dir is not None else root / "data"
+    shared = root / "data"
+    rows: dict[str, dict[str, Any]] = {}
+
+    def _put(ticker: str, **fields: Any) -> None:
+        tk = str(ticker).zfill(6) if str(ticker).isdigit() else str(ticker)
+        if not tk:
+            return
+        slot = rows.setdefault(tk, {})
+        for key, val in fields.items():
+            if val is not None and val != "":
+                slot[key] = val
+
+    # Explicit owners from a fresh pack (preferred).
+    for raw_tk, payload in (owner_rows or {}).items():
+        if not isinstance(payload, Mapping):
+            continue
+        owner = _as_float(payload.get("largest_shareholder_pct"))
+        if owner is not None:
+            _put(raw_tk, largest_shareholder_pct=owner)
+
+    # Watch JSON (may still have nulls — skip those).
+    for base in (book, shared):
+        watch = base / "opendart_proposal_watch.json"
+        if not watch.is_file():
+            continue
+        try:
+            data = json.loads(watch.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for item in data.get("metrics") or []:
+            if not isinstance(item, Mapping):
+                continue
+            owner = _as_float(item.get("largest_shareholder_pct"))
+            if owner is not None:
+                _put(item.get("ticker"), largest_shareholder_pct=owner)
+
+    # Payout SR4 buybacks → CSV flag so gate sees them even if JSON path differs.
+    for base in (book, shared):
+        payout = base / "opendart_payout_sr4.json"
+        if not payout.is_file():
+            continue
+        try:
+            data = json.loads(payout.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        raw_rows = data.get("rows") if isinstance(data, dict) else None
+        if not isinstance(raw_rows, dict):
+            continue
+        for raw_tk, raw_row in raw_rows.items():
+            if isinstance(raw_row, Mapping) and raw_row.get("buyback_3y"):
+                _put(raw_tk, buyback_3y=True)
+
+    if not rows:
+        return 0
+    path = book / "hakedaka_fundamentals.csv"
+    return persist_hakedaka_watch_rows(
+        path,
+        rows,
+        market_caps=market_caps,
+        as_of=as_of,
+    )
 
 
 def persist_watch_dart_to_fundamentals(

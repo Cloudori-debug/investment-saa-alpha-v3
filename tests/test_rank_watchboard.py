@@ -251,8 +251,10 @@ def test_sector_labels_override_concentration_key() -> None:
         sector_labels={"000001": "음식료·담배"},
         cutoff=50.0,
         target_n=6,
+        hakedaka_by_ticker={"000001": "2/4 통과 · 미측정 1"},
     )
     assert table[0].sector == "음식료·담배"
+    assert table[0].hakedaka == "2/4 통과 · 미측정 1"
 
 
 def test_load_watch_metrics_latest_fundamentals(tmp_path: Path) -> None:

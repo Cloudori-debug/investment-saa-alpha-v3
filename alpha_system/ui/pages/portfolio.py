@@ -14,7 +14,7 @@ from alpha_system.schema import TrancheId
 from alpha_system.scoring.engine import NameScore
 from alpha_system.sizing.allocate import allocate_tranche
 from alpha_system.sizing.qual_overlay import (
-    GATE_REASON_KO,
+    apply_evidence_withdrawn_gates,
     apply_opendart_flag_gates,
     journal_overlay_change,
     load_qual_overlay,
@@ -43,16 +43,33 @@ from alpha_system.ui.services.rank_watchboard import (
 from alpha_system.ui.services.approval_chrome import page_head
 from alpha_system.ui.services.ui_copy import copy_get
 from alpha_system.ui.services.screen_market import render_screen_market_nav
-from alpha_system.ui.services.screen_horizon import render_screen_horizon_nav
 from alpha_system.screen_book import (
     is_kosdaq,
-    is_short,
     save_kosdaq_policy,
-    save_short_policy,
     target_names_band,
     watch_max,
 )
 from alpha_system.ui.theme_prefs import watch_row_styles
+
+try:
+    from alpha_system.ui.services.screen_horizon import render_screen_horizon_nav
+except ImportError:  # pragma: no cover — mid-only trees without short nav
+
+    def render_screen_horizon_nav(root: Path) -> str:  # type: ignore[misc]
+        del root
+        return "mid"
+
+
+try:
+    from alpha_system.screen_book import is_short, save_short_policy
+except ImportError:  # pragma: no cover — older screen_book without short horizon
+
+    def is_short(horizon: object) -> bool:
+        return str(horizon or "").strip().lower() in {"short", "단기", "st"}
+
+    def save_short_policy(*_a, **_k):  # type: ignore[misc]
+        return None
+
 
 def _book_keys(ctx: DashboardContext) -> str:
     mkt = str(getattr(ctx, "screen_market", "KOSPI") or "KOSPI")
@@ -73,6 +90,27 @@ def _reset_watch_picker(ctx: DashboardContext, tickers: list[str]) -> None:
     key, _sig, last = _watch_session_keys(ctx)
     st.session_state.pop(key, None)
     st.session_state[last] = tuple(sorted(tickers))
+
+
+def _watch_hold_flags(edited: object, *, n: int) -> list[bool]:
+    """Read「보유」flags from data_editor frame (or arrow-fallback event)."""
+    if n <= 0:
+        return []
+    # Native data_editor → DataFrame with 보유 column.
+    try:
+        import pandas as pd
+
+        if isinstance(edited, pd.DataFrame) and "보유" in edited.columns:
+            flags = [bool(v) for v in edited["보유"].tolist()[:n]]
+            if len(flags) < n:
+                flags.extend([False] * (n - len(flags)))
+            return flags
+    except Exception:  # noqa: BLE001 — fall through to selection event
+        pass
+    # HTML fallback may return DataframeFallbackEvent(selection.rows).
+    rows = list(getattr(getattr(edited, "selection", None), "rows", None) or [])
+    on = {int(i) for i in rows if 0 <= int(i) < n}
+    return [i in on for i in range(n)]
 
 
 
@@ -98,42 +136,47 @@ def render_portfolio(
             "portfolio",
             "page_lead",
             default=(
-                "한눈=③제안·④보유 · ①②·PH-CVS는 접힘 · "
-                "종목 펼침=1·2·3 근거 · Review-only."
+                "②후보=점수·판정·심층·공시·보유체크 한 표 · "
+                "③제안=비중·펼침 · 사람만 target·주문."
             ),
         ),
     )
     render_screen_market_nav(ctx.root)
-    render_screen_horizon_nav(ctx.root)
+    try:
+        render_screen_horizon_nav(ctx.root)
+    except Exception:  # noqa: BLE001 — mid-only fallback if short nav fails
+        st.caption("중기 장부 · 단기 탭을 건너뜀")
     if is_short(getattr(ctx, "screen_horizon", None)):
-        _render_short_vol_budget_banner(ctx)
+        try:
+            _render_short_vol_budget_banner(ctx)
+        except Exception:  # noqa: BLE001
+            pass
     if not (ctx.scoreboard_rows or []):
         _render_status_card(
             "이 시장 정량이 없습니다. 확인 → ① 숫자에서 정량 갱신 · "
             "단기 북은 같은 스냅샷을 재랭크합니다.",
             tone="warn",
         )
-    # ①② 입력은 기본 숨김 — 안쪽에 expander가 있어 st.expander로 감싸면 중첩 오류.
-    show_input = st.toggle(
+    # ① 컷오프만 접기 · ② 후보는 평가 통합 표로 항상 표시.
+    show_cutoff = st.toggle(
         copy_get(
             "portfolio",
             "input_fold_label",
-            default="①② 입력 · 컷오프 · 관찰풀",
+            default="① 컷오프 · 선정 규칙",
         ),
         value=False,
         key=f"pf_show_input_{_book_keys(ctx)}",
-        help="컷오프·관찰풀(입력). 기본 숨김 · 첫 화면은 ③제안·④보유.",
+        help="합격선·편입 수 조절. ② 후보 표는 아래에 항상 표시.",
     )
-    if show_input:
+    if show_cutoff:
         st.markdown('<div class="pf-tier-2">', unsafe_allow_html=True)
         preview_cutoff, preview_n = _render_cutoff_bar(ctx)
-        _render_watch_pool(ctx, preview_cutoff, preview_n)
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        # 표 색·관찰 동기용 미리보기 값 (위젯 없이 YAML 기준)
         preview_cutoff = ctx.cfg.scoring.score_cutoff
         preview_n = int(ctx.cfg.sizing.target_names)
     st.markdown('<div class="pf-tier-1">', unsafe_allow_html=True)
+    _render_watch_pool(ctx, preview_cutoff, preview_n)
     _render_proposal_book(
         ctx,
         proposal_eligible_sorter=proposal_eligible_sorter,
@@ -157,7 +200,7 @@ def _fmt_num(val, *, integers: bool = False) -> str:
 
 
 def _render_phcvs_watch(ctx: DashboardContext) -> None:
-    """External PH-CVS observation — folded by default, Review-only."""
+    """PH-CVS detail below ③④ — glance strip already lives in ③ (anti-leak)."""
     from alpha_system.review.phcvs_auto_eval import run_and_write
     from alpha_system.ui.services.phcvs_watch_board import (
         _is_attention,
@@ -193,8 +236,8 @@ def _render_phcvs_watch(ctx: DashboardContext) -> None:
                 "portfolio",
                 "phcvs_caption",
                 default=(
-                    "상단「지금 볼 것」만 먼저 · 겹침·가격/유동 PASS · "
-                    "나머지는 추적 · 현금=시드 · 매수·자동편입 없음"
+                    "③ 제안 한눈에 이미 표시됨 · 여기는 상세·재평가 · "
+                    "현금=시드 · 매수·자동편입 없음"
                 ),
             ),
             chips=chips,
@@ -226,7 +269,11 @@ def _render_phcvs_watch(ctx: DashboardContext) -> None:
                 st.rerun()
             except Exception as exc:  # noqa: BLE001 — surface to operator
                 st.error(f"PH-CVS 자동평가 실패: {exc}")
-        st.markdown(phcvs_watch_html(board), unsafe_allow_html=True)
+        # Attention already on ③ glance — detail cards only here.
+        st.markdown(
+            phcvs_watch_html(board, include_attention=False),
+            unsafe_allow_html=True,
+        )
 
 
 def _observation_pool_tickers(ctx: DashboardContext, *, band_max: int) -> list[str]:
@@ -250,10 +297,12 @@ def _observation_pool_tickers(ctx: DashboardContext, *, band_max: int) -> list[s
 def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     """OpenDART on the watch pool: 경영참여 게이트 + 최대주주 + Review-only 선행 트리거."""
     from alpha_system.ui.services.cecs_opendart_pack import (
+        estimate_watch_calls,
         load_opendart_watch,
         refresh_opendart_proposal_watch,
         watch_needs_refresh,
     )
+    from alpha_system.ui.services.dart_quota import load_quota
 
     band = int(getattr(ctx.cfg.sizing, "target_names", 6) or 6)
     tickers = _observation_pool_tickers(ctx, band_max=band)
@@ -269,32 +318,93 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     journal = ctx.root / "data" / "alpha_system_journal.jsonl"
     as_of = ctx.as_of if isinstance(ctx.as_of, _date) else _date.today()
     data_dir = _source_dir(ctx)
+    from alpha_system.ui.services.opendart_evidence_board import (
+        opendart_evidence_html,
+        opendart_gates_html,
+        opendart_join_html,
+        opendart_toolbar_html,
+        parse_evidence_board,
+    )
+    # opendart_gates_html: detail expander only (join has 게이트 병합)
+    from alpha_system.ui.services.dart_evidence import (
+        evidence_gate_policy_path,
+        load_evidence_gate_policy,
+        withdrawn_buyback_gate_candidates,
+    )
+    from alpha_system.shadow.evidence_ab import evidence_ab_report
+
     snap = load_opendart_watch(ctx.root, data_dir=data_dir)
-    auto_key = "pf_od_auto_" + ",".join(tickers)
     need = watch_needs_refresh(snap, tickers)
-    if need and not st.session_state.get(auto_key):
-        st.session_state[auto_key] = True
+    quota = load_quota(Path(data_dir))
+    policy = load_evidence_gate_policy(evidence_gate_policy_path(Path(data_dir)))
+    gate_on = bool(policy.get("enabled"))
+
+    # First-ever: rebuild from disk caches only (0 calls). Network only on button.
+    if snap is None:
         try:
-            with st.spinner("관찰 풀 OpenDART 탐색 (경영참여·최대주주)"):
-                snap = refresh_opendart_proposal_watch(
-                    ctx.root,
-                    tickers,
-                    as_of=as_of,
-                    journal_path=journal,
-                    data_dir=data_dir,
-                )
+            snap = refresh_opendart_proposal_watch(
+                ctx.root,
+                tickers,
+                as_of=as_of,
+                journal_path=journal,
+                data_dir=data_dir,
+                mode="cache_only",
+            )
         except Exception as exc:
-            st.warning(f"OpenDART 탐색 실패: {exc}")
-    if st.button("다시 탐색", key="pf_od_refetch"):
-        st.session_state[auto_key] = True
+            st.warning(f"OpenDART 캐시 로드 실패: {exc}")
+
+    st.markdown(
+        opendart_toolbar_html(
+            quota_line=quota.status_line(),
+            stale=need,
+            as_of=str(getattr(snap, "as_of", "") or ""),
+            fetched_at=str(getattr(snap, "fetched_at", "") or ""),
+            gate_mode_on=gate_on,
+        ),
+        unsafe_allow_html=True,
+    )
+    # 2×2 — 4열은 창을 줄이면 버튼 글자가 깨짐.
+    r1c1, r1c2 = st.columns(2)
+    r2c1, r2c2 = st.columns(2)
+    with r1c1:
+        do_incr = st.button(
+            copy_get("portfolio", "opendart_btn_incremental", default="증분 갱신"),
+            key="pf_od_incr",
+            help=f"예상 상한 ≈{estimate_watch_calls(len(tickers))}회(실제는 만료분만)",
+            use_container_width=True,
+        )
+    with r1c2:
+        do_force = st.button(
+            copy_get("portfolio", "opendart_btn_force", default="전체 재탐색(위험)"),
+            key="pf_od_force",
+            use_container_width=True,
+        )
+    with r2c1:
+        do_cache = st.button(
+            copy_get("portfolio", "opendart_btn_cache", default="캐시만 다시 그리기"),
+            key="pf_od_cache",
+            use_container_width=True,
+        )
+    with r2c2:
+        do_deep = st.button(
+            copy_get("portfolio", "screen_deep_btn", default="심층 다시 그리기"),
+            key="pf_screen_deep",
+            help="관찰·제안 풀 심층 재평가 (DART 0회 · 점수 불변)",
+            use_container_width=True,
+        )
+    if do_incr or do_force or do_cache:
+        mode = "incremental" if do_incr else ("force" if do_force else "cache_only")
         try:
-            with st.spinner("관찰 풀 OpenDART 탐색 (경영참여·최대주주)"):
+            with st.spinner("OpenDART 갱신 중…"):
                 snap = refresh_opendart_proposal_watch(
                     ctx.root,
                     tickers,
                     as_of=as_of,
                     journal_path=journal,
                     data_dir=data_dir,
+                    mode=mode,
+                    enrich_documents=(mode == "incremental"),
+                    max_document_fetches=12,
                 )
             st.rerun()
         except Exception as exc:
@@ -303,7 +413,8 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     if snap is None:
         return
     if snap.missing_key:
-        st.warning("Open DART API 키가 없습니다. 설정에 키를 넣은 뒤 다시 탐색하세요.")
+        st.warning("Open DART API 키가 없습니다. 설정에 키를 넣은 뒤 증분 갱신하세요.")
+
     flags = list(snap.flag_models())
     path = overlay_path(_source_dir(ctx))
     overlay = load_qual_overlay(path)
@@ -323,48 +434,130 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
                 )
             st.rerun()
     gated = overlay.gated_tickers()
-    control_flags = [item for item in flags if str(item.kind) == "control_purpose"]
-    other_flags = [item for item in flags if str(item.kind) != "control_purpose"]
-    if not control_flags and not other_flags:
-        return
-    with st.expander(
-        copy_get(
-            "portfolio",
-            "gate_memo_expand",
-            default="게이트 메모 {n}건",
-            n=len(flags),
-        ),
-        expanded=bool(control_flags),
-    ):
-        st.caption(
-            copy_get(
-                "portfolio",
-                "opendart_gate_caption",
-                default=(
-                    "경영참여·연기금 감소는 제안에서 자동 제외. "
-                    "5% 경영참여는 사다리 매수1 Review-only. target 파일 불변."
-                ),
-            )
+
+    board = parse_evidence_board(getattr(snap, "evidence", None) or [])
+    blocked_rows = list(getattr(ctx, "proposal_blocked_rows", None) or [])
+    gate_cands = withdrawn_buyback_gate_candidates(board)
+    ab = None
+    if gate_cands:
+        prop_tks = [str(r.ticker).zfill(6) for r in proposal_rows]
+        score_map = {
+            str(r.ticker).zfill(6): float(getattr(r, "total_score", 0) or 0)
+            for r in list(ctx.scoreboard_rows or [])
+            if getattr(r, "ticker", None)
+        }
+        ab = evidence_ab_report(
+            prop_tks or [b.ticker for b in board],
+            [tk for tk, _ in gate_cands],
+            score_by_ticker=score_map,
         )
-        for item in control_flags:
-            tk = str(item.ticker).zfill(6)
-            name = names.get(tk, tk)
-            mark = "제안에서 제외" if tk in gated else "탐색됨"
+    # Screen-pool PH-CVS-style verify (not PDF 7 names) — same glance as proposal.
+    from alpha_system.review.screen_deep_verify import (
+        MODEL_VERSION as SCREEN_DEEP_MODEL,
+        build_screen_verify,
+        load_screen_verify,
+        save_screen_verify,
+        screen_verify_attention_html,
+    )
+    sv_board = load_screen_verify(Path(data_dir))
+    want_tks = list(
+        dict.fromkeys(
+            tickers
+            + [str(r.ticker).zfill(6) for r in proposal_rows]
+            + [str(r.ticker).zfill(6) for r in blocked_rows]
+        )
+    )
+    if (
+        do_deep
+        or not sv_board.available
+        or sv_board.model_version != SCREEN_DEEP_MODEL
+        or {r.ticker for r in sv_board.rows} != set(want_tks)
+    ):
+        try:
+            sv_board = build_screen_verify(
+                ctx.root,
+                data_dir=Path(data_dir),
+                tickers=want_tks,
+                names=names,
+                proposal_tickers=[str(r.ticker).zfill(6) for r in proposal_rows],
+                blocked_tickers=[str(r.ticker).zfill(6) for r in blocked_rows],
+                opendart_watch={
+                    "evidence": list(getattr(snap, "evidence", None) or []),
+                    "flags": list(getattr(snap, "flags", None) or []),
+                    "metrics": list(getattr(snap, "metrics", None) or []),
+                },
+                min_hits=int(getattr(ctx.cfg.sizing, "hakedaka_min_hits", 2) or 2),
+                as_of=str(getattr(snap, "as_of", "") or as_of.isoformat()),
+            )
+            save_screen_verify(Path(data_dir), sv_board)
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"스크린 심층 검증 실패: {exc}")
+    attn = screen_verify_attention_html(sv_board)
+    if attn:
+        st.markdown(attn, unsafe_allow_html=True)
+    for r in sv_board.rows:
+        if r.ticker and r.ticker not in names:
+            names[r.ticker] = r.name or r.ticker
+    # One glance table — PDF-7 PH-CVS stays in bottom expander only.
+    st.markdown(
+        opendart_join_html(
+            proposal_rows=proposal_rows,
+            blocked_rows=blocked_rows,
+            scoreboard_rows=list(ctx.scoreboard_rows or []),
+            board=board,
+            flags=flags,
+            gated=set(gated),
+            names=names,
+            screen_verify_rows=list(sv_board.rows),
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.expander("상세 · 게이트 메모 · 공시 건별", expanded=False):
+        if flags:
             st.markdown(
-                f"- {naver_name_chart_html(tk, name)} · 경영참여 선행 · {mark} · "
-                f"사다리 매수1 검토 · {_esc(item.note)}",
+                opendart_gates_html(flags, names=names, gated=set(gated)),
                 unsafe_allow_html=True,
             )
-        for item in other_flags:
-            tk = str(item.ticker).zfill(6)
-            kind = str(item.kind)
-            label = GATE_REASON_KO.get(kind, kind)
-            name = names.get(tk, tk)
-            mark = "제안에서 제외" if tk in gated else "탐색됨"
-            st.markdown(
-                f"- {naver_name_chart_html(tk, name)} · {label} · {mark} · {_esc(item.note)}",
-                unsafe_allow_html=True,
+        st.markdown(
+            opendart_evidence_html(
+                board,
+                names=names,
+                withdrawn_tickers=[tk for tk, _ in gate_cands],
+                ab=ab,
+                gate_mode_on=gate_on,
+                show_attn=False,
+            ),
+            unsafe_allow_html=True,
+        )
+
+    if (
+        gate_on
+        and policy.get("exclude_withdrawn_buyback", True)
+        and gate_cands
+    ):
+        updated, applied = apply_evidence_withdrawn_gates(
+            overlay, gate_cands, as_of=as_of
+        )
+        if applied:
+            save_qual_overlay(path, updated)
+            for tk in applied:
+                journal_overlay_change(
+                    action_kind="QUAL_GATE",
+                    subject=tk,
+                    rationale="증거 게이트: 자사주 체인 최종 철회",
+                    as_of=as_of,
+                    payload={"source": "evidence_withdrawn", "tickers": list(applied)},
+                    journal_path=journal,
+                )
+            st.info(
+                copy_get(
+                    "portfolio",
+                    "opendart_evidence_gated",
+                    default="증거 게이트 ON · 자사주 철회 {n}종 제안 제외(점수 불변).",
+                    n=len(applied),
+                )
             )
+            st.rerun()
 
 
 def _render_proposal_target_board(ctx: DashboardContext) -> None:
@@ -510,11 +703,14 @@ def _render_proposal_book(
             summary=copy_get(
                 "portfolio",
                 "screen_book_caption_short" if short else "screen_book_caption",
-                default="지도 → 편입 후보 → 대기열. 비중·실행은 사람 Review.",
+                default=(
+                    "누구인지는 ② 색 · 여기는 편입·대기만 비중·펼침(1·2·3). "
+                    "실행은 사람 Review."
+                ),
             ),
             chips=[
-                ("편입 = 최종 제안", "ok"),
-                ("대기 = 편입하지 않음", "warn"),
+                ("색 구분 = ②", "muted"),
+                ("편입·대기 비중·펼침", "ok"),
             ],
             tier="primary",
             extra_html=_proposal_map_html(
@@ -572,6 +768,7 @@ def _render_proposal_book(
                 mode="full",
                 key_prefix="pf_proposal",
                 rows=eligible,
+                always_open=True,
             )
         if blocked:
             blocked_head = copy_get(
@@ -619,7 +816,7 @@ def _render_holdings_book(ctx: DashboardContext) -> None:
             summary=copy_get(
                 "portfolio",
                 "holdings_caption_short" if short else "holdings_caption",
-                default="실보유 · ② 체크와 동기 · 제안과 다를 수 있음.",
+                default="실보유 · ②「보유」체크와 동기 · 제안과 다를 수 있음.",
             ),
             chips=hold_chips,
             tier="primary",
@@ -645,7 +842,7 @@ def _render_holdings_book(ctx: DashboardContext) -> None:
             mode="full",
             key_prefix="pf_ops",
             rows=list(ctx.ops_portfolio_rows or []),
-            empty_hint="실보유가 없습니다. 위 후보 30 표에서 맨 앞칸을 체크하면 여기에 표시됩니다.",
+            empty_hint="실보유가 없습니다. ② 후보 표 맨 앞「보유」칸을 체크하면 여기에 표시됩니다.",
         )
 
 
@@ -655,39 +852,45 @@ def _esc(value: object) -> str:
 
 def _render_weight_action_board(ctx: DashboardContext) -> None:
     """Today's ratio to-do list above holdings — Review-only."""
-    from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
-    from alpha_system.ui.services.weight_action import (
-        board_items,
-        build_weight_actions_for_rows,
-        weight_action_board_html,
-    )
-
-    rows = list(getattr(ctx, "ops_portfolio_rows", None) or [])
-    if not rows:
-        return
-    flow_data_dir = Path(
-        getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
-    )
     try:
-        chart_map = reads_by_ticker(ctx)
-    except Exception:  # noqa: BLE001 — board must not break holdings
-        chart_map = {}
-    pairs = build_weight_actions_for_rows(
-        rows,
-        chart_map=chart_map,
-        flow_data_dir=flow_data_dir,
-    )
-    st.markdown(
-        weight_action_board_html(board_items(pairs)),
-        unsafe_allow_html=True,
-    )
+        from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
+        from alpha_system.ui.services.weight_action import (
+            board_items,
+            build_weight_actions_for_rows,
+            weight_action_board_html,
+        )
+
+        rows = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+        if not rows:
+            return
+        flow_data_dir = Path(
+            getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
+        )
+        try:
+            chart_map = reads_by_ticker(ctx)
+        except Exception:  # noqa: BLE001 — board must not break holdings
+            chart_map = {}
+        pairs = build_weight_actions_for_rows(
+            rows,
+            chart_map=chart_map,
+            flow_data_dir=flow_data_dir,
+        )
+        st.markdown(
+            weight_action_board_html(board_items(pairs)),
+            unsafe_allow_html=True,
+        )
+    except Exception:  # noqa: BLE001 — never blank the holdings book
+        st.caption("오늘 비중 보드를 건너뜀 · Review-only")
 
 
 def _render_shadow_profit_card(ctx: DashboardContext) -> None:
     """Mid shadow P&L card — Review-only, never writes target."""
-    from alpha_system.shadow.mid_ledger import ledger_path, load_ledger
-    from alpha_system.shadow.report import shadow_card_html, shadow_report_dict
-    from alpha_system.shadow.run import run_shadow_day
+    try:
+        from alpha_system.shadow.mid_ledger import ledger_path, load_ledger
+        from alpha_system.shadow.report import shadow_card_html, shadow_report_dict
+        from alpha_system.shadow.run import run_shadow_day
+    except Exception:  # noqa: BLE001 — optional module
+        return
 
     market = getattr(ctx, "screen_market", None)
     root = Path(ctx.root)
@@ -702,19 +905,22 @@ def _render_shadow_profit_card(ctx: DashboardContext) -> None:
         )
     except Exception:  # noqa: BLE001 — shadow must not break holdings UI
         pass
-    rows = load_ledger(ledger_path(root, market))
-    report = shadow_report_dict(rows)
-    st.markdown(shadow_card_html(report), unsafe_allow_html=True)
-    st.caption(
-        copy_get(
-            "portfolio",
-            "shadow_profit_caption",
-            default=(
-                "Shadow 손익=가상 중기 북 · QV제안+사다리+게이트 · Review-only · "
-                "target·자동주문 없음 · Go-live 전 증명용"
-            ),
+    try:
+        rows = load_ledger(ledger_path(root, market))
+        report = shadow_report_dict(rows)
+        st.markdown(shadow_card_html(report), unsafe_allow_html=True)
+        st.caption(
+            copy_get(
+                "portfolio",
+                "shadow_profit_caption",
+                default=(
+                    "Shadow 손익=가상 중기 북 · QV제안+사다리+게이트 · Review-only · "
+                    "target·자동주문 없음 · Go-live 전 증명용"
+                ),
+            )
         )
-    )
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _render_short_vol_budget_banner(ctx: DashboardContext) -> None:
@@ -964,7 +1170,10 @@ def _extra_by_ticker(ctx: DashboardContext) -> dict[str, dict]:
 
 
 def _style_watch_df(frame: pd.DataFrame):
-    tones = watch_row_styles(st.session_state.get("saa_ui_theme") or "dark")
+    from alpha_system.ui.theme_prefs import normalize_theme, watch_row_styles
+
+    theme = normalize_theme(st.session_state.get("saa_ui_theme") or "dark")
+    tones = watch_row_styles(theme)
 
     def _hl(row: pd.Series) -> list[str]:
         css = tones.get(str(row.get("구분") or ""), "")
@@ -995,6 +1204,61 @@ def _watch_hakedaka_by_ticker(
     for raw in tickers:
         tk = str(raw).zfill(6) if str(raw).isdigit() else str(raw)
         out[tk] = hits_label_short(evaluate_hakedaka(tk, inputs, min_hits=min_hits))
+    return out
+
+
+def _watch_eval_enrichment(
+    ctx: DashboardContext, tickers: list[str]
+) -> dict[str, dict[str, str]]:
+    """판정·심층·공시 from disk caches only (no network)."""
+    from alpha_system.review.screen_deep_verify import load_screen_verify
+    from alpha_system.sizing.qual_overlay import load_qual_overlay, overlay_path
+    from alpha_system.ui.services.cecs_opendart_pack import load_opendart_watch
+    from alpha_system.ui.services.opendart_evidence_board import (
+        build_watch_eval_map,
+        parse_evidence_board,
+    )
+
+    data_dir = Path(_source_dir(ctx))
+    try:
+        sv_board = load_screen_verify(data_dir)
+        sv_rows = list(sv_board.rows)
+    except Exception:  # noqa: BLE001
+        sv_rows = []
+    flags: list = []
+    evidence: list = []
+    try:
+        snap = load_opendart_watch(ctx.root, data_dir=data_dir)
+        if snap is not None:
+            flags = list(snap.flag_models())
+            evidence = parse_evidence_board(getattr(snap, "evidence", None) or [])
+    except Exception:  # noqa: BLE001
+        pass
+    gated: set[str] = set()
+    try:
+        gated = set(load_qual_overlay(overlay_path(data_dir)).gated_tickers())
+    except Exception:  # noqa: BLE001
+        gated = set()
+    return build_watch_eval_map(
+        tickers,
+        screen_verify_rows=sv_rows,
+        board=evidence,
+        flags=flags,
+        gated=gated,
+    )
+
+
+def _proposal_weight_by_ticker(ctx: DashboardContext) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for r in list(ctx.portfolio_rows or []):
+        tk = str(getattr(r, "ticker", "") or "")
+        if tk.isdigit():
+            tk = tk.zfill(6)
+        if tk:
+            try:
+                out[tk] = float(r.weight_pct)
+            except (TypeError, ValueError):
+                continue
     return out
 
 
@@ -1054,14 +1318,20 @@ def _render_watch_pool(
                 "portfolio",
                 "watch_intro_short" if short_watch else "watch_intro",
                 default=(
-                    "관찰 풀 · 맨 앞칸 체크 = ④ 실보유 등록."
+                    "한 표=점수·판정·심층·공시·하케다카 · 행 색=③ 관계 · 「보유」=④."
                     if short_watch
-                    else "관찰 풀 · 맨 앞칸 체크 = ④ 실보유 · 표 색 = ① 컷·③ 제안 관계."
+                    else (
+                        "한 표에 점수·판정·심층·공시·하케다카·가격을 모음 · "
+                        "행 색=최종 제안/컷 통과/편입 제외 · 「보유」체크=④ 실보유."
+                    )
                 ),
             ),
-            chips=[("맨 앞칸 체크 → ④ 보유", "ok")],
+            chips=[
+                ("평가 통합 표", "ok"),
+                ("「보유」→ ④", "ok"),
+            ],
             extra_html=legend,
-            tier="input",
+            tier="primary",
         )
         if board.warnings:
             for w in board.warnings:
@@ -1090,8 +1360,16 @@ def _render_watch_pool(
                 absorb_map = build_absorb_map(
                     ctx.root, getattr(ctx, "screen_market", None)
                 )
+            eval_map = _watch_eval_enrichment(
+                ctx, [r.ticker for r in table_rows]
+            )
+            weight_map = _proposal_weight_by_ticker(ctx)
             for r in table_rows:
+                tk = str(r.ticker).zfill(6) if str(r.ticker).isdigit() else str(r.ticker)
+                ev = eval_map.get(tk) or {}
+                w = weight_map.get(tk)
                 rec = {
+                    "보유": r.ticker in saved_tickers,
                     "순위": r.rank,
                     "구분": watch_tone_label(r.tone),
                     "종목": r.name,
@@ -1099,8 +1377,12 @@ def _render_watch_pool(
                     "코드": r.ticker,
                     "점수": r.total_score,
                     "SR": r.score_sr,
-                    "배당%": r.dividend_yield,
+                    "판정": ev.get("판정") or "—",
+                    "심층": ev.get("심층") or "—",
+                    "공시": ev.get("공시") or "—",
                     "하케다카": r.hakedaka or "—",
+                    "제안%": round(w, 1) if w is not None else None,
+                    "배당%": r.dividend_yield,
                     "섹터": r.sector or "—",
                     "PER": r.per,
                     "PBR": r.pbr,
@@ -1112,9 +1394,6 @@ def _render_watch_pool(
                     rec["흡수"] = absorb_label_for_ticker(absorb_map, r.ticker)
                 records.append(rec)
             frame = pd.DataFrame.from_records(records)
-            held_idx = [
-                i for i, r in enumerate(table_rows) if r.ticker in saved_tickers
-            ]
             saved_in_30 = tuple(
                 sorted(r.ticker for r in table_rows if r.ticker in saved_tickers)
             )
@@ -1124,34 +1403,124 @@ def _render_watch_pool(
                 st.session_state[watch_sig] = sig
                 st.session_state[watch_last] = saved_in_30
 
-            event = st.dataframe(
+            # 「보유」체크 + 구분 행 색 · 좁은 창은 가로 스크롤(깨짐 방지).
+            locked_cols = [c for c in frame.columns if c != "보유"]
+            core_cols = [
+                "보유",
+                "순위",
+                "구분",
+                "종목",
+                "점수",
+                "SR",
+                "판정",
+                "심층",
+                "공시",
+                "하케다카",
+                "제안%",
+                "현재가",
+                "목표가",
+            ]
+            extra_cols = [
+                c
+                for c in (
+                    "차트",
+                    "코드",
+                    "배당%",
+                    "섹터",
+                    "PER",
+                    "PBR",
+                    "ROE",
+                    "흡수",
+                )
+                if c in frame.columns
+            ]
+            compact = st.toggle(
+                copy_get(
+                    "portfolio",
+                    "watch_compact_cols",
+                    default="핵심 열만 (좁은 창)",
+                ),
+                value=False,
+                key=f"{watch_key}_compact",
+                help="켜면 차트·코드·PER 등을 숨기고 평가 열을 남깁니다. 끄면 가로 스크롤.",
+            )
+            show_cols = [c for c in core_cols if c in frame.columns]
+            if not compact:
+                show_cols = show_cols + [c for c in extra_cols if c not in show_cols]
+            # Keep any unexpected columns at the end when not compact.
+            if not compact:
+                show_cols = show_cols + [
+                    c for c in frame.columns if c not in show_cols
+                ]
+            st.markdown('<div class="pf-watch-scroll">', unsafe_allow_html=True)
+            edited = st.data_editor(
                 _style_watch_df(frame),
                 hide_index=True,
                 width="stretch",
                 height=38 + 33 * len(frame),
                 row_height=32,
-                on_select="rerun",
-                selection_mode="multi-row",
-                selection_default={"selection": {"rows": held_idx}},
+                disabled=locked_cols,
+                column_order=show_cols,
                 key=watch_key,
                 placeholder="—",
                 column_config={
-                    "순위": st.column_config.NumberColumn("순위", format="%d"),
+                    "보유": st.column_config.CheckboxColumn(
+                        "보유",
+                        help="체크 = ④ 실보유 등록 · 바로 저장 · 자동매매 없음",
+                        default=False,
+                        width="small",
+                    ),
+                    "구분": st.column_config.TextColumn(
+                        "구분",
+                        help="행 색과 동일 · 최종 제안=녹 · 컷 통과=주황 · 편입 제외=적 · 관찰=기본",
+                        width="small",
+                    ),
+                    "순위": st.column_config.NumberColumn(
+                        "순위", format="%d", width="small"
+                    ),
+                    "종목": st.column_config.TextColumn("종목", width="medium"),
                     "차트": st.column_config.LinkColumn(
                         "차트",
                         help="네이버 일봉 차트",
                         display_text="차트",
+                        width="small",
                     ),
-                    "점수": st.column_config.NumberColumn("점수", format="%.2f"),
+                    "코드": st.column_config.TextColumn("코드", width="small"),
+                    "점수": st.column_config.NumberColumn(
+                        "점수", format="%.2f", width="small"
+                    ),
                     "SR": st.column_config.NumberColumn(
                         "SR",
                         format="%.1f",
                         help="환원 score_sr (배당·성향·자사주·연속성) · 합계 25%",
+                        width="small",
+                    ),
+                    "판정": st.column_config.TextColumn(
+                        "판정",
+                        help="스크린 심층 Review · 통과/보류/제외검토 · 점수·target 불변",
+                        width="small",
+                    ),
+                    "심층": st.column_config.TextColumn(
+                        "심층",
+                        help="자동 심층 사유 · 사람만 편입·주문",
+                        width="medium",
+                    ),
+                    "공시": st.column_config.TextColumn(
+                        "공시",
+                        help="OpenDART 가치실현·게이트 요약 · 캐시 기준",
+                        width="medium",
+                    ),
+                    "제안%": st.column_config.NumberColumn(
+                        "제안%",
+                        format="%.1f",
+                        help="③ 최종 제안 비중(%) · 없으면 빈칸",
+                        width="small",
                     ),
                     "배당%": st.column_config.NumberColumn(
                         "배당%",
                         format="%.2f",
                         help="배당수익률(%) · 후보 30 안에서만 표시",
+                        width="small",
                     ),
                     "하케다카": st.column_config.TextColumn(
                         "하케다카",
@@ -1161,21 +1530,35 @@ def _render_watch_pool(
                             "×는 ‘측정됐는데 아님’ · 미측정과 다름. "
                             "합계·환원(score_sr)과 별개 · 단기 북은 미적용."
                         ),
+                        width="small",
                     ),
+                    "섹터": st.column_config.TextColumn("섹터", width="small"),
                     "흡수": st.column_config.TextColumn(
                         "흡수",
                         help=(
                             "단기 Review · 거래대금≥20일평균 3배 and 1M 수익률≤+3% "
                             "(급락 −20% 미만 제외). 매집 단정 아님 · 자동매수 없음."
                         ),
+                        width="small",
                     ),
-                    "PER": st.column_config.NumberColumn("PER", format="%.2f"),
-                    "PBR": st.column_config.NumberColumn("PBR", format="%.2f"),
-                    "ROE": st.column_config.NumberColumn("ROE", format="%.1f"),
-                    "현재가": st.column_config.NumberColumn("현재가", format="%.0f"),
-                    "목표가": st.column_config.NumberColumn("목표가", format="%.0f"),
+                    "PER": st.column_config.NumberColumn(
+                        "PER", format="%.2f", width="small"
+                    ),
+                    "PBR": st.column_config.NumberColumn(
+                        "PBR", format="%.2f", width="small"
+                    ),
+                    "ROE": st.column_config.NumberColumn(
+                        "ROE", format="%.1f", width="small"
+                    ),
+                    "현재가": st.column_config.NumberColumn(
+                        "현재가", format="%.0f", width="small"
+                    ),
+                    "목표가": st.column_config.NumberColumn(
+                        "목표가", format="%.0f", width="small"
+                    ),
                 },
             )
+            st.markdown("</div>", unsafe_allow_html=True)
             st.caption(
                 copy_get(
                     "portfolio",
@@ -1209,11 +1592,12 @@ def _render_watch_pool(
                         ),
                     )
                 )
-            sel_rows = list(getattr(getattr(event, "selection", None), "rows", None) or [])
-            sel_tickers = []
-            for i in sel_rows:
-                if 0 <= int(i) < len(table_rows):
-                    sel_tickers.append(table_rows[int(i)].ticker)
+            hold_flags = _watch_hold_flags(edited, n=len(table_rows))
+            sel_tickers = [
+                table_rows[i].ticker
+                for i, on in enumerate(hold_flags)
+                if on
+            ]
             current = tuple(sorted(sel_tickers))
             prev = st.session_state.get(watch_last)
             if prev is None:
@@ -1221,6 +1605,7 @@ def _render_watch_pool(
             elif current != prev:
                 _persist_watch_holdings(ctx, list(current))
                 st.session_state[watch_last] = current
+                st.session_state.pop(watch_key, None)
                 st.rerun()
 
         _render_candidate_ai_export(

@@ -77,6 +77,7 @@ class RankWatchRow:
     in_proposal: bool
     eligibility: Optional[bool]
     eligibility_reason: str = ""
+    score_sr: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,10 @@ class WatchTableRow:
     roe: Optional[float]
     current_price: Optional[float]
     target_price: Optional[float]
+    hakedaka: str = ""
+    """Gate hit summary (e.g. 2/4 통과) — not score_sr."""
+    score_sr: Optional[float] = None
+    dividend_yield: Optional[float] = None
 
 
 def _norm_ticker(raw: object) -> str:
@@ -293,6 +298,7 @@ def build_rank_watchboard(
             in_proposal=ticker in prop,
             eligibility=row.eligibility,
             eligibility_reason=str(getattr(row, "eligibility_reason", "") or ""),
+            score_sr=_as_float(getattr(row, "score_sr", None)),
         )
 
     scored.sort(key=lambda x: (-x[1], _norm_ticker(x[0].ticker)))
@@ -341,6 +347,7 @@ def load_watch_metrics(
                 "roe": None,
                 "price": None,
                 "target": None,
+                "dividend_yield": None,
             }
             out[tk] = slot
         return slot
@@ -364,6 +371,8 @@ def load_watch_metrics(
                 slot["per"] = _as_float(row.get("per"))
                 slot["pbr"] = _as_float(row.get("pbr"))
                 slot["roe"] = _as_float(row.get("roe"))
+                if "dividend_yield" in fund.columns:
+                    slot["dividend_yield"] = _as_float(row.get("dividend_yield"))
 
     _overlay_collect_fundamentals(data, _slot)
 
@@ -457,11 +466,13 @@ def build_watch_table_rows(
     cutoff: float | None = None,
     target_n: int = 6,
     blocked_tickers: set[str] | None = None,
+    hakedaka_by_ticker: Mapping[str, str] | None = None,
 ) -> tuple[WatchTableRow, ...]:
     """Join fundamentals + preview tone onto the observation board."""
     metrics = metrics or {}
     extra_by_ticker = extra_by_ticker or {}
     sector_labels = sector_labels or {}
+    hakedaka_by_ticker = hakedaka_by_ticker or {}
     blocked = {_norm_ticker(t) for t in (blocked_tickers or set())}
     ranks = eligible_ranks_for_cutoff(board.rows, cutoff)
     out: list[WatchTableRow] = []
@@ -482,6 +493,12 @@ def build_watch_table_rows(
             blocked=row.ticker in blocked,
         )
         sector = str(sector_labels.get(row.ticker) or row.sector or "").strip()
+        hk = str(hakedaka_by_ticker.get(row.ticker) or "").strip()
+        if not hk:
+            # Fall back to proposal-row detail already on the book, if any.
+            raw = extra.get("hakedaka_detail") or extra.get("hakedaka")
+            if raw:
+                hk = str(raw).strip()
         out.append(
             WatchTableRow(
                 rank=row.rank,
@@ -498,6 +515,9 @@ def build_watch_table_rows(
                 roe=_as_float(met.get("roe")),
                 current_price=_as_float(met.get("price")),
                 target_price=target,
+                hakedaka=hk,
+                score_sr=_as_float(getattr(row, "score_sr", None)),
+                dividend_yield=_as_float(met.get("dividend_yield")),
             )
         )
     return tuple(out)

@@ -62,8 +62,21 @@ def test_watch_table_blocked_is_not_proposal_tone() -> None:
     assert by_tk["000001"] == TONE_PROPOSAL
     assert by_tk["000002"] == TONE_BLOCKED
     watch = inspect.getsource(portfolio._render_watch_pool)
+    assert "st.data_editor" in watch
     assert "_style_watch_df(frame)" in watch
+    assert '"보유"' in watch
+    assert "CheckboxColumn" in watch
+    assert '"판정"' in watch
+    assert '"심층"' in watch
+    assert '"공시"' in watch
+    assert "_watch_eval_enrichment" in watch
+    assert "pf-watch-scroll" in watch
+    assert "column_order" in watch
     assert "watch_tone_label" in watch
+    page = inspect.getsource(portfolio.render_portfolio)
+    assert "_render_watch_pool(ctx, preview_cutoff, preview_n)" in page
+    prop = inspect.getsource(portfolio._render_proposal_book)
+    assert "누구인지는 ②" in prop or "색 구분 = ②" in prop
 
 
 def test_proposal_expand_skips_cecs_dump() -> None:
@@ -98,5 +111,24 @@ def test_proposal_expand_skips_cecs_dump() -> None:
     html = _proposal_expand_html(row)
     assert "정성 채점" not in html
     assert "execution" not in html
-    assert "혼합 목표가" in html
+    assert "pf-metric-grid" in html
+    assert "혼합목표" in html or "혼합 목표" in html
     assert "하케다카" in html
+    assert "10.0%" in html
+    deduped = _proposal_expand_html(row, summary_in_table=True)
+    assert "비중" not in deduped
+    assert "10.0%" not in deduped
+    assert "하케다카" in deduped
+    assert "여유" in deduped
+    prop = inspect.getsource(portfolio._render_proposal_book)
+    assert "always_open=True" in prop
+    from alpha_system.ui.services import portfolio_widgets as pw
+
+    bullets = inspect.getsource(pw.render_portfolio_bullets)
+    assert "always_open" in bullets
+    assert "show_header=False" in bullets
+    assert "summary_in_table=True" in bullets
+    assert "pf-book-detail-open" in bullets
+    lean = pw._row_main_html(row, detail=True, show_header=False)
+    assert "pf-bullet-top" not in lean
+    assert "제안 10.0%" not in lean

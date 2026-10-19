@@ -127,6 +127,9 @@ def load_hakedaka_inputs(
             owner = _f(row.get("largest_shareholder_pct"))
             if owner is not None:
                 out.owner_pct[ticker] = owner
+            buy = _boolish(row.get("buyback_3y"))
+            if buy is True:
+                out.buyback[ticker] = True
             circ = _boolish(row.get("related_party_risk_flag"))
             gov = _boolish(row.get("governance_event_flag"))
             # Only a positive flag is evidence of circular/affiliate risk.
@@ -268,3 +271,85 @@ def hits_label(verdict: HakedakaHits) -> str:
     if not bits:
         return verdict.detail
     return f"{verdict.detail} · " + ", ".join(bits)
+
+
+def hits_label_short(verdict: HakedakaHits) -> str:
+    """Compact watch cell — absolute /4 (not hits/known).
+
+    Measured miss = fails the hit count; unmeasured is called out separately
+    (never shown as × — × is only for known False in the long label).
+    """
+    n_axes = 4
+    unknown = max(0, n_axes - int(verdict.known))
+    if verdict.known <= 0:
+        return f"0/{n_axes} 지표없음"
+    tag = "통과" if verdict.passed else "미달"
+    base = f"{verdict.hits}/{n_axes} {tag}"
+    if unknown > 0:
+        return f"{base} · 미측정 {unknown}"
+    return base
+
+
+@dataclass(frozen=True)
+class HakedakaCoverage:
+    """Axis fill rates for a ticker pool (Review / ops caption)."""
+
+    n: int
+    net_cash: int
+    treasury: int
+    owner: int
+    circular: int
+    known0: int
+    mean_known: float
+
+    def caption(self) -> str:
+        if self.n <= 0:
+            return "하케다카 측정: 대상 없음"
+        pct = lambda k: int(round(100.0 * k / self.n))
+        return (
+            f"하케다카 측정 {self.n}종 · "
+            f"순현금 {pct(self.net_cash)}% · "
+            f"자사주 {pct(self.treasury)}% · "
+            f"최대주주 {pct(self.owner)}% · "
+            f"순환(True) {pct(self.circular)}% · "
+            f"평균 known {self.mean_known:.1f}/4 · "
+            f"지표없음 {self.known0}종"
+        )
+
+
+def coverage_for_tickers(
+    tickers: Sequence[str],
+    inputs: HakedakaInputs,
+    *,
+    min_hits: int = 2,
+) -> HakedakaCoverage:
+    """Count how many pool names have each axis measured."""
+    del min_hits  # reserved for future gate-aware stats
+    wanted = [norm_ticker(t) for t in tickers if norm_ticker(t)]
+    if not wanted:
+        return HakedakaCoverage(0, 0, 0, 0, 0, 0, 0.0)
+    n_net = n_tre = n_own = n_cir = n0 = 0
+    known_sum = 0
+    for tk in wanted:
+        v = evaluate_hakedaka(tk, inputs)
+        known_sum += int(v.known)
+        if v.known <= 0:
+            n0 += 1
+        if v.net_cash is not None:
+            n_net += 1
+        if v.treasury is not None:
+            n_tre += 1
+        if v.owner_band is not None:
+            n_own += 1
+        if v.circular is not None:
+            n_cir += 1
+    return HakedakaCoverage(
+        n=len(wanted),
+        net_cash=n_net,
+        treasury=n_tre,
+        owner=n_own,
+        circular=n_cir,
+        known0=n0,
+        mean_known=round(known_sum / len(wanted), 2),
+    )
+

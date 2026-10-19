@@ -1,0 +1,13 @@
+# Hold/Exit Review edition — Review-only params (plan §4 defaults).
+# Does not change QVM ranks or target_portfolio.csv.
+
+hold_exit_review:
+  edition_label: "보유·매도 Review v1"
+  weeks_out_before_rotate: 4
+  min_rotate_score_gap: 15.0
+  price_drawdown_thesis_pct: 20.0
+  management_cap_pct: 15.0
+  forbid_pct_take_profit: true
+  forbid_pct_stop_loss: true
+  monthly_trade_review: true
+  history_relpath: data/local/hold_exit_proposal_weeks.jsonl

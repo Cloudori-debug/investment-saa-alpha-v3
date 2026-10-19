@@ -56,6 +56,16 @@ def test_selection_default_and_event() -> None:
     assert event.selection.rows == [1]
 
 
+def test_watch_hold_flags_from_frame_and_event() -> None:
+    import pandas as pd
+
+    from alpha_system.ui.pages.portfolio import _watch_hold_flags
+
+    frame = pd.DataFrame({"보유": [True, False, True], "종목": ["A", "B", "C"]})
+    assert _watch_hold_flags(frame, n=3) == [True, False, True]
+    assert _watch_hold_flags(DataframeFallbackEvent([0, 2]), n=3) == [True, False, True]
+
+
 def test_dashboard_installs_arrow_fallback() -> None:
     from pathlib import Path
 

@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -59,6 +59,14 @@ _NPS_MARKERS = ("국민연금", "국민연금공단", "nps")
 _PAYOUT_DIV = ("현금배당", "배당결정", "중간배당", "분기배당", "결산배당")
 _PAYOUT_BUYBACK = ("자기주식취득", "자기주식 취득", "자사주 매입", "자사주매입")
 _PAYOUT_CANCEL = ("자기주식소각", "자기주식 소각", "이익소각", "자사주소각")
+_ASSET_SALE = (
+    "유형자산양도",
+    "자산양도결정",
+    "영업양도",
+    "부동산매각",
+    "타법인주식및출자증권처분",
+    "타법인주식 및 출자증권 처분",
+)
 _PURPOSE_CONTROL = ("경영참여", "경영권", "지배목적", "경영권 영향")
 _PURPOSE_PASSIVE = ("단순투자", "일반투자")
 
@@ -85,6 +93,16 @@ class CecsOpendartPack:
     notes: tuple[str, ...] = ()
     flags: tuple[QualDraftFlag, ...] = ()
     owner_pct_by_ticker: dict[str, float] = field(default_factory=dict)
+    # Review evidence layer (not scores): list.json payout / asset titles
+    payout_events_by_ticker: dict[str, list[dict[str, str]]] = field(
+        default_factory=dict
+    )
+    # rcept_no → (amount_krw, note) from tsstkAqDecsn.json
+    buyback_amounts_by_ticker: dict[str, dict[str, tuple[int, str]]] = field(
+        default_factory=dict
+    )
+    fetch_errors_by_ticker: dict[str, str] = field(default_factory=dict)
+    no_corp_tickers: tuple[str, ...] = ()
 
 
 @dataclass
@@ -143,7 +161,7 @@ def parse_yyyymmdd(raw: Any) -> date | None:
 
 
 def is_payout_title(title: str) -> str | None:
-    """Return 'div' | 'buyback' | 'cancel' if the disclosure title is a payout event."""
+    """Return kind if title is payout / asset-sale evidence (not a score)."""
     name = title or ""
     if any(k in name for k in _PAYOUT_CANCEL):
         return "cancel"
@@ -151,6 +169,8 @@ def is_payout_title(title: str) -> str | None:
         return "buyback"
     if any(k in name for k in _PAYOUT_DIV):
         return "div"
+    if any(k in name for k in _ASSET_SALE):
+        return "asset_sale"
     return None
 
 
@@ -377,6 +397,10 @@ def collect_cecs_opendart_pack(
     markdown_by_ticker: dict[str, tuple[str, ...]] = {}
     flags: list[QualDraftFlag] = []
     owner_pct_by_ticker: dict[str, float] = {}
+    payout_events_by_ticker: dict[str, list[dict[str, str]]] = {}
+    buyback_amounts_by_ticker: dict[str, dict[str, tuple[int, str]]] = {}
+    fetch_errors_by_ticker: dict[str, str] = {}
+    no_corp_tickers: list[str] = []
     ok = 0
     for raw in tickers:
         ticker = str(raw).strip()
@@ -387,6 +411,7 @@ def collect_cecs_opendart_pack(
         facts = _TickerFacts(ticker=ticker, corp_code=str((corp_map or {}).get(ticker) or ""))
         if not facts.corp_code:
             facts.error = "corp_code 없음"
+            no_corp_tickers.append(ticker)
             markdown_by_ticker[ticker] = format_facts_markdown(facts, as_of=as_of)
             continue
         try:
@@ -396,6 +421,21 @@ def collect_cecs_opendart_pack(
                 facts.payout_events, facts.quarters_hit = _payout_from_list(
                     dart_get_fn, facts.corp_code, bgn, end, quarters
                 )
+                payout_events_by_ticker[ticker] = list(facts.payout_events)
+                # Structured amounts only for missing buyback/asset (캐시·절약)
+                if any(
+                    str(e.get("kind")) in {"buyback", "asset_sale"}
+                    for e in facts.payout_events
+                ):
+                    if limiter:
+                        limiter.wait()
+                    buyback_amounts_by_ticker[ticker] = _structured_amounts_for_events(
+                        dart_get_fn,
+                        facts.corp_code,
+                        bgn,
+                        end,
+                        facts.payout_events,
+                    )
             if limiter:
                 limiter.wait()
             facts.nps_rows, facts.latest_major = _majorstock_rows(
@@ -407,6 +447,7 @@ def collect_cecs_opendart_pack(
             ok += 1
         except Exception as exc:
             facts.error = str(exc)[:160]
+            fetch_errors_by_ticker[ticker] = facts.error
             notes.append(f"{ticker}: {facts.error}")
         markdown_by_ticker[ticker] = format_facts_markdown(facts, as_of=as_of)
         flags.extend(flags_from_facts(facts))
@@ -420,6 +461,10 @@ def collect_cecs_opendart_pack(
         notes=tuple(notes),
         flags=tuple(flags),
         owner_pct_by_ticker=owner_pct_by_ticker,
+        payout_events_by_ticker=payout_events_by_ticker,
+        buyback_amounts_by_ticker=buyback_amounts_by_ticker,
+        fetch_errors_by_ticker=fetch_errors_by_ticker,
+        no_corp_tickers=tuple(no_corp_tickers),
     )
 
 
@@ -429,6 +474,95 @@ def _missing_key_lines(as_of: date) -> tuple[str, ...]:
         f"> as_of `{as_of.isoformat()}`. DART/KIND HTML 뷰어(dsaf001, viewer.do)는 봇 차단됩니다.",
         "> 웹검색으로 원문 지분율·보유목적을 추정하지 마세요. 점수 `_____` + 근거 `확인 불가`.",
     )
+
+
+def _tsstk_aq_amounts(
+    dart_get_fn: DartGet,
+    corp_code: str,
+    bgn: str,
+    end: str,
+) -> dict[str, tuple[int, str]]:
+    """Structured buyback planned amounts keyed by rcept_no (후보만 호출)."""
+    from alpha_system.ui.services.dart_evidence import parse_tsstk_amount_row
+
+    try:
+        data = dart_get_fn(
+            "tsstkAqDecsn.json",
+            {"corp_code": corp_code, "bgn_de": bgn, "end_de": end},
+        )
+    except Exception:
+        return {}
+    out: dict[str, tuple[int, str]] = {}
+    for item in data.get("list") or []:
+        rcept = re.sub(r"\D", "", str(item.get("rcept_no") or ""))
+        if not rcept:
+            continue
+        amt, note = parse_tsstk_amount_row(item if isinstance(item, dict) else {})
+        if amt is not None:
+            out[rcept] = (amt, note)
+    return out
+
+
+def _tgast_trf_amounts(
+    dart_get_fn: DartGet,
+    corp_code: str,
+    bgn: str,
+    end: str,
+) -> dict[str, tuple[int, str]]:
+    """유형자산 양도 금액 — 주주환원 가정 금지(노트에 명시)."""
+    from alpha_system.ui.services.dart_evidence import parse_tgast_amount_row
+
+    try:
+        data = dart_get_fn(
+            "tgastTrfDecsn.json",
+            {"corp_code": corp_code, "bgn_de": bgn, "end_de": end},
+        )
+    except Exception:
+        return {}
+    out: dict[str, tuple[int, str]] = {}
+    for item in data.get("list") or []:
+        rcept = re.sub(r"\D", "", str(item.get("rcept_no") or ""))
+        if not rcept:
+            continue
+        amt, note = parse_tgast_amount_row(item if isinstance(item, dict) else {})
+        if amt is not None:
+            out[rcept] = (amt, note)
+    return out
+
+
+def _structured_amounts_for_events(
+    dart_get_fn: DartGet,
+    corp_code: str,
+    bgn: str,
+    end: str,
+    events: Sequence[Mapping[str, Any]],
+    *,
+    known_amounts: Mapping[str, tuple[int, str]] | None = None,
+    record_call: Callable[[str], None] | None = None,
+) -> dict[str, tuple[int, str]]:
+    """Fetch structured amounts only for kinds still missing in cache."""
+    known = dict(known_amounts or {})
+    need_buyback = False
+    need_asset = False
+    for ev in events:
+        rcept = re.sub(r"\D", "", str(ev.get("rcept_no") or ""))
+        if rcept and rcept in known:
+            continue
+        kind = str(ev.get("kind") or "")
+        if kind == "buyback":
+            need_buyback = True
+        elif kind == "asset_sale":
+            need_asset = True
+    out = dict(known)
+    if need_buyback:
+        if record_call:
+            record_call("tsstkAqDecsn.json")
+        out.update(_tsstk_aq_amounts(dart_get_fn, corp_code, bgn, end))
+    if need_asset:
+        if record_call:
+            record_call("tgastTrfDecsn.json")
+        out.update(_tgast_trf_amounts(dart_get_fn, corp_code, bgn, end))
+    return out
 
 
 def _payout_from_list(
@@ -515,8 +649,10 @@ def _hyslr_owner_pct(
     as_of: date,
 ) -> float | None:
     """Sum 최대주주+특수관계인 year-end stake from OpenDART hyslrSttus.json."""
-    for year in (as_of.year - 1, as_of.year - 2):
-        for reprt in ("11011", "11014"):
+    years = (as_of.year - 1, as_of.year - 2, as_of.year - 3)
+    reprts = ("11011", "11014", "11012")  # 사업·3분기·반기
+    for year in years:
+        for reprt in reprts:
             try:
                 data = dart_get_fn(
                     "hyslrSttus.json",
@@ -531,6 +667,15 @@ def _hyslr_owner_pct(
             items = data.get("list") or []
             if not items:
                 continue
+            # Prefer an explicit total row when OpenDART provides one.
+            for item in items:
+                nm = str(item.get("nm") or "")
+                if "합계" not in nm:
+                    continue
+                for key in ("trmend_posesn_stock_rt", "posesn_stock_rt", "stock_rt"):
+                    rt = parse_ratio(item.get(key))
+                    if rt is not None and rt > 0:
+                        return round(rt, 4)
             total = 0.0
             n = 0
             for item in items:
@@ -540,7 +685,11 @@ def _hyslr_owner_pct(
                 knd = str(item.get("stock_knd") or "")
                 if knd and "우선" in knd:
                     continue
-                rt = parse_ratio(item.get("trmend_posesn_stock_rt"))
+                rt = None
+                for key in ("trmend_posesn_stock_rt", "posesn_stock_rt", "stock_rt"):
+                    rt = parse_ratio(item.get(key))
+                    if rt is not None:
+                        break
                 if rt is None:
                     continue
                 n += 1
@@ -736,6 +885,8 @@ class OpendartProposalWatch:
     notes: list[str] = field(default_factory=list)
     flags: list[dict[str, str]] = field(default_factory=list)
     metrics: list[dict[str, Any]] = field(default_factory=list)
+    # Review-only value-realization evidence (rules + rcpNo). Not QVM input.
+    evidence: list[dict[str, Any]] = field(default_factory=list)
 
     def flag_models(self) -> tuple[QualDraftFlag, ...]:
         out: list[QualDraftFlag] = []
@@ -780,6 +931,7 @@ def load_opendart_watch(
         notes=list(data.get("notes") or []),
         flags=list(data.get("flags") or []),
         metrics=list(data.get("metrics") or []),
+        evidence=list(data.get("evidence") or []),
     )
 
 
@@ -799,6 +951,7 @@ def watch_needs_refresh(
     *,
     hours: int = STALE_HOURS,
 ) -> bool:
+    """True when cache is stale — UI must NOT auto-network; prompt incremental."""
     wanted = _norm_tickers(tickers)
     if not wanted:
         return False
@@ -817,6 +970,150 @@ def watch_needs_refresh(
     return now - fetched > timedelta(hours=hours)
 
 
+def estimate_watch_calls(n_tickers: int, *, include_structured: bool = True) -> int:
+    """Rough upper bound: list + major + hyslr (+ optional structured)."""
+    per = 3 + (2 if include_structured else 0)
+    return max(0, int(n_tickers)) * per
+
+
+def _enrich_evidence_via_documents(
+    root: Path,
+    board: list[Any],
+    *,
+    data_dir: Path,
+    quota: Any,
+    max_docs: int = 5,
+) -> list[Any]:
+    """Fill missing amounts from document.xml — cached forever, budget-capped."""
+    from alpha_system.ui.services.dart_evidence import (
+        EvidenceEvent,
+        TickerEvidence,
+        ticker_evidence_from_events,
+    )
+    from alpha_system.ui.services.dart_evidence_cache import (
+        extract_amount_from_document_text,
+        extract_div_amount_from_document_text,
+        load_doc_cache,
+        merge_amounts,
+        save_doc_cache,
+    )
+
+    try:
+        with _repo_src_on_top():
+            from src.data_refresh.dart_document_fetch import fetch_dart_document_text
+    except Exception:
+        return board
+
+    used = 0
+    updates: dict[str, tuple[int, str]] = {}
+    new_board: list[Any] = []
+    # Prefer dividend rows missing amounts — no structured JSON for 배당결정.
+    ordered_board = sorted(
+        board,
+        key=lambda b: (
+            0
+            if isinstance(b, TickerEvidence)
+            and b.data_status == "ok"
+            and any(e.kind == "div" and e.amount_krw is None for e in b.events)
+            else 1,
+            getattr(b, "ticker", "") or "",
+        ),
+    )
+    for item in ordered_board:
+        if not isinstance(item, TickerEvidence) or item.data_status != "ok":
+            new_board.append(item)
+            continue
+        new_events: list[EvidenceEvent] = []
+        # Within ticker: div without amount first
+        ev_order = sorted(
+            item.events,
+            key=lambda e: (0 if e.kind == "div" and e.amount_krw is None else 1),
+        )
+        for ev in ev_order:
+            if ev.amount_krw is not None or not ev.rcept_no:
+                new_events.append(ev)
+                continue
+            cached = load_doc_cache(data_dir, ev.rcept_no)
+            if cached and cached.get("amount_krw") is not None:
+                try:
+                    amt = int(cached["amount_krw"])
+                except (TypeError, ValueError):
+                    amt = None
+                note = str(cached.get("amount_note") or "document.xml(cache)")
+                new_events.append(
+                    EvidenceEvent(
+                        kind=ev.kind,
+                        status=ev.status,
+                        date=ev.date,
+                        title=ev.title,
+                        rcept_no=ev.rcept_no,
+                        source_url=ev.source_url,
+                        amount_krw=amt,
+                        amount_note=note,
+                        is_correction=ev.is_correction,
+                        chain_id=ev.chain_id,
+                        chain_role=ev.chain_role,
+                    )
+                )
+                if amt is not None:
+                    updates[ev.rcept_no] = (amt, note)
+                continue
+            if used >= max_docs or not quota.can_call(1):
+                new_events.append(ev)
+                continue
+            text, reason = fetch_dart_document_text(
+                ev.rcept_no, data_dir=data_dir
+            )
+            quota.record("document.xml", 1)
+            used += 1
+            if not text:
+                save_doc_cache(
+                    data_dir,
+                    ev.rcept_no,
+                    snippet=reason or "",
+                    amount_krw=None,
+                    amount_note="",
+                )
+                new_events.append(ev)
+                continue
+            if ev.kind == "div":
+                amt, note = extract_div_amount_from_document_text(text)
+            else:
+                amt, note = extract_amount_from_document_text(text)
+            save_doc_cache(
+                data_dir,
+                ev.rcept_no,
+                snippet=text[:2000],
+                amount_krw=amt,
+                amount_note=note,
+            )
+            if amt is not None:
+                updates[ev.rcept_no] = (amt, note)
+            new_events.append(
+                EvidenceEvent(
+                    kind=ev.kind,
+                    status=ev.status,
+                    date=ev.date,
+                    title=ev.title,
+                    rcept_no=ev.rcept_no,
+                    source_url=ev.source_url,
+                    amount_krw=amt if amt is not None else ev.amount_krw,
+                    amount_note=note if amt is not None else ev.amount_note,
+                    is_correction=ev.is_correction,
+                    chain_id=ev.chain_id,
+                    chain_role=ev.chain_role,
+                )
+            )
+        new_board.append(
+            ticker_evidence_from_events(item.ticker, new_events)
+            if new_events
+            else item
+        )
+    if updates:
+        merge_amounts(data_dir, updates)
+    return new_board
+
+
 def refresh_opendart_proposal_watch(
     root: Path,
     tickers: Sequence[str],
@@ -826,28 +1123,193 @@ def refresh_opendart_proposal_watch(
     corp_map: dict[str, str] | None = None,
     journal_path: Path | None = None,
     data_dir: Path | None = None,
+    mode: str = "incremental",
+    enrich_documents: bool = False,
+    max_document_fetches: int = 5,
 ) -> OpendartProposalWatch:
-    """Search the watch pool (and confirmed proposal). Never writes overlay or target_portfolio."""
+    """Watch pool OpenDART refresh — cache-first, quota-aware.
+
+    mode:
+      - cache_only: rebuild from disk caches + existing watch; **0** network
+      - incremental: fetch only tickers with stale/missing ticker cache
+      - force: refetch all wanted tickers (still stops at daily soft limit)
+
+    Never writes target_portfolio. Does not blend QVM scores.
+    """
     from alpha_system.journal import append_record
+    from alpha_system.ui.services.dart_evidence import build_evidence_board
+    from alpha_system.ui.services.dart_evidence_cache import (
+        amounts_as_tuples,
+        is_fresh,
+        load_amounts,
+        load_ticker_cache,
+        merge_amounts,
+        save_ticker_cache,
+    )
+    from alpha_system.ui.services.dart_quota import load_quota, save_quota
 
     day = as_of or date.today()
     wanted = _norm_tickers(tickers)
-    pack = collect_cecs_opendart_pack(
-        root,
+    book = Path(data_dir) if data_dir is not None else Path(root) / "data"
+    mode_norm = str(mode or "incremental").strip().lower()
+    if mode_norm not in {"cache_only", "incremental", "force"}:
+        mode_norm = "incremental"
+
+    quota = load_quota(book)
+    notes: list[str] = [quota.status_line()]
+
+    # Decide which tickers need network
+    fetch_list: list[str] = []
+    if mode_norm == "force":
+        fetch_list = list(wanted)
+    elif mode_norm == "incremental":
+        for tk in wanted:
+            cached = load_ticker_cache(book, tk)
+            if cached is None or not is_fresh(str(cached.get("fetched_at") or "")):
+                fetch_list.append(tk)
+    # cache_only → fetch_list stays empty
+
+    est = estimate_watch_calls(len(fetch_list))
+    if fetch_list and not quota.can_call(min(est, 3)):
+        notes.append(
+            f"일일 한도 부족 · 잔여 {quota.remaining()} · 캐시만 사용 "
+            f"(요청 예상 ≤{est})"
+        )
+        fetch_list = []
+        mode_norm = "cache_only"
+
+    amount_table = amounts_as_tuples(load_amounts(book))
+    payout_events_by_ticker: dict[str, list[dict[str, str]]] = {}
+    amounts_by_ticker: dict[str, dict[str, tuple[int, str]]] = {}
+    fetch_errors: dict[str, str] = {}
+    no_corp: list[str] = []
+    flags: list[QualDraftFlag] = []
+    owner_pct: dict[str, float] = {}
+    missing_key = False
+    network_calls_before = quota.calls
+
+    if fetch_list:
+        # Cap batch if soft limit would be blown
+        affordable: list[str] = []
+        for tk in fetch_list:
+            if not quota.can_call(3):
+                notes.append(f"한도 근접 · {tk}부터 네트워크 중단 · 캐시 유지")
+                break
+            affordable.append(tk)
+        pack = collect_cecs_opendart_pack(
+            root,
+            affordable,
+            as_of=day,
+            dart_get_fn=dart_get_fn,
+            corp_map=corp_map,
+            include_payout=True,
+        )
+        missing_key = pack.missing_key
+        notes.extend(list(pack.notes[:4]))
+        # Approximate call accounting (collect does not record per-call)
+        approx = estimate_watch_calls(pack.ok_count)
+        if approx:
+            quota.record("collect_batch", approx)
+        for tk, events in pack.payout_events_by_ticker.items():
+            payout_events_by_ticker[tk] = list(events)
+        for tk, amap in pack.buyback_amounts_by_ticker.items():
+            amounts_by_ticker[tk] = dict(amap)
+            amount_table.update(amap)
+        fetch_errors.update(pack.fetch_errors_by_ticker)
+        no_corp.extend(pack.no_corp_tickers)
+        flags.extend(pack.flags)
+        owner_pct.update(pack.owner_pct_by_ticker)
+        for tk in affordable:
+            save_ticker_cache(
+                book,
+                tk,
+                {
+                    "as_of": day.isoformat(),
+                    "payout_events": payout_events_by_ticker.get(tk, []),
+                    "owner_pct": owner_pct.get(tk),
+                    "flags": [
+                        {
+                            "ticker": f.ticker,
+                            "kind": f.kind,
+                            "note": f.note,
+                            "source_url": f.source_url,
+                        }
+                        for f in pack.flags
+                        if f.ticker == tk
+                    ],
+                    "error": fetch_errors.get(tk, ""),
+                },
+            )
+        if amount_table:
+            merge_amounts(book, amount_table)
+
+    # Fill remaining tickers from disk cache (0 network)
+    for tk in wanted:
+        if tk in payout_events_by_ticker:
+            # still attach global amount cache
+            amounts_by_ticker.setdefault(tk, {})
+            for ev in payout_events_by_ticker[tk]:
+                rcept = re.sub(r"\D", "", str(ev.get("rcept_no") or ""))
+                if rcept and rcept in amount_table:
+                    amounts_by_ticker[tk][rcept] = amount_table[rcept]
+            continue
+        cached = load_ticker_cache(book, tk)
+        if not cached:
+            continue
+        payout_events_by_ticker[tk] = list(cached.get("payout_events") or [])
+        if cached.get("owner_pct") is not None:
+            try:
+                owner_pct[tk] = float(cached["owner_pct"])
+            except (TypeError, ValueError):
+                pass
+        for raw_f in cached.get("flags") or []:
+            if not isinstance(raw_f, dict):
+                continue
+            try:
+                flags.append(
+                    QualDraftFlag(
+                        ticker=str(raw_f.get("ticker") or tk),
+                        kind=str(raw_f.get("kind") or ""),
+                        note=str(raw_f.get("note") or ""),
+                        source_url=str(raw_f.get("source_url") or ""),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+        amap: dict[str, tuple[int, str]] = {}
+        for ev in payout_events_by_ticker[tk]:
+            rcept = re.sub(r"\D", "", str(ev.get("rcept_no") or ""))
+            if rcept and rcept in amount_table:
+                amap[rcept] = amount_table[rcept]
+        amounts_by_ticker[tk] = amap
+        if cached.get("error"):
+            fetch_errors.setdefault(tk, str(cached.get("error")))
+
+    evidence_board = build_evidence_board(
         wanted,
-        as_of=day,
-        dart_get_fn=dart_get_fn,
-        corp_map=corp_map,
-        include_payout=False,
+        payout_events_by_ticker,
+        missing_key=missing_key,
+        errors_by_ticker=fetch_errors,
+        no_corp_tickers=no_corp,
+        amounts_by_ticker=amounts_by_ticker,
     )
-    control = {f.ticker for f in pack.flags if f.kind == "control_purpose"}
+    if enrich_documents and mode_norm != "cache_only":
+        evidence_board = _enrich_evidence_via_documents(
+            root,
+            evidence_board,
+            data_dir=book,
+            quota=quota,
+            max_docs=max_document_fetches,
+        )
+
+    control = {f.ticker for f in flags if f.kind == "control_purpose"}
     snap = OpendartProposalWatch(
-        version=1,
+        version=3,
         fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         as_of=day.isoformat(),
         tickers=wanted,
-        missing_key=pack.missing_key,
-        notes=list(pack.notes[:8]),
+        missing_key=missing_key,
+        notes=notes[:12],
         flags=[
             {
                 "ticker": f.ticker,
@@ -855,36 +1317,64 @@ def refresh_opendart_proposal_watch(
                 "note": f.note,
                 "source_url": f.source_url,
             }
-            for f in pack.flags
+            for f in flags
         ],
         metrics=[
             {
                 "ticker": tk,
-                "largest_shareholder_pct": pack.owner_pct_by_ticker.get(tk),
+                "largest_shareholder_pct": owner_pct.get(tk),
                 "control_purpose": tk in control,
             }
             for tk in wanted
         ],
+        evidence=[row.to_dict() for row in evidence_board],
     )
-    path = opendart_watch_path(root, data_dir=data_dir)
+    path = opendart_watch_path(root, data_dir=book)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(asdict(snap), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    save_quota(book, quota)
+    try:
+        from alpha_system.ui.services.watch_dart_fundamentals import (
+            sync_hakedaka_from_opendart_caches,
+        )
+
+        owner_rows = {
+            tk: {"largest_shareholder_pct": pct}
+            for tk, pct in owner_pct.items()
+            if pct is not None
+        }
+        sync_hakedaka_from_opendart_caches(
+            Path(root),
+            data_dir=book,
+            as_of=day.isoformat(),
+            owner_rows=owner_rows,
+        )
+    except Exception:
+        pass
+    calls_delta = int(quota.calls) - int(network_calls_before)
     append_record(
         action_kind="OPENDART_WATCH",
         as_of=day,
         subject="proposal",
         rationale=(
-            f"관찰·제안 {len(wanted)}종 OpenDART 탐색 · 후보 {len(snap.flags)}건"
-            + (" · API 키 없음" if pack.missing_key else "")
+            f"mode={mode_norm} · 네트워크대상 {len(fetch_list)}종 · "
+            f"호출≈{calls_delta} · 게이트 {len(snap.flags)} · "
+            f"증거OK {sum(1 for e in snap.evidence if e.get('data_status') == 'ok')}"
+            + (" · API 키 없음" if missing_key else "")
         ),
         payload={
             "path": str(path),
+            "mode": mode_norm,
             "tickers": wanted,
+            "fetch_n": len(fetch_list),
+            "calls_delta": calls_delta,
+            "quota_calls": quota.calls,
+            "quota_remaining": quota.remaining(),
             "flag_n": len(snap.flags),
-            "missing_key": pack.missing_key,
+            "missing_key": missing_key,
         },
         journal_path=journal_path,
     )

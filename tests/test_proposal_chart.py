@@ -206,9 +206,8 @@ def test_summary_line_and_proposal_row_layout() -> None:
     html = _row_main_html(row, chart=item)
     assert html.index("pf-wchip") < html.index("pf-spot")
     assert "12,400원" in html
-    assert "pf-signal" in html
-    assert "pf-signal-hot" in html
-    assert "pf-signal-headline" in html
-    assert "더 사지" in html or "추가" in html or "금지" in html
+    # Compact list uses chart×flow Review strip (pf-review-*), not legacy pf-signal box.
+    assert "pf-review" in html
+    assert "더 사지" in html or "추가" in html or "금지" in html or "보류" in html
     assert "stCaption" not in html
     assert "eco-m-hint" not in html

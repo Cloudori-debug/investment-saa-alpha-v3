@@ -172,8 +172,8 @@ def _sticky_col_index(cols: list[Any]) -> int:
 
 
 _GRID_CSS = """
-.saa-grid-wrap{overflow:auto;max-height:28rem;border:1px solid #d8d2c4;background:#faf8f3;}
-.saa-grid{border-collapse:separate;border-spacing:0;font:13px/1.25 Pretendard,"Noto Sans KR",sans-serif;min-width:100%;color:#1c1a16;}
+.saa-grid-wrap{overflow:auto;max-width:100%;max-height:28rem;border:1px solid #d8d2c4;background:#faf8f3;-webkit-overflow-scrolling:touch;box-sizing:border-box;}
+.saa-grid{border-collapse:separate;border-spacing:0;font:13px/1.25 Pretendard,"Noto Sans KR",sans-serif;width:max-content;min-width:100%;color:#1c1a16;}
 .saa-grid th,.saa-grid td{padding:6px 10px;border-bottom:1px solid #e8e2d6;white-space:nowrap;background:#faf8f3;}
 .saa-grid th{position:sticky;top:0;z-index:3;font-size:11px;font-weight:650;color:#5c574e;text-align:left;cursor:pointer;user-select:none;border-bottom:1px solid #cfc8b8;}
 .saa-grid th:hover{color:#1c1a16;}
@@ -324,7 +324,12 @@ def _fallback_caption() -> str:
         )
 
 
-def render_dataframe_fallback(data: Any = None, **kwargs: Any) -> DataframeFallbackEvent:
+def render_dataframe_fallback(
+    data: Any = None,
+    *,
+    return_frame: bool = False,
+    **kwargs: Any,
+) -> DataframeFallbackEvent | Any:
     import streamlit as st
     import streamlit.components.v1 as components
 
@@ -335,9 +340,18 @@ def render_dataframe_fallback(data: Any = None, **kwargs: Any) -> DataframeFallb
         st.session_state[hint_key] = True
     on_select = kwargs.get("on_select", "ignore")
     selected: list[int] = []
-    if on_select not in (None, "ignore", False) and not frame.empty:
+    hold_col = "보유" in frame.columns
+    need_pick = hold_col or on_select not in (None, "ignore", False)
+    if need_pick and not frame.empty:
         key = str(kwargs.get("key") or "saa_arrow_fb")
-        defaults = set(default_selected_rows(kwargs.get("selection_default")))
+        if hold_col:
+            defaults = {
+                i
+                for i, v in enumerate(frame["보유"].tolist())
+                if bool(v)
+            }
+        else:
+            defaults = set(default_selected_rows(kwargs.get("selection_default")))
         name_col = "종목" if "종목" in frame.columns else (
             frame.columns[0] if len(frame.columns) else None
         )
@@ -357,6 +371,12 @@ def render_dataframe_fallback(data: Any = None, **kwargs: Any) -> DataframeFallb
         selected = [labels.index(item) for item in picked if item in labels]
     height = int(min(520, max(160, 48 + 33 * min(len(frame), 12))))
     components.html(dataframe_grid_document(frame), height=height, scrolling=True)
+    if return_frame:
+        out = frame.copy()
+        if hold_col:
+            flags = [i in set(selected) for i in range(len(out))]
+            out["보유"] = flags
+        return out
     return DataframeFallbackEvent(selected)
 
 
@@ -375,17 +395,23 @@ def is_blocked_native_dll(exc: BaseException) -> bool:
     return False
 
 
-def _fallback_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> DataframeFallbackEvent:
+def _fallback_from_call(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    return_frame: bool = False,
+) -> DataframeFallbackEvent | Any:
     extra = dict(kwargs)
     data = extra.pop("data", None)
     if data is None and args:
         data = args[0]
-    return render_dataframe_fallback(data, **extra)
+    return render_dataframe_fallback(data, return_frame=return_frame, **extra)
 
 
 def _wrap_bound_dataframe(orig: Any) -> Any:
     if getattr(orig, "_saa_arrow_fallback", False):
         return orig
+    wants_frame = getattr(orig, "__name__", "") == "data_editor"
 
     def dataframe(*args: Any, **kwargs: Any) -> Any:
         try:
@@ -393,7 +419,7 @@ def _wrap_bound_dataframe(orig: Any) -> Any:
         except (ImportError, OSError) as exc:
             if not is_blocked_native_dll(exc):
                 raise
-            return _fallback_from_call(args, kwargs)
+            return _fallback_from_call(args, kwargs, return_frame=wants_frame)
 
     dataframe._saa_arrow_fallback = True  # type: ignore[attr-defined]
     return dataframe
@@ -402,6 +428,7 @@ def _wrap_bound_dataframe(orig: Any) -> Any:
 def _wrap_unbound_dataframe(orig: Any) -> Any:
     if getattr(orig, "_saa_arrow_fallback", False):
         return orig
+    wants_frame = getattr(orig, "__name__", "") == "data_editor"
 
     def dataframe(self: Any, *args: Any, **kwargs: Any) -> Any:
         try:
@@ -409,7 +436,7 @@ def _wrap_unbound_dataframe(orig: Any) -> Any:
         except (ImportError, OSError) as exc:
             if not is_blocked_native_dll(exc):
                 raise
-            return _fallback_from_call(args, kwargs)
+            return _fallback_from_call(args, kwargs, return_frame=wants_frame)
 
     dataframe._saa_arrow_fallback = True  # type: ignore[attr-defined]
     return dataframe

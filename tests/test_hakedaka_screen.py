@@ -11,6 +11,7 @@ from alpha_system.sizing.hakedaka_screen import (
     HakedakaInputs,
     evaluate_hakedaka,
     hakedaka_fail_tickers,
+    hits_label_short,
     load_hakedaka_inputs,
 )
 
@@ -27,6 +28,49 @@ def test_unknown_metrics_fail_open() -> None:
     verdict = evaluate_hakedaka("100840", HakedakaInputs(), min_hits=2)
     assert verdict.known == 0
     assert verdict.passed is True
+    assert hits_label_short(verdict) == "0/4 지표없음"
+
+
+def test_coverage_for_tickers_counts_axes() -> None:
+    from alpha_system.sizing.hakedaka_screen import coverage_for_tickers
+
+    inputs = HakedakaInputs(
+        net_cash_to_mcap={"000001": 1.0, "000002": -1.0},
+        treasury_ratio={"000001": 0.1},
+        owner_pct={"000001": 16.0},
+    )
+    cov = coverage_for_tickers(["000001", "000002", "000003"], inputs)
+    assert cov.n == 3
+    assert cov.net_cash == 2
+    assert cov.treasury == 1
+    assert cov.owner == 1
+    assert cov.circular == 0
+    assert cov.known0 == 1
+    assert "최대주주" in cov.caption()
+
+
+def test_hits_label_short_absolute_over_four() -> None:
+    one = evaluate_hakedaka(
+        "006040",
+        HakedakaInputs(net_cash_to_mcap={"006040": 0.1}),
+        min_hits=2,
+    )
+    assert one.known == 1 and one.hits == 1
+    assert hits_label_short(one) == "1/4 통과 · 미측정 3"
+
+    full = evaluate_hakedaka(
+        "006040",
+        HakedakaInputs(
+            net_cash_to_mcap={"006040": 0.1},
+            treasury_ratio={"006040": 0.05},
+            owner_pct={"006040": 16.0},
+            circular_flag={"006040": True},
+        ),
+        min_hits=2,
+    )
+    assert full.known == 4
+    assert hits_label_short(full) == "4/4 통과"
+    assert "미측정" not in hits_label_short(full)
 
 
 def test_one_known_metric_is_not_enough_to_reject() -> None:

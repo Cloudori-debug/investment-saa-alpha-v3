@@ -90,6 +90,24 @@ li[role="option"][data-highlighted="true"] {
   color: var(--saa-fg) !important;
   border-color: var(--saa-table-line) !important;
 }
+/* Wide grids: keep inside viewport; scroll sideways instead of crushing */
+[data-testid="stDataFrame"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}
+.pf-watch-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 0 0.35rem;
+  box-sizing: border-box;
+}
 [data-testid="stDataFrame"] td,
 [data-testid="stDataFrame"] th,
 [data-testid="stTable"] td,
@@ -1383,7 +1401,8 @@ div[data-testid="stRadio"] {{
 }}
 .alpha-flow-row {{
   display: flex;
-  gap: 0.55rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
   align-items: flex-start;
   padding: 0.45rem 0;
   border-bottom: 1px solid #e2e8f0;
@@ -1391,7 +1410,8 @@ div[data-testid="stRadio"] {{
   line-height: 1.4;
 }}
 .alpha-flow-asset {{
-  min-width: 7.2rem;
+  min-width: 0;
+  flex: 0 1 7.2rem;
   font-weight: 600;
   color: #1c1a16;
 }}
@@ -1566,8 +1586,8 @@ div[data-testid="stRadio"] {{
 }}
 .alpha-badge-warn {{
   display: inline-block;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--saa-warn-chip);
+  color: var(--saa-warn-fg);
   padding: 0.1rem 0.45rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -1575,8 +1595,8 @@ div[data-testid="stRadio"] {{
 }}
 .alpha-badge-danger {{
   display: inline-block;
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--saa-danger-chip);
+  color: var(--saa-danger-fg);
   padding: 0.1rem 0.45rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -1584,8 +1604,8 @@ div[data-testid="stRadio"] {{
 }}
 .alpha-badge-ok {{
   display: inline-block;
-  background: #e4ebe4;
-  color: #2d4a3c;
+  background: var(--saa-ok-chip);
+  color: var(--saa-ok-fg);
   padding: 0.1rem 0.45rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -1602,6 +1622,308 @@ div[data-testid="stRadio"] {{
   background: var(--saa-card);
   padding: 0.1rem 0.7rem 0.35rem;
   margin-bottom: 0.75rem;
+}}
+.pf-book-table-wrap {{
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--saa-table-line);
+  border-radius: 8px;
+  background: var(--saa-table-bg, var(--saa-card));
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0.35rem 0.35rem;
+  box-sizing: border-box;
+}}
+.pf-book-tr {{
+  display: grid;
+  grid-template-columns: 3.4rem minmax(7rem, 2.1fr) 3.6rem 3.6rem 4.6rem 4.6rem minmax(4.5rem, 1.6fr);
+  gap: 0.3rem 0.45rem;
+  align-items: center;
+  padding: 0.4rem 0.3rem;
+  border-bottom: 1px solid var(--saa-table-line);
+  min-width: 0;
+}}
+.pf-book-tr:last-of-type {{
+  border-bottom: none;
+}}
+.pf-book-th {{
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--saa-muted);
+  background: var(--saa-table-head, var(--saa-muted-bg));
+  border-radius: 6px 6px 0 0;
+  border-bottom: 1px solid var(--saa-table-line);
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}}
+.pf-book-th .pf-book-c-score,
+.pf-book-th .pf-book-c-wt,
+.pf-book-th .pf-book-c-spot,
+.pf-book-th .pf-book-c-tgt {{
+  text-align: right;
+}}
+.pf-book-tr-open {{
+  background: color-mix(in srgb, var(--saa-accent, #1e3a5f) 6%, transparent);
+}}
+.pf-book-tr-blocked {{
+  opacity: 0.78;
+}}
+.pf-book-tr-blocked .pf-book-td-why {{
+  color: var(--saa-muted);
+}}
+.pf-book-td {{
+  font-size: 0.8rem;
+  color: var(--saa-fg);
+  line-height: 1.3;
+  min-width: 0;
+}}
+.pf-book-td-num {{
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  white-space: nowrap;
+  text-align: right;
+}}
+.pf-book-c-cue {{
+  text-align: left;
+}}
+.pf-book-cue {{
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  padding: 0.1rem 0.32rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1.2;
+}}
+.pf-book-cue-ok {{
+  color: var(--saa-ok-fg);
+  background: var(--saa-ok-chip);
+  border-color: var(--saa-ok-border);
+}}
+.pf-book-cue-warn {{
+  color: var(--saa-warn-fg);
+  background: var(--saa-warn-chip);
+  border-color: var(--saa-warn-border);
+}}
+.pf-book-cue-danger,
+.pf-book-cue-blocked {{
+  color: var(--saa-danger-fg);
+  background: var(--saa-danger-chip);
+  border-color: var(--saa-danger);
+}}
+.pf-book-cue-muted {{
+  color: var(--saa-muted);
+  background: var(--saa-muted-bg);
+  border-color: var(--saa-list-border);
+}}
+.pf-book-table-wrap,
+.pf-book-table-wrap .pf-book-td,
+.pf-book-table-wrap .pf-book-name,
+.pf-book-table-wrap strong {{
+  color: var(--saa-fg);
+}}
+.pf-book-table-wrap .pf-ticker {{
+  color: var(--saa-muted);
+}}
+.pf-book-td-name {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.3rem;
+}}
+.pf-book-name {{
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.28rem;
+  font-weight: 650;
+}}
+.pf-book-td-why {{
+  font-size: 0.74rem;
+  color: var(--saa-slate-fg, #475569);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}}
+.pf-book-k {{
+  display: none;
+}}
+.pf-book-th-spacer {{
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--saa-muted);
+  text-align: center;
+  padding: 0.35rem 0;
+}}
+.pf-book-detail {{
+  margin: 0.15rem 0.2rem 0.55rem;
+  padding: 0.45rem 0.55rem 0.55rem;
+  border: 1px solid var(--saa-table-line);
+  border-radius: 8px;
+  background: var(--saa-card);
+  max-width: 100%;
+  overflow-x: auto;
+}}
+.pf-book-detail .pf-row-main {{
+  padding-top: 0.25rem;
+}}
+.pf-book-always-open {{
+  padding: 0.2rem 0.25rem 0.35rem;
+}}
+.pf-book-open-card {{
+  margin: 0.35rem 0 0.65rem;
+  padding: 0.15rem 0.2rem 0.35rem;
+  border: 1px solid var(--saa-table-line);
+  border-radius: 10px;
+  background: var(--saa-muted-bg);
+  box-sizing: border-box;
+}}
+.pf-book-open-card .pf-book-tr {{
+  border-bottom: none;
+  padding: 0.45rem 0.4rem 0.2rem;
+  background: transparent;
+}}
+.pf-book-open-card .pf-book-tr-open {{
+  background: transparent;
+}}
+.pf-book-detail-open {{
+  margin: 0.1rem 0.35rem 0.4rem;
+  padding: 0.55rem 0.65rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--saa-border) 70%, transparent);
+  border-radius: 8px;
+  background: var(--saa-card);
+}}
+/* Summary row already has name — hide duplicate header in open body */
+.pf-book-detail-open .pf-bullet-top {{
+  display: none;
+}}
+.pf-book-detail-open .pf-row-main {{
+  padding: 0;
+  margin: 0;
+}}
+.pf-book-detail-open .pf-review-stack {{
+  margin: 0 0 0.55rem;
+  gap: 0.4rem;
+}}
+.pf-book-detail-open .pf-review-card {{
+  padding: 0.55rem 0.7rem;
+}}
+.pf-metric-grid {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
+  gap: 0.35rem 0.45rem;
+  margin: 0 0 0.55rem;
+}}
+.pf-metric {{
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: 7px;
+  border: 1px solid var(--saa-table-line);
+  background: var(--saa-muted-bg);
+  min-width: 0;
+}}
+.pf-metric-k {{
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--saa-muted);
+}}
+.pf-metric-v {{
+  font-size: 0.92rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--saa-fg);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}}
+.pf-extend-open {{
+  margin-top: 0.15rem;
+}}
+.pf-open-note {{
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--saa-table-line);
+  background: var(--saa-muted-bg);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--saa-fg);
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}}
+.pf-open-note-k {{
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--saa-muted);
+}}
+@media (max-width: 640px) {{
+  .pf-metric-grid {{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }}
+  .pf-book-detail-open {{
+    margin: 0.1rem 0.2rem 0.35rem;
+    padding: 0.45rem 0.5rem 0.55rem;
+  }}
+}}
+/* Narrow: stack book summary so columns are not crushed */
+@media (max-width: 900px) {{
+  .pf-book-th {{
+    display: none;
+  }}
+  .pf-book-th-spacer {{
+    display: none;
+  }}
+  .pf-book-tr {{
+    grid-template-columns: auto 1fr 1fr;
+    grid-template-areas:
+      "cue name name"
+      "score wt spot"
+      "tgt tgt why";
+    gap: 0.28rem 0.4rem;
+    padding: 0.5rem 0.35rem;
+  }}
+  .pf-book-c-cue {{ grid-area: cue; }}
+  .pf-book-c-name {{ grid-area: name; }}
+  .pf-book-c-score {{ grid-area: score; }}
+  .pf-book-c-wt {{ grid-area: wt; }}
+  .pf-book-c-spot {{ grid-area: spot; }}
+  .pf-book-c-tgt {{ grid-area: tgt; }}
+  .pf-book-c-why {{
+    grid-area: why;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }}
+  .pf-book-k {{
+    display: inline;
+    margin-right: 0.22rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--saa-muted);
+  }}
+  .pf-book-td-num {{
+    white-space: nowrap;
+  }}
+}}
+@media (max-width: 640px) {{
+  .pf-book-tr {{
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "cue name"
+      "score wt"
+      "spot tgt"
+      "why why";
+  }}
 }}
 .pf-row-main {{
   padding: 0.7rem 0 0.55rem;
@@ -1620,10 +1942,11 @@ div[data-testid="stRadio"] {{
 .pf-id {{
   font-size: 1.05rem;
   letter-spacing: -0.02em;
-  color: #0f172a;
+  color: var(--saa-fg);
 }}
 .pf-id strong {{
   font-weight: 700;
+  color: var(--saa-fg);
 }}
 .pf-chart-hint {{
   display: inline-flex;
@@ -1634,9 +1957,9 @@ div[data-testid="stRadio"] {{
   padding: 0.2rem 0.6rem;
   margin: 0 0.2rem 0 0.28rem;
   border-radius: 6px;
-  border: 1px solid #8fa0b3;
-  background: #eef3f8;
-  color: #1e3a5f;
+  border: 1px solid var(--saa-chart-border);
+  background: var(--saa-chart-bg);
+  color: var(--saa-chart);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1647,15 +1970,15 @@ div[data-testid="stRadio"] {{
   box-sizing: border-box;
 }}
 .pf-chart-hint:hover {{
-  background: #1e3a5f;
-  color: #faf7f1;
-  border-color: #1e3a5f;
+  background: var(--saa-chart);
+  color: var(--saa-on-accent);
+  border-color: var(--saa-chart);
   text-decoration: none;
 }}
 .pf-ticker {{
   font-size: 0.78rem;
   font-weight: 500;
-  color: #64748b;
+  color: var(--saa-muted);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }}
@@ -1663,12 +1986,13 @@ div[data-testid="stRadio"] {{
   font-size: 0.8rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  color: var(--saa-fg);
 }}
 .pf-spot {{
   font-size: 0.95rem;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
-  color: #1c1a16;
+  color: var(--saa-fg);
   letter-spacing: -0.02em;
 }}
 .pf-chart-read {{
@@ -1981,14 +2305,14 @@ div[data-testid="stRadio"] {{
 .pf-sec-body {{
   font-size: 0.88rem;
   line-height: 1.4;
-  color: #0f172a;
+  color: var(--saa-fg);
   padding: 0;
 }}
 
 /* Page titles */
 h2, h3, [data-testid="stMarkdownContainer"] h2,
 [data-testid="stMarkdownContainer"] h3 {{
-  color: #1c1a16 !important;
+  color: var(--saa-fg) !important;
   letter-spacing: -0.015em;
 }}
 
@@ -2152,22 +2476,41 @@ h2, h3, [data-testid="stMarkdownContainer"] h2,
 
 /* 소분류 단원 — Streamlit border container 얇은 박스 */
 div[data-testid="stVerticalBlockBorderWrapper"] {{
-  border: 1px solid #d1d5db !important;
+  border: 1px solid var(--saa-border) !important;
   border-radius: 8px !important;
-  background: rgba(255,255,255,0.92) !important;
+  background: var(--saa-card) !important;
+  color: var(--saa-fg) !important;
   margin: 0.45rem 0 0.85rem !important;
   box-shadow: none !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-x: clip;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"] > div {{
   padding: 0.55rem 0.7rem 0.7rem !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  color: var(--saa-fg) !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"] h3 {{
   font-size: 1.05rem !important;
   font-weight: 700 !important;
-  color: #1c1a16 !important;
+  color: var(--saa-fg) !important;
   letter-spacing: -0.015em !important;
   margin: 0 0 0.2rem !important;
   padding: 0 !important;
+}}
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"],
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] p,
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] span,
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"],
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"] p {{
+  color: var(--saa-fg) !important;
+}}
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"],
+div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"] p {{
+  color: var(--saa-muted) !important;
 }}
 div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"] {{
   margin-bottom: 0.45rem !important;
@@ -2466,6 +2809,11 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   font-weight: 700;
   color: var(--saa-fg);
 }}
+.pf-phcvs-attn-st {{
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+  margin-right: 0.35rem;
+}}
 .pf-phcvs-attn-tk {{
   font-size: 0.72rem;
   color: var(--saa-muted);
@@ -2494,7 +2842,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
 }}
 .pf-phcvs-grid {{
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
   gap: 0.45rem;
 }}
 .pf-phcvs-card {{
@@ -2502,6 +2850,10 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   border-radius: 8px;
   padding: 0.55rem 0.65rem 0.5rem;
   background: var(--saa-muted-bg);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }}
 .pf-phcvs-hit {{
   border-color: var(--saa-warn-border);
@@ -2599,6 +2951,10 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   background: var(--saa-card, var(--saa-muted-bg));
   color: var(--saa-fg);
   line-height: 1.4;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }}
 .pf-review-top {{
   display: flex;
@@ -2628,8 +2984,8 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   padding: 0.06rem 0.35rem;
   border-radius: 4px;
   border: 1px solid var(--saa-list-border);
-  background: rgba(255,255,255,0.4);
-  color: var(--saa-slate-fg);
+  background: var(--saa-muted-bg);
+  color: var(--saa-muted);
 }}
 .pf-review-main {{
   display: flex;
@@ -2640,7 +2996,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
 .pf-review-primary {{
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--saa-ink, #0f172a);
+  color: var(--saa-fg);
 }}
 .pf-review-sep {{
   color: var(--saa-muted);
@@ -2747,6 +3103,10 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   border-radius: 8px;
   border: 1px solid var(--saa-list-border);
   background: var(--saa-card, var(--saa-muted-bg));
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }}
 .pf-wact-board-empty {{
   opacity: 0.92;
@@ -2841,7 +3201,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--saa-ink, #0f172a);
+  color: var(--saa-fg);
   min-width: 3.2rem;
 }}
 .pf-flow-strip-ok .pf-flow-state {{
@@ -2864,7 +3224,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
 .pf-flow-mv {{
   font-size: 0.92rem;
   font-weight: 750;
-  color: var(--saa-ink, #0f172a);
+  color: var(--saa-fg);
   min-width: 3.6rem;
 }}
 .pf-flow-mv-up {{
@@ -3023,6 +3383,262 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
   padding: 0.35rem 0;
 }}
 
+/* OpenDART evidence board — aligned with PH-CVS cards */
+.pf-od-block {{
+  margin: 0.25rem 0 0.45rem;
+}}
+.pf-od-kicker {{
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--saa-fg);
+}}
+.pf-od-meta, .pf-od-quota {{
+  font-size: 0.74rem;
+  color: var(--saa-muted);
+  margin: 0.12rem 0 0;
+  line-height: 1.35;
+}}
+.pf-od-section {{
+  margin: 0.45rem 0 0.65rem;
+}}
+.pf-od-section-title {{
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--saa-fg);
+  margin: 0 0 0.15rem;
+}}
+.pf-od-hint {{
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  margin: 0 0 0.4rem;
+  line-height: 1.35;
+}}
+.pf-od-attn {{
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--saa-border);
+}}
+.pf-od-attn-hot {{
+  border-color: var(--saa-warn-border);
+  background: var(--saa-warn-bg);
+}}
+.pf-od-attn-warn {{
+  border-color: var(--saa-list-border);
+  background: var(--saa-muted-bg);
+}}
+.pf-od-attn-title {{
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--saa-fg);
+  margin: 0 0 0.25rem;
+}}
+.pf-od-attn-body, .pf-od-attn-note {{
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  line-height: 1.35;
+}}
+.pf-od-attn-list {{
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.25rem;
+}}
+.pf-od-attn-item {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+}}
+.pf-od-attn-name {{ font-weight: 700; color: var(--saa-fg); }}
+.pf-od-attn-tk {{
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  font-variant-numeric: tabular-nums;
+}}
+.pf-od-attn-tags {{
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--saa-warn-text);
+}}
+.pf-od-table-wrap {{
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.15rem 0 0.35rem;
+  border: 1px solid var(--saa-table-line);
+  border-radius: 8px;
+  background: var(--saa-table-bg, var(--saa-card));
+  box-sizing: border-box;
+}}
+.pf-od-table {{
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  color: var(--saa-fg);
+}}
+.pf-od-section,
+.pf-od-section-title,
+.pf-od-table td,
+.pf-od-table th,
+.pf-od-block,
+.pf-od-kicker {{
+  color: var(--saa-fg);
+}}
+.pf-od-hint,
+.pf-od-meta,
+.pf-od-quota,
+.pf-od-foot {{
+  color: var(--saa-muted);
+}}
+.pf-od-table a.pf-chart-hint {{
+  color: var(--saa-chart);
+}}
+.pf-od-table th {{
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--saa-muted);
+  background: var(--saa-table-head, var(--saa-muted-bg));
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--saa-table-line);
+  white-space: nowrap;
+}}
+.pf-od-table td {{
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--saa-table-line);
+  vertical-align: top;
+  background: var(--saa-table-bg, var(--saa-card));
+  line-height: 1.35;
+}}
+.pf-od-table .pf-od-note {{
+  white-space: normal;
+  min-width: 7rem;
+  max-width: 16rem;
+}}
+@media (max-width: 640px) {{
+  .pf-od-table {{
+    font-size: 0.76rem;
+  }}
+  .pf-od-table th,
+  .pf-od-table td {{
+    padding: 0.32rem 0.4rem;
+  }}
+  .pf-od-table .pf-od-note {{
+    max-width: 11rem;
+  }}
+}}
+.pf-od-table tr:last-child td {{
+  border-bottom: none;
+}}
+.pf-od-table .pf-od-num {{
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}}
+.pf-od-table .pf-od-note {{
+  font-size: 0.76rem;
+  color: var(--saa-slate-fg);
+}}
+.pf-od-table tr.pf-od-row-hot td {{
+  background: var(--saa-warn-bg);
+}}
+.pf-od-table tr.pf-od-row-warn td {{
+  background: var(--saa-muted-bg);
+}}
+.pf-od-cont {{
+  color: var(--saa-muted);
+  font-size: 0.75rem;
+}}
+.pf-od-chip {{
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}}
+.pf-od-chip-ok {{
+  color: var(--saa-ok-fg);
+  background: var(--saa-ok-chip);
+  border-color: var(--saa-ok-border);
+}}
+.pf-od-chip-hot {{
+  color: var(--saa-warn-text);
+  background: var(--saa-warn-chip);
+  border-color: var(--saa-warn-border);
+}}
+.pf-od-chip-warn {{
+  color: var(--saa-slate-fg);
+  background: var(--saa-muted-bg);
+  border-color: var(--saa-list-border);
+}}
+.pf-od-chip-muted {{
+  color: var(--saa-muted);
+  background: var(--saa-muted-bg);
+  border-color: var(--saa-table-line);
+}}
+.pf-od-chip-kind {{
+  color: var(--saa-fg);
+  background: var(--saa-muted-bg);
+  border-color: var(--saa-list-border);
+}}
+.pf-od-link {{
+  font-size: 0.72rem;
+  font-weight: 600;
+}}
+.pf-od-more {{
+  font-size: 0.7rem;
+  color: var(--saa-muted);
+}}
+.pf-od-ab {{
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: var(--saa-muted-bg);
+  font-size: 0.74rem;
+  color: var(--saa-slate-fg);
+}}
+.pf-od-ab-lbl {{
+  font-weight: 800;
+  color: var(--saa-fg);
+  margin-right: 0.25rem;
+}}
+.pf-od-foot {{
+  font-size: 0.7rem;
+  color: var(--saa-muted);
+  margin-top: 0.45rem;
+}}
+.pf-od-verdict-sum {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.25rem;
+}}
+.pf-od-verdict-hint {{
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  margin-left: 0.25rem;
+}}
+.pf-od-routine {{
+  font-size: 0.72rem;
+  color: var(--saa-muted);
+  margin: 0 0 0.45rem;
+  line-height: 1.35;
+}}
+.pf-od-empty {{
+  font-size: 0.8rem;
+  color: var(--saa-muted);
+  padding: 0.35rem 0;
+  line-height: 1.4;
+}}
+
 /* Short sleeve vol-budget Review card */
 .svb-card {{
   margin: 0.35rem 0 0.75rem;
@@ -3145,12 +3761,101 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer
     padding-right: 0.75rem;
   }}
 }}
+
+/* Narrow window: cards / chips / Streamlit column rows must not crush */
+@media (max-width: 900px) {{
+  div[data-testid="stVerticalBlockBorderWrapper"] > div {{
+    padding: 0.45rem 0.5rem 0.55rem !important;
+  }}
+  [data-testid="stHorizontalBlock"] {{
+    flex-wrap: wrap !important;
+    gap: 0.35rem 0.5rem !important;
+  }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"],
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+    min-width: min(100%, 10.5rem) !important;
+    flex: 1 1 10.5rem !important;
+  }}
+  .pf-phcvs-grid {{
+    grid-template-columns: 1fr;
+  }}
+  .pf-review-card,
+  .pf-od-attn,
+  .pf-od-block,
+  .pf-signal,
+  .pf-chart-read,
+  .pf-wact-board,
+  .pf-missing,
+  .alpha-card,
+  .home-level,
+  .home-note {{
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+  }}
+  .pf-review-body,
+  .pf-od-attn-body,
+  .pf-od-attn-note,
+  .pf-od-meta,
+  .pf-od-quota,
+  .pf-sec-summary,
+  .pf-wact-board-hint,
+  .pf-wact-li,
+  .pf-phcvs-reason,
+  .pf-phcvs-action {{
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+  }}
+  .pf-ladder-rungs {{
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.28rem;
+  }}
+  .pf-ladder-rungs > span {{
+    flex: 1 1 4.5rem;
+    max-width: 100%;
+  }}
+  .pf-ladder-axis {{
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+  }}
+  .pf-review-chip {{
+    margin-left: 0;
+  }}
+  .pf-sec-title {{
+    overflow-wrap: anywhere;
+  }}
+  .alpha-flow-asset {{
+    flex: 1 1 100%;
+  }}
+}}
+@media (max-width: 640px) {{
+  [data-testid="stHorizontalBlock"] > [data-testid="column"],
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+    min-width: 100% !important;
+    flex: 1 1 100% !important;
+  }}
+  .pf-ladder-rung-name {{
+    font-size: 0.68rem;
+  }}
+  .pf-ladder-rung-px {{
+    font-size: 0.72rem;
+  }}
+  .pf-wact-board,
+  .pf-od-attn,
+  .pf-review-card {{
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }}
+}}
 </style>
         """
     inner = css.split("<style>", 1)[-1].rsplit("</style>", 1)[0]
     themed = apply_color_tokens(inner)
+    widgets = apply_color_tokens(_WIDGET_OVERRIDES)
     st.markdown(
-        f"<style>\n{css_variables(theme)}\n{themed}\n{_WIDGET_OVERRIDES}\n</style>",
+        f"<style>\n{css_variables(theme)}\n{themed}\n{widgets}\n</style>",
         unsafe_allow_html=True,
     )
 
