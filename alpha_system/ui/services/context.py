@@ -16,6 +16,7 @@ from alpha_system.journal import ensure_journal_hydrated, list_discretionary_war
 from alpha_system.loader import load_config
 from alpha_system.schema import AlphaSystemConfig, TrancheId
 from alpha_system.scoring.engine import NameScore, score_name
+from alpha_system.scoring.short_book import load_min_score_m, load_satellite_weights, score_short_name
 from alpha_system.sizing.allocate import allocate_tranche
 from alpha_system.sizing.sector_map import load_sector_groups
 from alpha_system.swap.observe import SwapObserveInput, evaluate_swap_observe
@@ -25,14 +26,19 @@ from alpha_system.ui.services.runtime_state import RuntimeState, sync_runtime_fr
 from alpha_system.ui.services.t3_pbr import T3PbrStatus
 from alpha_system.ui.services.ui_copy import copy_get
 from alpha_system.screen_book import (
+    DEFAULT_HORIZON,
     DEFAULT_MARKET,
     apply_book_config,
     ensure_book_dirs,
     operational_data_dir,
     alpha_data_dir,
+    load_short_policy,
     provenance_rel,
+    is_short,
+    normalize_horizon,
     normalize_market,
     resolve_quality_fundamentals_csv,
+    source_data_dir,
 )
 
 
@@ -93,6 +99,7 @@ class ScoreboardRow:
     # Normalized concentration key (= sector_group from KRX mapping).
     sector: str = ""
     eligibility_reason: str = ""
+    score_m: Optional[float] = None
 
 
 @dataclass
@@ -127,7 +134,11 @@ class DashboardContext:
     effective_go_live: Optional[date] = None
     checklist: Any = None
     screen_market: str = "KOSPI"
+    screen_horizon: str = "mid"
+    source_data_dir: Path = field(default_factory=lambda: Path("data"))
     proposal_blocked_rows: list[PortfolioRow] = field(default_factory=list)
+    short_vol_budget: Any = None
+    """ShortVolBudgetAdvice when horizon=short; else None. Review-only."""
 
 
 EVENT_LABELS = {
@@ -137,24 +148,29 @@ EVENT_LABELS = {
 }
 
 
-def _paths(root: Path, market: str = "KOSPI") -> dict[str, Path]:
-    data = operational_data_dir(root, market)
+def _paths(
+    root: Path, market: str = "KOSPI", horizon: str = "mid"
+) -> dict[str, Path]:
+    ledger = operational_data_dir(root, market, horizon)
+    source = source_data_dir(root, market)
     alpha = alpha_data_dir(root, market)
     return {
         "journal": root / "data" / "alpha_system_journal.jsonl",
         "runtime": root / "data" / "alpha_dashboard_runtime.json",
         "dashboard_cfg": root / "alpha_system" / "config" / "dashboard.yaml",
         "system_cfg": root / "alpha_system" / "config" / "alpha_system.yaml",
-        "positions": data / "positions.csv",
-        "targets": data / "target_portfolio.csv",
-        "prices": data / "prices.csv",
-        "fundamentals": data / "fundamentals.csv",
+        "positions": ledger / "positions.csv",
+        "targets": ledger / "target_portfolio.csv",
+        "prices": source / "prices.csv",
+        "fundamentals": source / "fundamentals.csv",
         "cecs": root / "data" / "cecs_manual_scoring_template.csv",
         "alpha_scores": alpha / "output" / "alpha_scores.csv",
-        "sector_gate": data / "sector_coverage_gate_pass.json",
-        "exit_targets": data / "kr_alpha_exit_targets.yaml",
+        "sector_gate": source / "sector_coverage_gate_pass.json",
+        "exit_targets": ledger / "kr_alpha_exit_targets.yaml",
         "quant_provenance": root / provenance_rel(market),
-        "overlay": data / "qual_rank_overlay.json",
+        "overlay": source / "qual_rank_overlay.json",
+        "ledger": ledger,
+        "source": source,
     }
 
 
@@ -163,16 +179,23 @@ def load_context(
     *,
     as_of: date | None = None,
     market: str | None = None,
+    horizon: str | None = None,
 ) -> DashboardContext:
     root = root or Path(__file__).resolve().parents[3]
     screen_market = normalize_market(market or DEFAULT_MARKET)
-    ensure_book_dirs(root, screen_market)
-    paths = _paths(root, screen_market)
+    screen_horizon = normalize_horizon(horizon or DEFAULT_HORIZON)
+    ensure_book_dirs(root, screen_market, screen_horizon)
+    paths = _paths(root, screen_market, screen_horizon)
     as_of = as_of or date.today()
     ensure_journal_hydrated(paths["journal"])
     runtime = RuntimeState.load(paths["runtime"])
     runtime = sync_runtime_from_journal(runtime, paths["journal"])
-    cfg = apply_book_config(load_config(paths["system_cfg"]), screen_market, root=root)
+    cfg = apply_book_config(
+        load_config(paths["system_cfg"]),
+        screen_market,
+        root=root,
+        horizon=screen_horizon,
+    )
 
     effective_go_live = cfg.go_live_date or runtime.effective_go_live()
     pre_launch = effective_go_live is None
@@ -227,7 +250,13 @@ def load_context(
     )
 
     scoreboard_rows, fallback_count = _build_scoreboard(
-        cfg, cecs_df, scores_df, fundamentals_df, kr_positions, data_dir=paths["positions"].parent
+        cfg,
+        cecs_df,
+        scores_df,
+        fundamentals_df,
+        kr_positions,
+        data_dir=paths["source"],
+        horizon=screen_horizon,
     )
 
     pos_views: list[PositionView] = []
@@ -281,13 +310,16 @@ def load_context(
         loaded = yaml.safe_load(paths["exit_targets"].read_text(encoding="utf-8")) or {}
         if isinstance(loaded, dict):
             exit_yaml = loaded
-    above_target = collect_above_justified_target_tickers_from_root(
-        [str(s.ticker) for s in scoreboard_rows],
-        root,
-        prices_df=prices_df,
-        fundamentals_df=fundamentals_df,
-        exit_yaml=exit_yaml,
-    )
+    if is_short(screen_horizon):
+        above_target: set[str] = set()
+    else:
+        above_target = collect_above_justified_target_tickers_from_root(
+            [str(s.ticker) for s in scoreboard_rows],
+            root,
+            prices_df=prices_df,
+            fundamentals_df=fundamentals_df,
+            exit_yaml=exit_yaml,
+        )
     skip_reasons: dict[str, str] = {}
     proposal_rows = _build_screen_portfolio(
         cfg,
@@ -299,12 +331,14 @@ def load_context(
         overlay_path=paths["overlay"],
         exclude_tickers=above_target,
         root=root,
-        data_dir=paths["positions"].parent,
+        data_dir=paths["source"],
         skip_reasons=skip_reasons,
+        short_book=is_short(screen_horizon),
     )
     from alpha_system.ui.services.proposal_freeze import load_freeze, pin_proposal_rows
 
-    proposal_rows = pin_proposal_rows(proposal_rows, load_freeze(root))
+    if not is_short(screen_horizon):
+        proposal_rows = pin_proposal_rows(proposal_rows, load_freeze(root))
     band_n = int(cfg.sizing.target_names)
     band_scores = proposal_band_scores(scoreboard_rows, target_n=band_n)
     already = {str(r.ticker).zfill(6) for r in proposal_rows}
@@ -320,7 +354,7 @@ def load_context(
         root=root,
         above_target=above_target,
         skip_reasons=skip_reasons,
-        data_dir=paths["positions"].parent,
+        data_dir=paths["source"],
     )
     ops_rows = _build_ops_portfolio(
         cfg,
@@ -332,26 +366,44 @@ def load_context(
         paths["exit_targets"],
         lookback_lows=lookback_lows,
     )
-    _enrich_ops_exit_signals(
-        proposal_rows,
-        proposal_tickers={r.ticker for r in proposal_rows},
-        fundamentals_df=fundamentals_df,
-        exit_targets_path=paths["exit_targets"],
-        check_proposal_membership=False,
-        as_of=as_of,
-    )
-    _enrich_ops_exit_signals(
-        ops_rows,
-        proposal_tickers=ops_proposal_membership(
-            [r.ticker for r in proposal_rows],
-            held_tickers=[r.ticker for r in ops_rows],
-            above_target=above_target,
-        ),
-        fundamentals_df=fundamentals_df,
-        exit_targets_path=paths["exit_targets"],
-        check_proposal_membership=True,
-        as_of=as_of,
-    )
+    short_vol_budget = None
+    if is_short(screen_horizon):
+        from alpha_system.ui.services.short_vol_budget import advise_short_vol_budget
+
+        short_vol_budget = advise_short_vol_budget(
+            root, policy=load_short_policy(root, screen_market)
+        )
+        _enrich_short_ops_signals(
+            proposal_rows,
+            ops_rows,
+            blocked_rows=blocked_rows,
+            scoreboard_rows=scoreboard_rows,
+            root=root,
+            market=screen_market,
+        )
+    else:
+        _enrich_ops_exit_signals(
+            proposal_rows,
+            proposal_tickers={r.ticker for r in proposal_rows},
+            fundamentals_df=fundamentals_df,
+            exit_targets_path=paths["exit_targets"],
+            check_proposal_membership=False,
+            as_of=as_of,
+            prices_df=prices_df,
+        )
+        _enrich_ops_exit_signals(
+            ops_rows,
+            proposal_tickers=ops_proposal_membership(
+                [r.ticker for r in proposal_rows],
+                held_tickers=[r.ticker for r in ops_rows],
+                above_target=above_target,
+            ),
+            fundamentals_df=fundamentals_df,
+            exit_targets_path=paths["exit_targets"],
+            check_proposal_membership=True,
+            as_of=as_of,
+            prices_df=prices_df,
+        )
     proposal_n = len(proposal_rows)
     ops_n = len(ops_rows)
     target_n = (
@@ -399,6 +451,32 @@ def load_context(
                         payload={"phase_ids": list(cue.phase_ids)},
                     )
                 )
+            from alpha_system.ui.services.basel_observation import (
+                build_basel_observation_board,
+                observation_action_cues,
+            )
+
+            obs = build_basel_observation_board(root, as_of=as_of)
+            for key, title, detail, severity in observation_action_cues(obs):
+                sev = (
+                    ActionSeverity.WARN
+                    if severity == "warn"
+                    else ActionSeverity.INFO
+                )
+                action_queue.append(
+                    ActionItem(
+                        key=key,
+                        title=title,
+                        detail=detail,
+                        severity=sev,
+                        source="basel_observation",
+                        panel_kind="checklist",
+                        payload={
+                            "scenario_id": obs.direction.scenario_id,
+                            "pending": obs.pending_count,
+                        },
+                    )
+                )
         except Exception:
             pass
 
@@ -430,7 +508,7 @@ def load_context(
 
     return DashboardContext(
         root=root,
-        data_dir=paths["positions"].parent,
+        data_dir=paths["ledger"],
         cfg=cfg,
         as_of=as_of,
         runtime=runtime,
@@ -459,7 +537,10 @@ def load_context(
         effective_go_live=effective_go_live,
         checklist=checklist,
         screen_market=screen_market,
+        screen_horizon=screen_horizon,
+        source_data_dir=paths["source"],
         proposal_blocked_rows=blocked_rows,
+        short_vol_budget=short_vol_budget,
     )
 
 
@@ -504,6 +585,7 @@ def _build_scoreboard(
     kr_positions: pd.DataFrame,
     *,
     data_dir: Path | None = None,
+    horizon: str = "mid",
 ) -> tuple[list[ScoreboardRow], int]:
     """Build scoreboard from alpha_scores.csv. CECS overlay is optional (Ops A weight 0)."""
     if scores_df.empty or "ticker" not in scores_df.columns:
@@ -526,6 +608,10 @@ def _build_scoreboard(
             if tk:
                 cecs_idx[tk] = r
 
+    short = is_short(horizon)
+    sat_w = load_satellite_weights() if short else None
+    min_m = load_min_score_m() if short else None
+
     for _, factor in scores_df.iterrows():
         ticker = str(factor.get("ticker", "")).zfill(6)
         if not ticker:
@@ -535,6 +621,7 @@ def _build_scoreboard(
         v = _f(factor.get("score_v"))
         sr = _f(factor.get("score_sr"))
         rr = _f(factor.get("score_r"))
+        sm = _f(factor.get("score_m"))
         gate_ok = _as_bool(factor.get("gate_pass"), default=True)
         quality_ok = _quality_inputs_ok(factor, fund_ok)
         cecs_row = cecs_idx.get(ticker)
@@ -559,18 +646,33 @@ def _build_scoreboard(
             elig_reason = "유동성 게이트 미통과"
         else:
             try:
-                ns = score_name(
-                    ticker=ticker,
-                    name=name,
-                    score_q=q,
-                    score_v=v,
-                    score_sr=sr,
-                    score_r=rr,
-                    cecs=cecs_val,
-                    cecs_inputs=cecs_inputs,
-                    quality_inputs_ok=quality_ok,
-                    system_cfg=cfg,
-                )
+                if short:
+                    ns = score_short_name(
+                        ticker=ticker,
+                        name=name,
+                        score_q=q,
+                        score_v=v,
+                        score_sr=sr,
+                        score_r=rr,
+                        score_m=sm,
+                        quality_inputs_ok=quality_ok,
+                        system_cfg=cfg,
+                        weights=sat_w,
+                        min_score_m=min_m,
+                    )
+                else:
+                    ns = score_name(
+                        ticker=ticker,
+                        name=name,
+                        score_q=q,
+                        score_v=v,
+                        score_sr=sr,
+                        score_r=rr,
+                        cecs=cecs_val,
+                        cecs_inputs=cecs_inputs,
+                        quality_inputs_ok=quality_ok,
+                        system_cfg=cfg,
+                    )
                 total = ns.total_score
                 elig = ns.eligibility
                 elig_reason = str(ns.eligibility_reason or "")
@@ -603,6 +705,7 @@ def _build_scoreboard(
                 status=status,
                 sector=sector,
                 eligibility_reason=elig_reason,
+                score_m=sm,
             )
         )
     rows.sort(key=lambda x: (x.total_score is None, -(x.total_score or 0)))
@@ -728,6 +831,43 @@ def _f(val) -> Optional[float]:
         return None
 
 
+def _review_display_mom_extra(
+    extra: dict[str, Any],
+    *,
+    sc: ScoreboardRow | None = None,
+    price_row: Any = None,
+    fund_row: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Display-only momentum / earnings fields for Review UI — never Core weights."""
+    out = dict(extra or {})
+    if sc is not None and getattr(sc, "score_m", None) is not None:
+        out.setdefault("score_m", sc.score_m)
+    if price_row is not None:
+        for key in ("return_6m", "return_12m_ex_1m", "return_12m", "return_3m"):
+            if key in out and out.get(key) not in (None, ""):
+                continue
+            try:
+                if hasattr(price_row, "get"):
+                    raw = price_row.get(key)
+                elif hasattr(price_row, "index") and key in price_row.index:
+                    raw = price_row[key]
+                else:
+                    raw = None
+            except Exception:
+                raw = None
+            val = _f(raw)
+            if val is not None:
+                out[key] = val
+    if fund_row:
+        for key in ("net_income", "net_income_y1", "opm", "earn_mom_label", "earnings_surprise_dir"):
+            if key in out and out.get(key) not in (None, ""):
+                continue
+            raw = fund_row.get(key) if hasattr(fund_row, "get") else None
+            if raw not in (None, ""):
+                out[key] = raw
+    return out
+
+
 def _sum_numeric(series) -> float:
     """Sum a CSV column read as dtype=str without string-concatenation."""
     if series is None:
@@ -775,11 +915,17 @@ def _enrich_ops_exit_signals(
     exit_targets_path: Path,
     check_proposal_membership: bool = True,
     as_of: date | None = None,
+    prices_df: pd.DataFrame | None = None,
 ) -> None:
-    """Attach 유지/줄이기/환금/전량 cues (display only)."""
+    """Attach 유지/줄이기/환금/전량 cues (display only) · L0+L1+L3 merge."""
     if not rows:
         return
+    from alpha_system.ui.services.crash_defense_signal import (
+        load_closes_by_ticker,
+        load_trim_notes,
+    )
     from alpha_system.ui.services.ops_exit_signal import apply_ops_exit_signals
+    from alpha_system.ui.services.trail_exit_signal import load_trail_snapshot_map
     from src.alpha.take_profit_thesis import load_exit_targets
 
     bundle = load_exit_targets(exit_targets_path)
@@ -788,6 +934,21 @@ def _enrich_ops_exit_signals(
         for _, fr in fundamentals_df.iterrows():
             t = str(fr.get("ticker", "")).zfill(6)
             fund_by[t] = fr.to_dict()
+    trail_map = load_trail_snapshot_map(prices_df) if prices_df is not None else {}
+    tickers = [
+        str(r.ticker).zfill(6) if str(r.ticker).isdigit() else str(r.ticker)
+        for r in rows
+    ]
+    # root = exit_targets parent chain → repo root
+    root = Path(exit_targets_path).resolve()
+    for _ in range(6):
+        if (root / "data" / "prices.csv").exists() or (root / "alpha_system").exists():
+            break
+        if root.parent == root:
+            break
+        root = root.parent
+    closes_map = load_closes_by_ticker(root, tickers, n=40)
+    trim_notes = load_trim_notes(root)
     apply_ops_exit_signals(
         rows,
         proposal_tickers=proposal_tickers,
@@ -796,7 +957,61 @@ def _enrich_ops_exit_signals(
         defaults=bundle.get("defaults") or {},
         check_proposal_membership=check_proposal_membership,
         as_of=as_of,
+        trail_by_ticker=trail_map,
+        apply_trail=True,
+        closes_by_ticker=closes_map,
+        apply_crash=True,
+        trim_notes=trim_notes,
     )
+
+
+def _enrich_short_ops_signals(
+    proposal_rows: list[PortfolioRow],
+    ops_rows: list[PortfolioRow],
+    *,
+    blocked_rows: Sequence[PortfolioRow] | None = None,
+    scoreboard_rows: Sequence[ScoreboardRow],
+    root: Path,
+    market: str,
+) -> None:
+    """Short book: momentum cues + absorb Review chip — never mid P/B take-profit."""
+    from alpha_system.ui.services.short_absorb_signal import (
+        apply_short_absorb_flags,
+        build_absorb_map,
+    )
+    from alpha_system.ui.services.short_ops_signal import (
+        apply_short_ops_signals,
+        build_short_metrics_map,
+        load_price_mom_rows,
+    )
+
+    score_m_by = {
+        str(s.ticker).zfill(6): s.score_m
+        for s in scoreboard_rows
+        if str(s.ticker or "").strip()
+    }
+    metrics = build_short_metrics_map(
+        score_m_by_ticker=score_m_by,
+        price_rows=load_price_mom_rows(root, market),
+    )
+    prop = {str(r.ticker).zfill(6) for r in proposal_rows}
+    apply_short_ops_signals(
+        proposal_rows,
+        proposal_tickers=prop,
+        metrics_by_ticker=metrics,
+        check_proposal_membership=False,
+    )
+    apply_short_ops_signals(
+        ops_rows,
+        proposal_tickers=prop,
+        metrics_by_ticker=metrics,
+        check_proposal_membership=True,
+    )
+    absorb = build_absorb_map(root, market)
+    apply_short_absorb_flags(proposal_rows, absorb)
+    apply_short_absorb_flags(ops_rows, absorb)
+    if blocked_rows:
+        apply_short_absorb_flags(blocked_rows, absorb)
 
 
 def _build_screen_portfolio(
@@ -811,12 +1026,14 @@ def _build_screen_portfolio(
     root: Path | None = None,
     data_dir: Path | None = None,
     skip_reasons: dict[str, str] | None = None,
+    short_book: bool = False,
 ) -> list[PortfolioRow]:
     """Build proposal_book from screened eligible names only (Policy B).
 
     Purchase weights from positions.csv are intentionally excluded.
     Proposed weights come from allocate_tranche; target_portfolio.csv is not written.
-    Names already at/above justified take-profit are dropped (next eligible fills).
+    Names already at/above justified take-profit are dropped (next eligible fills)
+    unless short_book (momentum sleeve — no P/B entry gate).
     """
     name_scores = _name_scores_from_board(scores)
     if not name_scores:
@@ -986,7 +1203,12 @@ def _build_screen_portfolio(
         target_detail = ""
         progress_legacy: Optional[float] = None
 
-        if not has_target:
+        if short_book:
+            # Momentum sleeve: no mid P/B entry gate / ladder / "편입 차단" chrome.
+            has_target = False
+            pbr_max = None
+            yaml_target_px = None
+        elif not has_target:
             target_gap_kind = "screen_pending"
             target_detail = copy_get(
                 "portfolio",
@@ -1017,13 +1239,13 @@ def _build_screen_portfolio(
             target_price = yaml_target_px
             target_detail = "목표 평가 대기"
 
-        if approved_as_of:
+        if not short_book and approved_as_of:
             target_detail = (
                 f"{target_detail} · 승인 {approved_as_of}".strip(" ·")
                 if target_detail
                 else f"승인 {approved_as_of}"
             )
-        if revalidate_required:
+        if not short_book and revalidate_required:
             note = revalidate_reason or copy_get(
                 "portfolio",
                 "target_revalidate_required",
@@ -1036,48 +1258,63 @@ def _build_screen_portfolio(
         sector = (
             sc.sector if sc and sc.sector else str(fund_row.get("sector", "") or "")
         )
-        qextra = quant_portfolio_extra(
-            ticker,
-            fund_row=fund_row,
-            price=cur_p,
-            sector=sector,
-            fundamentals_df=fund_for_peers,
-            alpha_row=alpha_fund_by.get(ticker),
-        )
+        if short_book:
+            qextra: dict[str, Any] = {}
+        else:
+            qextra = quant_portfolio_extra(
+                ticker,
+                fund_row=fund_row,
+                price=cur_p,
+                sector=sector,
+                fundamentals_df=fund_for_peers,
+                alpha_row=alpha_fund_by.get(ticker),
+            )
         extra = {
             "book": "proposal",
             "selection_policy": "B",
             "proposal_eligible": True,
-            "approved_as_of": approved_as_of,
-            "approved_by": approved_by,
-            "revalidate_required": revalidate_required,
-            "revalidate_reason": revalidate_reason,
+            "approved_as_of": approved_as_of if not short_book else "",
+            "approved_by": approved_by if not short_book else "",
+            "revalidate_required": False if short_book else revalidate_required,
+            "revalidate_reason": "" if short_book else revalidate_reason,
             **qextra,
         }
-        hk = evaluate_hakedaka(ticker, hk_inputs, min_hits=hk_min)
-        extra["hakedaka_detail"] = hits_label(hk)
-        extra["hakedaka_hits"] = hk.hits
-        extra["hakedaka_known"] = hk.known
-        extra["cyclical_theme"] = is_cyclical_heavy(
-            sector=sector, name=str(name or "")
-        )
-        mix_px = qextra.get("quant_price_mid")
-        if yaml_target_px and mix_px not in (None, ""):
-            try:
-                mix_f = float(mix_px)
-                saved = float(yaml_target_px)
-                if mix_f > 0 and saved > 0 and abs(mix_f - saved) / max(mix_f, saved) > 0.15:
-                    target_detail = (
-                        f"{target_detail} · 지금 혼합 {mix_f:,.0f}원 (저장과 다름)"
-                    ).strip(" ·")
-            except (TypeError, ValueError):
-                pass
-        extra = attach_ladder_extra(
-            extra,
-            ticker=ticker,
-            current=cur_p,
-            target_price=target_price,
-            lookback_lows=lookback_lows,
+        if short_book:
+            extra["ops_book"] = "short"
+            extra["cyclical_theme"] = is_cyclical_heavy(
+                sector=sector, name=str(name or "")
+            )
+        else:
+            hk = evaluate_hakedaka(ticker, hk_inputs, min_hits=hk_min)
+            extra["hakedaka_detail"] = hits_label(hk)
+            extra["hakedaka_hits"] = hk.hits
+            extra["hakedaka_known"] = hk.known
+            extra["cyclical_theme"] = is_cyclical_heavy(
+                sector=sector, name=str(name or "")
+            )
+            mix_px = qextra.get("quant_price_mid")
+            if yaml_target_px and mix_px not in (None, ""):
+                try:
+                    mix_f = float(mix_px)
+                    saved = float(yaml_target_px)
+                    if mix_f > 0 and saved > 0 and abs(mix_f - saved) / max(mix_f, saved) > 0.15:
+                        target_detail = (
+                            f"{target_detail} · 지금 혼합 {mix_f:,.0f}원 (저장과 다름)"
+                        ).strip(" ·")
+                except (TypeError, ValueError):
+                    pass
+            extra = attach_ladder_extra(
+                extra,
+                ticker=ticker,
+                current=cur_p,
+                target_price=target_price,
+                lookback_lows=lookback_lows,
+            )
+        price_row = None
+        if not price_idx.empty and ticker in price_idx.index:
+            price_row = price_idx.loc[ticker]
+        extra = _review_display_mom_extra(
+            extra, sc=sc, price_row=price_row, fund_row=fund_row
         )
         rows.append(
             PortfolioRow(
@@ -1287,6 +1524,12 @@ def _blocked_proposal_rows(
             target_price=None,
             lookback_lows=lookback_lows or {},
         )
+        price_row = None
+        if not price_idx.empty and ticker in price_idx.index:
+            price_row = price_idx.loc[ticker]
+        extra = _review_display_mom_extra(
+            extra, sc=sc, price_row=price_row, fund_row=fund_row
+        )
         rows.append(
             PortfolioRow(
                 ticker=ticker,
@@ -1397,6 +1640,7 @@ def _build_portfolio(
         ticker = str(pos.get("ticker", "")).zfill(6)
         name = str(pos.get("name", ""))
         cur_val = _f(pos.get("current_value")) or 0.0
+        # Sleeve weight from market value only (no operator 보유% 기입).
         weight = cur_val / total * 100 if total else 0.0
         init_w = None
         if ticker in target_idx.index:
@@ -1488,6 +1732,15 @@ def _build_portfolio(
             current=cur_p,
             target_price=target_price,
             lookback_lows=lookback_lows,
+        )
+        price_row = None
+        if not price_idx.empty and ticker in getattr(price_idx, "index", []):
+            try:
+                price_row = price_idx.loc[ticker]
+            except Exception:
+                price_row = None
+        extra = _review_display_mom_extra(
+            extra, sc=sc, price_row=price_row, fund_row=fund_row
         )
         rows.append(
             PortfolioRow(

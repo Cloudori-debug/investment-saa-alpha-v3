@@ -1111,6 +1111,52 @@ def _proposal_expand_html(row: PortfolioRow, *, summary_in_table: bool = False) 
     return f'<div class="pf-extend pf-extend-open">{body}</div>'
 
 
+def _crash_reentry_html(extra: dict) -> str:
+    """L3 crash defense + re-entry ladder (mid holdings expand)."""
+    code = str(extra.get("crash_code") or "").strip()
+    rungs = extra.get("reentry_rungs")
+    if code in {"", "hold"} and not rungs:
+        return ""
+    lines: list[str] = []
+    ret = extra.get("crash_ret_nd")
+    n = extra.get("crash_n_days") or 5
+    if ret is not None and code not in {"", "hold"}:
+        try:
+            lines.append(f"{int(n)}일 {float(ret) * 100:.1f}% · {extra.get('crash_label') or code}")
+        except (TypeError, ValueError):
+            lines.append(str(extra.get("crash_label") or code))
+    if extra.get("crash_full_hint"):
+        lines.append("전량 검토 힌트(강제 아님)")
+    low = extra.get("reentry_crash_low") or extra.get("crash_low")
+    if low not in (None, ""):
+        low_s = _fmt_price(low)
+        if low_s != "—":
+            lines.append(f"급락 저점 {low_s}원")
+    active = str(extra.get("reentry_active") or "").strip()
+    if isinstance(rungs, list) and rungs:
+        parts: list[str] = []
+        for r in rungs:
+            if not isinstance(r, dict):
+                continue
+            rid = str(r.get("id") or "")
+            px = _fmt_price(r.get("price"))
+            hit = "✓" if r.get("hit") else "·"
+            mark = " ←다음" if rid == active else ""
+            parts.append(f"{hit}{rid} {px}원{mark}")
+        if parts:
+            lines.append("재진입 " + " · ".join(parts))
+        if active == "DONE":
+            lines.append("재진입 단계 완료 · Review")
+    if not lines:
+        return ""
+    body = "<br/>".join(escape(x) for x in lines)
+    return _section(
+        "급락·재진입",
+        f'<div class="pf-sec-body">{body}<br/>'
+        f"L3 Review-only · 평단손절·target 불변</div>",
+    )
+
+
 def _ops_expand_html(row: PortfolioRow) -> str:
     """Short expand for holdings — ops-only cues; no CECS/journal dump."""
     extra = row.extra or {}
@@ -1158,6 +1204,9 @@ def _ops_expand_html(row: PortfolioRow) -> str:
                 f"</div>",
             )
         )
+        crash_html = _crash_reentry_html(extra)
+        if crash_html:
+            bits.append(crash_html)
         if extra.get("quant_ok") and not row.has_target:
             pbr_d = extra.get("quant_pbr_draft")
             mid = extra.get("quant_price_mid")

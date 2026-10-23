@@ -298,6 +298,10 @@ def _detail_with_ladder_prices(
     row: Any,
 ) -> str:
     """Replace ¼/환금 wording with the matching ladder cell in won."""
+    # L1 trail / L3 crash keep their own wording
+    sid = sig.step_id or ""
+    if sid.startswith("L1") or sid.startswith("L3"):
+        return sig.detail
     rungs = extra.get("ladder_rungs") if isinstance(extra, dict) else None
     high = None
     if isinstance(extra, dict):
@@ -345,12 +349,40 @@ def apply_ops_exit_signals(
     defaults: dict[str, Any] | None = None,
     check_proposal_membership: bool = True,
     as_of: date | None = None,
+    trail_by_ticker: dict[str, tuple[float, float | None]] | None = None,
+    apply_trail: bool = True,
+    closes_by_ticker: dict[str, list[float]] | None = None,
+    apply_crash: bool = True,
+    trim_notes: dict[str, dict[str, Any]] | None = None,
 ) -> None:
-    """Mutate PortfolioRow list in place with exit cues."""
+    """Mutate PortfolioRow list in place with exit cues (L0 + L1 trail + L3 crash)."""
     defaults = defaults or {}
     mom_thr = float(defaults.get("momentum_override_threshold") or 70.0)
     time_cap = int(defaults.get("exit_time_cap_weeks") or _DEFAULT_TIME_CAP_WEEKS)
     prop = {str(t).zfill(6) if str(t).isdigit() else str(t) for t in proposal_tickers}
+    trail_map = trail_by_ticker or {}
+    closes_map = closes_by_ticker or {}
+    notes = trim_notes or {}
+    t1 = t2 = t3 = None
+    c1 = c2 = c3 = None
+    crash_n = 5
+    if apply_trail:
+        from alpha_system.ui.services.trail_exit_signal import (
+            trail_from_snapshot,
+            trail_params_from_defaults,
+        )
+
+        t1, t2, t3 = trail_params_from_defaults(defaults)
+    if apply_crash:
+        from alpha_system.ui.services.crash_defense_signal import (
+            build_reentry_ladder,
+            classify_crash_defense,
+            crash_params_from_defaults,
+            ladder_as_extra,
+            merge_l0_l1_l3,
+        )
+
+        c1, c2, c3, crash_n = crash_params_from_defaults(defaults)
 
     for row in rows:
         t = str(row.ticker).zfill(6) if str(row.ticker).isdigit() else str(row.ticker)
@@ -379,6 +411,89 @@ def apply_ops_exit_signals(
             as_of=as_of,
             time_cap_weeks=time_cap,
         )
+        trail_meta: dict[str, Any] = {}
+        crash_meta: dict[str, Any] = {}
+        l1 = None
+        closes = list(closes_map.get(t) or [])
+        close = _to_float(row.current_price)
+        if apply_trail and t1 is not None:
+            snap = trail_map.get(t)
+            high_52w = None
+            if snap is not None:
+                close = snap[0] if close is None else close
+                high_52w = snap[1]
+            elif extra.get("high_52w") is not None:
+                high_52w = _to_float(extra.get("high_52w"))
+            highs = closes if closes else None
+            l1 = trail_from_snapshot(
+                close=close,
+                high_52w=high_52w,
+                closes=closes or None,
+                highs=highs,
+                t1=t1,
+                t2=t2 or 0.20,
+                t3=t3 or 0.28,
+            )
+            if l1 is not None:
+                trail_meta = {
+                    "trail_kind": l1.kind,
+                    "trail_drawdown": round(l1.drawdown, 4),
+                    "trail_peak": l1.peak,
+                    "trail_label": l1.label,
+                    "trail_channel": l1.channel_break,
+                }
+
+        l3 = None
+        if apply_crash and c1 is not None and closes:
+            l3 = classify_crash_defense(
+                closes,
+                last=close,
+                l1_drawdown=None if l1 is None else l1.drawdown,
+                c1=c1,
+                c2=c2 or -0.18,
+                c3=c3 or -0.25,
+                n=crash_n,
+            )
+            crash_meta = {
+                "crash_kind": l3.kind,
+                "crash_code": l3.code,
+                "crash_ret_nd": round(l3.ret_nd, 4),
+                "crash_n_days": l3.n_days,
+                "crash_low": l3.crash_low,
+                "crash_label": l3.label,
+                "crash_full_hint": l3.suggest_full_review,
+            }
+            note = notes.get(t) or {}
+            trim_frac = 0.0
+            crash_low = l3.crash_low
+            if l3.kind in {"trim", "cash_half"} and l3.trim_pct:
+                trim_frac = float(l3.trim_pct) / 100.0
+            if note.get("trim_frac"):
+                try:
+                    trim_frac = max(trim_frac, float(note["trim_frac"]))
+                except (TypeError, ValueError):
+                    pass
+            if note.get("crash_low"):
+                try:
+                    crash_low = float(note["crash_low"]) or crash_low
+                except (TypeError, ValueError):
+                    pass
+            if trim_frac > 0 and crash_low > 0:
+                ladder = build_reentry_ladder(
+                    crash_low=crash_low,
+                    last=float(close or l3.last or 0),
+                    trim_frac=trim_frac,
+                    closes=closes,
+                )
+                crash_meta.update(ladder_as_extra(ladder))
+
+        if apply_crash and c1 is not None:
+            sig = merge_l0_l1_l3(sig, l1, l3)
+        elif apply_trail and t1 is not None and l1 is not None:
+            from alpha_system.ui.services.trail_exit_signal import merge_l0_l1
+
+            sig = merge_l0_l1(sig, l1)
+
         row.ops_signal = sig.kind
         row.ops_signal_label = sig.label
         row.ops_signal_detail = _detail_with_ladder_prices(sig, extra, row)
@@ -391,6 +506,8 @@ def apply_ops_exit_signals(
             "ops_momentum_override": sig.momentum_override,
             "ops_rationale": sig.rationale,
             "ops_step_id": sig.step_id,
+            **trail_meta,
+            **crash_meta,
         }
 
 
