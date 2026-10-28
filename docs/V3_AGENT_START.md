@@ -8,6 +8,12 @@
 
 ---
 
+## 역할 (가계)
+
+- **베타 포트(외부) = 주엔진** · **이 스크리너 = 위성**(품질·Soft·단기채 파킹)
+- 성공 = 가계 합산 낙폭·수익 Review · 단독 지수추종·전량 공격 아님 · [`V3_CHARTER.md`](V3_CHARTER.md) 성공 정의
+- 자세: `data/strategy_portfolio.yaml` → `mission` · `posture`
+
 ## 불변 (위반 금지)
 
 - `proposal_mode: pure_qvm`
@@ -24,9 +30,9 @@
 
 | 사이드바 표시 | 내부 키 | 하는 일 |
 |---------------|---------|---------|
-| 확인 | 결재함 | 본문 위 **코스피 \| 코스닥** · **중기 \| 단기** · ① 숫자(해당 시장만 정량) · ② 공식 RSS · ③ 가동 |
-| 포트폴리오 | 포트폴리오 | 같은 시장·목표 탭 · 중기 관찰 30/제안 6 · 단기 관찰 20/제안 4 (코스닥은 더 적음) |
-| 경제 시그널 | 경제시그널 | 포트폴리오 아래 · 개별주/단기채 5단계 · 배당·환원 참고 (순위·target 미변경) |
+| 확인 | 결재함 | 코스피\|코스닥 · 정량 한 번에 · RSS · 가동 (**데이터만**) |
+| 포트폴리오 | 포트폴리오 | ①목표바 → ②집합 → ③할 일 · 단기·입력 접기 · 티커만 보유 ([`UI_UX_MAP`](UI_UX_MAP.md)) |
+| 경제 나침반 | 경제시그널 | 국면·수급 **참고** · 알파 주문·비중은 포트 |
 
 장부: 코스피=`data/` · 코스닥=`data/books/kosdaq/` · 단기=`data/books/short/{kospi|kosdaq}/` (가격·정량은 시장 중기 장부, 보유·제안만 분리).
 
@@ -45,6 +51,11 @@
 - Windows 패키징: 포터블 `.venv` · `업데이트.bat`(data 보존) · Inno Setup (`V3_WINDOWS_PACKAGING`)
 - **SR4(B안):** 환원 연속성 → `score_sr` · CECS 순위 가중 0 (`FACTOR_WEIGHT_LITERATURE_AND_B_SPEC`)
 - **모멘텀 보유 모니터(MHM):** 상방/하방·EXIT_REVIEW 연속일 (`MOMENTUM_HOLDING_MONITOR_SPEC`)
+- **중기 Shadow 손익:** 가상 북 ledger · Review-only · target/주문 없음 (`SHADOW_MID_PROFIT_MACHINE.md`)
+- **전략 성과 검증:** A/B/C/D · C=현행 v3 동결 (`V3_STRATEGY_VERIFY_PLAN.md`) · 실자금·팩터 추가는 표본외 후
+- **UI/UX 교차검증:** 팔→유지→사 · Soft≠완충 · U1–U16 (`V3_UI_UX_VERIFY.md` · `UI_UX_MAP.md`)
+- **매수·매도·오늘 비중:** 중기/단기 슬라이드 % · 무릎→어깨 (`BUY_SELL_MAP.md`)
+- **다음 순매수:** 중기 대기열 Review · 제안 N 유지 (`NEXT_BUY_QUEUE_SPEC.md`)
 
 ---
 
@@ -53,7 +64,9 @@
 1. dry-run · Actual Buy — 운영자 판단 (`P0_OPERATOR_CHECKLIST`)
 2. 익절 **자동 집행 2차** — **미승인** (표시만)
 3. Alpha BT 장기 재무 히스토리 — 후순위
-4. 보유·매도 규칙 업그레이드 계획 — [`VALUE_HOLD_EXIT_UPGRADE_PLAN.md`](VALUE_HOLD_EXIT_UPGRADE_PLAN.md) (§4 승인 후 Phase 1)
+4. 보유·매도 Review **에디션** — [`HOLD_EXIT_REVIEW_EDITION.md`](HOLD_EXIT_REVIEW_EDITION.md) · `alpha_dashboard_hold_exit.py` (8502) · 기본 `alpha_dashboard.py` 유지
+5. **L1 트레일 익절 Review** — [`TRAIL_EXIT_REVIEW_SPEC.md`](TRAIL_EXIT_REVIEW_SPEC.md) · §9 임계 승인 후 Phase B (코드) · 자동주문 없음
+6. **코스피 밸류 밴드 Review** — [`KOSPI_VALUATION_BAND_REVIEW_SPEC.md`](KOSPI_VALUATION_BAND_REVIEW_SPEC.md) · 국면식 불변 · Phase B 수집·카드 (싸다 단정·자동매수 금지)
 
 ---
 

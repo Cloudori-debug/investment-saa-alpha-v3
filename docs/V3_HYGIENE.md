@@ -34,15 +34,29 @@
 | `USER_GUIDE.md` | 운영자 사용설명 |
 | `OPS_ASSISTANT_WINDOWS_PORTABLE.md` | 이식·백업 |
 | `SCALE_IN_OPS_RULE.md` / `EXIT_STEP_OPS_RULE.md` | 승인된 운영 규칙 |
+| `BUY_SELL_MAP.md` | 매수·매도·오늘 비중 슬라이드 운영 SoT (한 장) |
+| `NEXT_BUY_QUEUE_SPEC.md` | 중기 다음 순매수 Review 대기열 (제안 N 유지) |
+| `ROTATION_A_TO_B_RULE.md` | A매도→B순매수 금액·한줄 Review 규칙 |
+| `KOSPI_VALUATION_BAND_REVIEW_SPEC.md` | 코스피 CAPE/PBR 밴드 Review (국면식 불변) |
+| `HOLD_STATE_PCT_RESEARCH.md` | 보유=단계별 % 평가 (포트 비중 맞추기≠매매단계) |
+| `TODAY_WEIGHT_SLIDE_MAP.md` | → BUY_SELL_MAP §3 병합 (리다이렉트) |
+| `ROTATION_FIND_PROBABILITY_LIT.md` | 순환매「찾을 확률」문헌 · P1/P2/P3 계산 |
+| `TRAIL_EXIT_REVIEW_SPEC.md` | L1 고점 트레일 익절 Review (L0 목표가와 병합 · 채택 대기) |
 | `MOMENTUM_REVIEW_ONLY_SPEC.md` | 모멘텀 Review-only |
 | `SHORT_BOOK_SPEC.md` | 단기(위성) 북 · Core QVM과 분리 |
 | `VALUE_HOLD_EXIT_UPGRADE_PLAN.md` | 보유·매도·히스테리시스 Review 업그레이드 계획 (13F는 비범위) |
+| `SHADOW_MID_PROFIT_MACHINE.md` | 중기 shadow 수익 증명 · Go-live 게이트(자동주문·target 기입 금지) |
+| `HOLD_EXIT_REVIEW_EDITION.md` | 병렬 에디션 실행·범위 (`8502`) |
 | `WEEKLY_QUAL_CDE_PROMPT.md` / `WEEKLY_QUAL_REPORT_SPEC.md` | 주간 정성 |
 | `CONSENSUS_DATA_FEASIBILITY.md` | 컨센서스 한계 (코드 안내) |
 | `ALPHA_SYSTEM_FIVE_FACTOR_REWEIGHT.md` | 팩터 가중 SoT |
 | `RUN_MODE_POLICY.md` / `P0_OPERATOR_CHECKLIST.md` / `OPERATIONS_REFRESH_GUIDE.md` | 운영 정책 |
+| `V3_LOGIC_POLICY_VERIFY.md` | 작동 로직·정책 검증 체크리스트 (코드/YAML 대조) |
+| `V3_STRATEGY_VERIFY_PLAN.md` | 전략 성과 A/B/C/D 검증 계획 (C=현행 v3 동결) |
+| `OPENDART_EVIDENCE_LAYER.md` | DART 증거 층(점수 비혼합 · Review) |
 | `ACCEPTANCE_CRITERIA.md` / `MVP_SPEC.md` | 승인·동결 스펙 |
-| `UI_COPY.md` / `ALPHA_DASHBOARD_UI_GUIDE.md` / `TEST_BACKLOG.md` | UI·테스트 |
+| `UI_COPY.md` / `UI_UX_MAP.md` / `V3_UI_UX_VERIFY.md` | UI 카피·지도·교차검증(U1–U16) |
+| `ALPHA_DASHBOARD_UI_GUIDE.md` / `TEST_BACKLOG.md` | UI 가이드·테스트 |
 
 그 외 md는 **`docs/archive/20260729_hygiene/`**.
 
