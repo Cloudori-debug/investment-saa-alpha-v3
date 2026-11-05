@@ -71,7 +71,9 @@ def _render_running_fragment() -> None:
 
 
 def _render_finished(job: JobStatus) -> None:
-    if job.ended_at and ended_age_sec(job) > 180:
+    # 실패는 더 오래 보여 막힌 이유를 놓치지 않게 함
+    max_age = 600 if not job.ok else 180
+    if job.ended_at and ended_age_sec(job) > max_age:
         return
     if job.state == "cancelled":
         st.warning(f"{job.label} 중단됨")
@@ -80,7 +82,9 @@ def _render_finished(job: JobStatus) -> None:
         st.success(f"{job.label} 완료")
         if job.message:
             st.caption(job.message)
+        # 부분 경고(수급·시장지표)는 상단 데이터 알림에 남김
         return
-    st.error(f"{job.label} 실패")
+    st.error(f"{job.label} 실패 — 데이터 갱신이 막혔습니다")
     if job.message:
-        st.caption(job.message)
+        st.error(job.message)
+    st.caption("설정 › KRX/API · 확인① 재실행 · Soft/target 불변")

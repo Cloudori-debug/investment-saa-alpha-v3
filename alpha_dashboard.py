@@ -112,6 +112,12 @@ with st.sidebar:
 
 # Shell: sidebar = brand+nav only. No legacy ops strip / dual brand header.
 render_app_header(as_of=ctx.as_of.isoformat(), page=page)
+try:
+    from alpha_system.ui.services.ops_journey_chrome import render_ops_journey
+
+    render_ops_journey(ROOT, page=page)
+except Exception:  # noqa: BLE001
+    pass
 safe_page(PAGES[page], ctx)
 
 st.caption(

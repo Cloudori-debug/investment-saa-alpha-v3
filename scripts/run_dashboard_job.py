@@ -50,7 +50,7 @@ def main() -> int:
         if args.kind == "quant":
             from alpha_system.ui.services.refresh import run_quant_snapshot_refresh
 
-            update_phase(root, "운용 데이터·alpha_scores 수집")
+            update_phase(root, "정량 → 정성(RSS·OpenDART·심층) → 수급")
             result = run_quant_snapshot_refresh(
                 root,
                 collect_scope=str(args.collect_scope or "liquid"),
@@ -91,6 +91,20 @@ def main() -> int:
         phase="완료" if result.ok else "실패",
         detail=result.detail,
     )
+    try:
+        from alpha_system.ui.services.data_fetch_alerts import (
+            record_from_quant_detail,
+        )
+
+        if args.kind == "quant":
+            record_from_quant_detail(
+                root,
+                ok=bool(result.ok),
+                message=str(result.message or ""),
+                detail=dict(result.detail or {}),
+            )
+    except Exception:
+        pass
     if result.ok:
         runtime_path = root / "data" / "alpha_dashboard_runtime.json"
         runtime = RuntimeState.load(runtime_path)

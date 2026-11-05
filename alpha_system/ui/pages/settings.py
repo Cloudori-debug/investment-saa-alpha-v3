@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import streamlit as st
 
@@ -543,6 +544,16 @@ def _render_defaults(data_dir, saved: UserSecrets) -> None:
 def _render_data_status(
     ctx: DashboardContext, data_dir, status: dict[str, bool]
 ) -> None:
+    with st.container(border=True):
+        try:
+            from alpha_system.ui.services.system_health import (
+                render_system_health_panel,
+            )
+
+            render_system_health_panel(Path(ctx.root))
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"시스템 점검 표시 실패 · {str(exc)[:160]}")
+
     with st.container(border=True):
         ap_subhead("정량 잠금 정책")
         from alpha_system.ui.services.proposal_freeze import (
