@@ -1,0 +1,45 @@
+# Soft 위성 투자 방향 · Review-only · target/QVM/자동주문 불변
+# 채택: 박홍기 2026-11-05 (선진국 고금리 저주 · 현금·배당·본질 대비)
+
+active: phg_high_rate_202611
+as_of: "2026-11-06"
+review_only: true
+writes_target: false
+pure_qvm: true
+
+source:
+  id: PHG_YT_20261105
+  title_ko: 핏빛 지옥도 · 선진국 고금리 저주 · 고이즈미 노믹스
+  url: https://www.youtube.com/watch?v=vJafRBR8wzQ
+  research_card: docs/research/strategies/parkhonggi-20261105-high-rate-curse.md
+
+stance:
+  name: phg_high_rate_cash_dividend_essence
+  title_ko: 고금리 저주 대비 · 현금·배당·본질
+  phase: dividend_cash_first   # next_watch: ma_mna (가설만 · 자동트리거 아님)
+  soft_book:
+    # Soft 장부 안 비중 힌트(가계 본체와 별개) · 사람 Review
+    equity_pct_hint: 50
+    cash_pct_hint: 50
+  household_note_ko: >
+    가계 대부분=본체 compass_fit(앱 밖·미10y 주력·국채↔현금 보완) 유지 ·
+    Soft는 위성만 축소·본질 위주 · 듀얼은 선택위성·합산 금지 ·
+    Soft/미국 전량 청산·target 자동 금지
+
+do_ko:
+  - Soft 신규·추격 축소 · 하루≤33%도 보수
+  - 본질 추천·오늘 해부 2~3종만 (논리·퀄·현금창출력)
+  - 배당·환원(SR) · Soft∩논리가치 우선 Review
+  - 나침반 방어·고변동 시 위성 사이즈↓ · 미집행=단기채 파킹
+  - 보유 Cash/Trim/Exit 배지만 사람 집행
+
+dont_ko:
+  - Soft·미국 전량 청산 · target 자동 기입
+  - 반도체·테마·레버리지 ETF 추격
+  - 바닥 단정 매수 · 원금 메우기
+  - Soft 점수에 거시 서사 가산
+  - 시총 컷으로 본질 후보 배제
+
+next_phase_ko: >
+  배당·현금 국면 이후 M&A·기업사정 가설(고이즈미 노믹스)은
+  관찰만 · Soft 트리거·자동주문 아님

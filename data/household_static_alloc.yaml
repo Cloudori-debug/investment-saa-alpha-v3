@@ -1,0 +1,283 @@
+# 가계 본체 후보 · 공개 정적 배분 차용 (국내 상장 · 경제노출은 달러/글로벌)
+# Review-only Lab · Soft/target/Core score_m 불변 · 레버리지·인버스·커버드콜 금지
+# 상장=KRX · 경제=글로벌 (원화 국채·원화단기를 원문 TLT/IEF/BIL/AGG 자리에 쓰지 않음)
+review_only: true
+writes_target: false
+rebalance: annual_jan
+cost_bps_one_way: 15
+lookback_calendar_days: 1800
+profile: kr_listed_global
+notes_ko: >
+  국내 상장 ETF로 글로벌 경제 노출(미 국채·달러단기·금). 국고·원화단기를 장기채·현금 대리로 쓰지 않음.
+  미국 올인 금지 · Soft=한국 위성 · 밸류만으로 Soft/미국 전량 청산·target 기입 금지.
+  S&P 200일 Soft는 2027H2~ 나침반·듀얼 옆 Review(자동주문 없음). 합성·(H)·롤 비용 유의.
+
+forbid_name_substrings:
+  - 레버리지
+  - 인버스
+  - 2X
+  - 3X
+  - 커버드콜
+
+strategies:
+  - id: sixty_forty
+    kind: static
+    name_ko: 60/40
+    source: "고전 주식60·채권40 · 미 주식+미 중기채"
+    rebalance: annual_jan
+    sleeves:
+      - asset: equity_us
+        pct: 60
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY"
+      - asset: bond_us10
+        pct: 40
+        ticker: "305080"
+        name: "TIGER 미국채10년선물"
+        note_us: "IEF · 선물 롤 유의"
+
+  - id: all_seasons
+    kind: static
+    name_ko: 올시즌스(올웨더 단순판)
+    source: "Tony Robbins All Seasons · Dalio 대중용 30/40/15/7.5/7.5"
+    rebalance: annual_jan
+    sleeves:
+      - asset: equity_us
+        pct: 30
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY"
+      - asset: bond_long
+        pct: 40
+        ticker: "453850"
+        name: "ACE 미국30년국채액티브(H)"
+        note_us: "TLT · 환헤지 · 커버드콜 아님"
+      - asset: bond_mid
+        pct: 15
+        ticker: "305080"
+        name: "TIGER 미국채10년선물"
+        note_us: "IEF"
+      - asset: gold
+        pct: 15
+        ticker: "411060"
+        name: "ACE KRX금현물"
+        note_us: "GLD · DBC 칸은 국내 종합원자재 부재로 금에 합산"
+
+  - id: permanent
+    kind: static
+    name_ko: 영구 포트폴리오
+    source: "Harry Browne Permanent · 주식·장기채·금·현금 각25"
+    rebalance: annual_jan
+    sleeves:
+      - asset: equity_us
+        pct: 25
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY"
+      - asset: bond_long
+        pct: 25
+        ticker: "453850"
+        name: "ACE 미국30년국채액티브(H)"
+        note_us: "TLT"
+      - asset: gold
+        pct: 25
+        ticker: "411060"
+        name: "ACE KRX금현물"
+        note_us: "GLD"
+      - asset: cash
+        pct: 25
+        ticker: "329750"
+        name: "TIGER 미국달러단기채권액티브"
+        note_us: "BIL/SHY 근사"
+
+  # 영구 4박스 유지 · 주식만 미·유럽·일본 분산 (미국 올인 Soft 완화)
+  # 장기채·금·달러단기는 대리 한계로 달러축 유지 · Soft/target 불변
+  - id: permanent_multi
+    kind: static
+    name_ko: 다지역 영구
+    source: "Permanent 4박스 · 주식 미/EU/JP 분할 · 미국 편중 Soft 완화"
+    rebalance: annual_jan
+    design_ko: >
+      주식25=미10·유럽7.5·일본7.5 · 미30년25 · 금25 · 달러단기20 · 원화단기5.
+      네 계절(주식·장기채·금·현금)은 유지하고 주식 지역만 나침반 Executable과
+      같은 미·유로·니케이 축으로 나눔. 장기채·달러단기는 국내 대리 한계로 미국축.
+      Soft 합산·target 기입 금지 · Review-only.
+    sleeves:
+      - asset: equity_us
+        pct: 10
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY · 영구 주식25 중 미"
+      - asset: equity_eu
+        pct: 7.5
+        ticker: "195930"
+        name: "TIGER 유로스탁스50"
+        note_us: "FEZ/EAFE 근사"
+      - asset: equity_jp
+        pct: 7.5
+        ticker: "241180"
+        name: "TIGER 일본니케이225"
+        note_us: "NKY · 지역·통화 분산"
+      - asset: bond_long
+        pct: 25
+        ticker: "453850"
+        name: "ACE 미국30년국채액티브(H)"
+        note_us: "TLT · 비미 장기국채 대리 부재"
+      - asset: gold
+        pct: 25
+        ticker: "411060"
+        name: "ACE KRX금현물"
+        note_us: "GLD"
+      - asset: cash
+        pct: 20
+        ticker: "329750"
+        name: "TIGER 미국달러단기채권액티브"
+        note_us: "BIL · 달러 완충 주력"
+      - asset: cash_krw
+        pct: 5
+        ticker: "214980"
+        name: "KODEX 단기채권PLUS"
+        note: "원화 생활·결제 완충만 · BIL 대체가 아님"
+
+  - id: golden_butterfly
+    kind: static
+    name_ko: 황금나비(근사)
+    source: "Lazy Portfolio Golden Butterfly · 5×20% 근사"
+    rebalance: annual_jan
+    sleeves:
+      - asset: equity_us
+        pct: 20
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY"
+      - asset: equity_us_small
+        pct: 20
+        ticker: "280930"
+        name: "KODEX 미국러셀2000(H)"
+        note_us: "IWM · 소형가치 완전대리는 아님"
+      - asset: bond_long
+        pct: 20
+        ticker: "453850"
+        name: "ACE 미국30년국채액티브(H)"
+        note_us: "TLT"
+      - asset: cash
+        pct: 20
+        ticker: "329750"
+        name: "TIGER 미국달러단기채권액티브"
+        note_us: "BIL"
+      - asset: gold
+        pct: 20
+        ticker: "411060"
+        name: "ACE KRX금현물"
+        note_us: "GLD"
+
+  - id: k_all_weather
+    kind: static
+    name_ko: 한국형 올웨더(글로벌채)
+    source: "Haltu·김성일계 K-올웨더 · 주식만 한·미 · 채권은 미 국채"
+    rebalance: annual_jan
+    sleeves:
+      - asset: equity_us
+        pct: 17.5
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+      - asset: equity_kr
+        pct: 17.5
+        ticker: "102110"
+        name: "TIGER 200"
+        note: "한국형 정체성 · 주식 위성만 원화"
+      - asset: gold
+        pct: 15
+        ticker: "411060"
+        name: "ACE KRX금현물"
+      - asset: bond_long
+        pct: 30
+        ticker: "453850"
+        name: "ACE 미국30년국채액티브(H)"
+        note_us: "TLT"
+      - asset: bond_us10
+        pct: 20
+        ticker: "305080"
+        name: "TIGER 미국채10년선물"
+        note_us: "IEF"
+
+  # 나침반 적합 정의 갭 메움 · 다지역+듀레이션완충+_REF 근처
+  # (구 invoice_buffer/청구서완충은 compass_fit에 흡수 · 후보 목록에서 제거)
+  # Executable 승격 아님 · Soft/target 불변 · 연리밸
+  - id: compass_fit
+    kind: static
+    name_ko: 나침반적합
+    source: "나침반 적합 정의 · multi+invoice+_REF(35/25/25/15) · 30y→10y"
+    rebalance: annual_jan
+    design_ko: >
+      숲 4칸=_REF 근처: 주식35·국채25·현금25·금15.
+      보완1) 국채↔현금: 국채=금리민감 바구니 · 현금=탄약(달러단기18+원화7).
+      보완2) 국채 안: 미10y20이 듀레이션 주력 · 국고5는 원화 완충만.
+      (구) 30y12+10y8 사다리 → 고금리·30y 우하향으로 30y는 본체 제외·Executable 틸트만.
+      Soft 합산·target 기입 금지.
+    sleeves:
+      - asset: equity_us
+        pct: 17.5
+        ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY · Executable 축"
+      - asset: equity_eu
+        pct: 8.75
+        ticker: "195930"
+        name: "TIGER 유로스탁스50"
+        note_us: "FEZ/EAFE 근사"
+      - asset: equity_jp
+        pct: 8.75
+        ticker: "241180"
+        name: "TIGER 일본니케이225"
+        note_us: "NKY"
+      - asset: bond_us10
+        pct: 20
+        ticker: "305080"
+        name: "TIGER 미국채10년선물"
+        note_us: "IEF · 국채칸 주력 · 구 30y12+10y8 흡수"
+      - asset: bond_kr10
+        pct: 5
+        ticker: "365780"
+        name: "ACE 국고채10년"
+        note: "국채칸 원화 완충 · 미10y와 합=25"
+      - asset: cash
+        pct: 18
+        ticker: "329750"
+        name: "TIGER 미국달러단기채권액티브"
+        note_us: "BIL · 현금칸 탄약(국채와 보완 · 국채비율 아님)"
+      - asset: cash_krw
+        pct: 7
+        ticker: "214980"
+        name: "KODEX 단기채권PLUS"
+        note: "원화 생활·결제 완충만"
+      - asset: gold
+        pct: 15
+        ticker: "411060"
+        name: "ACE KRX금현물"
+        note_us: "GLD · _REF 15"
+
+  - id: dual_momentum
+    kind: dual_momentum
+    name_ko: 듀얼모멘텀(근사)
+    source: "Antonacci GEM 정석 근사 · 국내상장·달러축 · 코스피/유로50단독/배당30 제외"
+    rebalance: monthly
+    lookback_months: 12
+    ops_ko: >
+      월말: ①미국 vs EAFE(선진국ex-US) 12M 상대 승자
+      ②승자 12M > 달러단기채 → 승자 100% · 아니면 미종합채 100%.
+      픽 같으면 홀드. Soft·정적·코스피 Soft와 합산 금지. Review-only.
+    offensive:
+      - ticker: "360750"
+        name: "TIGER 미국S&P500"
+        note_us: "SPY"
+      - ticker: "195970"
+        name: "PLUS 선진국MSCI(합성 H)"
+        note_us: "EFA · MSCI EAFE · 미·캐나다 제외 선진 · 유로50단독·ACWI ex-US 아님"
+    cash_ticker: "329750"
+    cash_name: "TIGER 미국달러단기채권액티브"
+    cash_note_us: "BIL"
+    safe_ticker: "437080"
+    safe_name: "KODEX 미국종합채권SRI액티브(H)"
+    note_us: "AGG 근사"

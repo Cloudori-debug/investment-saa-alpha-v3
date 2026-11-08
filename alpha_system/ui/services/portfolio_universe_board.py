@@ -61,17 +61,24 @@ class PortfolioUniverseBoard:
     model_version: str = MODEL_VERSION
 
 
+def _usable_row_name(name: object, ticker: object) -> str:
+    from alpha_system.market.ticker_names import is_usable_name
+
+    raw = str(name or "").strip()
+    if is_usable_name(raw, ticker):
+        return raw
+    return ""
+
+
 def _tk_name_from_rows(rows: Sequence[object] | None) -> dict[str, str]:
     out: dict[str, str] = {}
     for r in rows or ():
         tk = norm_ticker(getattr(r, "ticker", None))
         if not tk:
             continue
-        name = str(getattr(r, "name", "") or "").strip()
+        name = _usable_row_name(getattr(r, "name", None), tk)
         if name:
             out[tk] = name
-        elif tk not in out:
-            out[tk] = tk
     return out
 
 
@@ -124,6 +131,41 @@ def _role_for(
     return ("참고", False)
 
 
+def enrich_universe_row_names(
+    root: Path | str,
+    board: PortfolioUniverseBoard,
+    *,
+    market: str | None = None,
+    fetch_missing: bool = True,
+) -> PortfolioUniverseBoard:
+    """티커만 있는 관찰·유니버스 행에 종목명 보강."""
+    from dataclasses import replace
+
+    from alpha_system.market.ticker_names import display_name, resolve_ticker_names
+
+    mkt = str(market or board.market or "KOSPI")
+    bare = [
+        r.ticker
+        for r in board.rows
+        if not _usable_row_name(r.name, r.ticker)
+    ]
+    if not bare:
+        return board
+    names = resolve_ticker_names(
+        Path(root),
+        bare,
+        market=mkt,
+        fetch_missing=fetch_missing,
+    )
+    rows = [
+        replace(r, name=display_name(r.ticker, names))
+        if not _usable_row_name(r.name, r.ticker)
+        else r
+        for r in board.rows
+    ]
+    return replace(board, rows=rows)
+
+
 def build_portfolio_universe(
     *,
     market: str,
@@ -134,6 +176,8 @@ def build_portfolio_universe(
     mid_watch_tickers: Sequence[str] | None = None,
     theme_board: Any | None = None,
     name_seed: Mapping[str, str] | None = None,
+    root: Path | str | None = None,
+    fetch_missing_names: bool = True,
 ) -> PortfolioUniverseBoard:
     """Merge sleeves into one Review table. No score blend."""
     mid_soft = {
@@ -173,7 +217,9 @@ def build_portfolio_universe(
             tk = norm_ticker(getattr(it, "ticker", None))
             if tk:
                 mid_soft.add(tk)
-                theme_names[tk] = str(getattr(it, "name", "") or tk)
+                nm = _usable_row_name(getattr(it, "name", None), tk)
+                if nm:
+                    theme_names[tk] = nm
                 m = str(getattr(it, "metrics_ko", "") or "")
                 if m:
                     metrics_by[tk] = m
@@ -182,7 +228,9 @@ def build_portfolio_universe(
             if not tk:
                 continue
             value_set.add(tk)
-            theme_names[tk] = str(getattr(it, "name", "") or tk)
+            nm = _usable_row_name(getattr(it, "name", None), tk)
+            if nm:
+                theme_names[tk] = nm
             m = str(getattr(it, "metrics_ko", "") or "")
             if m:
                 metrics_by[tk] = (
@@ -193,7 +241,9 @@ def build_portfolio_universe(
             if not tk:
                 continue
             defense_set.add(tk)
-            theme_names[tk] = str(getattr(it, "name", "") or tk)
+            nm = _usable_row_name(getattr(it, "name", None), tk)
+            if nm:
+                theme_names[tk] = nm
             m = str(getattr(it, "metrics_ko", "") or "")
             if m:
                 metrics_by[tk] = (
@@ -205,11 +255,16 @@ def build_portfolio_universe(
                 gated_set.add(t)
 
     names = dict(name_seed or {})
-    names.update(theme_names)
-    names.update(_tk_name_from_rows(mid_soft_rows))
-    names.update(_tk_name_from_rows(mid_held_rows))
-    names.update(_tk_name_from_rows(short_prop_rows))
-    names.update(_tk_name_from_rows(short_held_rows))
+    names.update({k: v for k, v in theme_names.items() if _usable_row_name(v, k)})
+    for src_rows in (
+        mid_soft_rows,
+        mid_held_rows,
+        short_prop_rows,
+        short_held_rows,
+    ):
+        for tk, nm in _tk_name_from_rows(src_rows).items():
+            if _usable_row_name(nm, tk):
+                names[tk] = nm
 
     for r in mid_soft_rows or ():
         tk = norm_ticker(getattr(r, "ticker", None))
@@ -245,6 +300,20 @@ def build_portfolio_universe(
         | mid_watch
     )
 
+    if root is not None and all_tk:
+        try:
+            from alpha_system.market.ticker_names import resolve_ticker_names
+
+            names = resolve_ticker_names(
+                Path(root),
+                sorted(all_tk),
+                market=str(market or "KOSPI"),
+                base=names,
+                fetch_missing=bool(fetch_missing_names),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     rows: list[UniverseRow] = []
     for tk in all_tk:
         ms = tk in mid_soft
@@ -267,10 +336,11 @@ def build_portfolio_universe(
         )
         # watch flag if in pool even when Soft
         in_watch = tk in mid_watch
+        nm = _usable_row_name(names.get(tk), tk) or tk
         rows.append(
             UniverseRow(
                 ticker=tk,
-                name=names.get(tk) or tk,
+                name=nm,
                 in_mid_soft=ms,
                 in_mid_held=mh,
                 in_short_prop=sp,
@@ -351,7 +421,7 @@ def attach_gieop_to_universe(
     extra_names: dict[str, str] = {}
     for src in (today_by, fusion_by):
         for tk, obj in src.items():
-            nm = str(getattr(obj, "name", "") or "").strip()
+            nm = _usable_row_name(getattr(obj, "name", None), tk)
             if nm:
                 extra_names[tk] = nm
 
@@ -427,7 +497,11 @@ def attach_gieop_to_universe(
                 verdict_ko=verdict_ko,
                 role_ko=role,
                 metrics_ko=metrics,
-                name=extra_names.get(r.ticker) or r.name,
+                name=(
+                    extra_names.get(r.ticker)
+                    or _usable_row_name(r.name, r.ticker)
+                    or r.ticker
+                ),
             )
         )
 
@@ -716,6 +790,8 @@ def render_portfolio_universe_tab(
         short_held_rows=short_held,
         mid_watch_tickers=watch,
         theme_board=theme,
+        root=root_path,
+        fetch_missing_names=True,
     )
 
     paths = resolve_gieop_paths(root_path)
@@ -755,14 +831,20 @@ def render_portfolio_universe_tab(
         fusion_rows=fusion.rows,
         deep_tickers=deep_tks,
     )
+    try:
+        board = enrich_universe_row_names(
+            root_path, board, market=market, fetch_missing=True
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     st.caption(
         copy_get(
             "portfolio",
             "universe_caption",
             default=(
-                "기본 지도=유니버스 · 위=전략별 투자 후보 · "
-                "확인① 후 Soft·ETF 반영 · 축 합산 매수 금지 · target 사람만"
+                "기본=추천스택(본체 나침반적합·듀얼선택·Soft·단기) · "
+                "확인① 반영 · 합산 매수 금지 · target 사람만"
             ),
         )
     )
@@ -771,7 +853,7 @@ def render_portfolio_universe_tab(
     try:
         from alpha_system.ui.services.strategy_candidates_board import (
             build_strategy_candidates,
-            candidates_section_html,
+            render_candidates_section,
         )
 
         _cands = build_strategy_candidates(
@@ -780,16 +862,13 @@ def render_portfolio_universe_tab(
             mid_soft_rows=mid_soft,
             short_prop_rows=short_prop,
         )
-        st.markdown(
-            candidates_section_html(
-                _cands,
-                title=copy_get(
-                    "portfolio",
-                    "sec_strategy_cands",
-                    default="전략별 투자 후보",
-                ),
+        render_candidates_section(
+            _cands,
+            title=copy_get(
+                "portfolio",
+                "sec_strategy_cands",
+                default="전략별 투자 후보 · 추천 스택",
             ),
-            unsafe_allow_html=True,
         )
     except Exception as exc:  # noqa: BLE001
         st.caption(f"전략 후보 표시 생략 · {exc}")
