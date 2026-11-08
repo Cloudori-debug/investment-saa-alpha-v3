@@ -11,7 +11,7 @@ from src.models import MarketIndicators, PositionRow, TargetRow
 
 _FLOAT_KEYS = (
     "kospi", "kospi_recent_high", "kospi_200ma", "sp500", "sp500_recent_high",
-    "vix", "usdkrw", "korea_10y", "oil_brent", "gold",
+    "sp500_200ma", "vix", "usdkrw", "korea_10y", "oil_brent", "gold",
 )
 
 _KOSPI_MA_OUTLIER_RATIO = 1.35
@@ -143,8 +143,11 @@ def _repair_kospi_200ma(row: dict, path: Path | None = None) -> dict:
 def _parse_market_row(row: dict, *, path: Path | None = None) -> MarketIndicators:
     row = _repair_kospi_200ma(dict(row), path)
     for key in _FLOAT_KEYS:
-        if key in row and str(row.get(key, "")).strip():
-            row[key] = float(row[key])
+        if key not in row:
+            continue
+        raw = str(row.get(key, "")).strip()
+        # CSV 빈칸/결측 → 0 (pydantic float에 '' 넘기면 ValidationError)
+        row[key] = float(raw) if raw else 0.0
     return MarketIndicators.model_validate(row)
 
 
@@ -367,8 +370,10 @@ def load_market_indicators_bundle(path: Path) -> MarketIndicatorsBundle:
     raw = df.iloc[-1].to_dict()
     repaired, meta = normalize_market_row(raw, path)
     for key in _FLOAT_KEYS:
-        if key in repaired and str(repaired.get(key, "")).strip():
-            repaired[key] = float(repaired[key])
+        if key not in repaired:
+            continue
+        cell = str(repaired.get(key, "")).strip()
+        repaired[key] = float(cell) if cell else 0.0
     market = MarketIndicators.model_validate(repaired)
     return MarketIndicatorsBundle(
         raw=raw,

@@ -1,33 +1,50 @@
-"""Economy playbook + holdings↔proposal gap — Review-only."""
+"""Economy playbook — stance cards; ratio lives on hero."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
+from alpha_system.economy_signal import envelope_policy, policy_target_line
 from alpha_system.ui.services.economy_playbook import (
     holdings_proposal_gap,
     stage_playbook,
 )
 
 
-def test_stage_playbook_neutral_mentions_short_bond() -> None:
+def test_envelope_policy_stage3() -> None:
+    pol = envelope_policy(3)
+    assert pol.stage == 3
+    assert pol.equity_share == 0.60
+    assert pol.cash_share == 0.40
+    assert "36–56%" in pol.ratio_band
+    line = policy_target_line(3)
+    assert "정책 목표" in line
+    assert "60%" in line
+    assert "40%" in line
+
+
+def test_stage_playbook_stance_only_no_ratio_card() -> None:
     book = stage_playbook(3)
     assert book.tone == "wait"
     assert book.equity_pct == 60.0
     assert book.cash_pct == 40.0
-    assert "40%" in book.equity_cash
     assert book.cards
-    assert book.cards[0].label
+    labels = [c.label for c in book.cards]
+    assert "정책 목표" not in labels
+    assert "중기" in labels
     blob = " ".join(book.bullets)
-    assert "단기채" in blob
-    assert "target" in blob.lower() or "target" in blob
+    # Stance text, not a second copy of 60/40 policy paragraph
+    assert "개별주 60%" not in blob
+    assert "맞출지" not in blob
 
 
 def test_stage_playbook_defensive() -> None:
     assert stage_playbook(4).tone == "bad"
-    assert "60%" in stage_playbook(4).equity_cash
+    assert stage_playbook(4).equity_pct == 40.0
+    assert stage_playbook(4).cards[0].label == "중기"
     assert stage_playbook(5).tone == "bad"
     assert stage_playbook(None).tone == "off"
+    assert "다시 계산" in [c.label for c in stage_playbook(None).cards]
 
 
 def test_holdings_proposal_gap_lists() -> None:
@@ -59,10 +76,8 @@ def test_economy_page_wires_playbook_and_gap() -> None:
     page = Path(__file__).resolve().parents[1].joinpath(
         "alpha_system", "ui", "pages", "economy.py"
     ).read_text(encoding="utf-8")
-    assert "_render_playbook" in page
-    assert "_render_forest_checklist" in page
-    assert "_render_holdings_gap" in page
+    # playbook·gap은 함수명 헬퍼 없이 탭 본문에 직접 배선
     assert "stage_playbook" in page
-    assert "stage_forest_checklist" in page
     assert "holdings_proposal_gap" in page
-    assert "점수" not in page
+    assert "asset_move_board_html" in page or "alpha_ops_bridge_html" in page
+    assert "total_score" not in page

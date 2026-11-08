@@ -7,8 +7,8 @@ from pathlib import Path
 
 import streamlit as st
 
-from alpha_system.economy_compass import build_compass, save_compass_snapshot
-from alpha_system.economy_signal import load_cached_signal, refresh_economy_signal
+from alpha_system.economy_compass import build_compass
+from alpha_system.economy_signal import load_cached_signal
 from alpha_system.ui.services.approval_chrome import page_head
 from alpha_system.ui.services.context import DashboardContext
 from alpha_system.ui.services.economy_compass_board import (
@@ -21,6 +21,7 @@ from alpha_system.ui.services.economy_compass_board import (
     history_panel_html,
     mean_reversion_panel_html,
     metric_sleeve_lines_html,
+    spx_200dma_soft_panel_html,
     why_drivers_html,
 )
 from alpha_system.ui.services.economy_display import (
@@ -112,6 +113,20 @@ def _render_compass_tab(ctx: DashboardContext) -> None:
     hero = hero_copy(cached) if cached is not None else {}
     scoreline = str(hero.get("scoreline") or "")
     action_lines = tuple((c.label, c.body) for c in book.cards)
+    try:
+        from alpha_system.ui.services.investment_stance import (
+            investment_stance_html,
+            load_investment_stance,
+            merge_playbook_cards,
+        )
+
+        _inv = load_investment_stance(ctx.root)
+        action_lines = merge_playbook_cards(action_lines, _inv)
+        _inv_html = investment_stance_html(_inv)
+        if _inv_html:
+            _html(_inv_html)
+    except Exception:  # noqa: BLE001
+        pass
     # 1) 결론 — 자산이 어떻게 움직이는지
     _html(
         asset_move_board_html(
@@ -172,12 +187,117 @@ def _render_compass_tab(ctx: DashboardContext) -> None:
         )
     )
     _html(fear_greed_soft_panel_html(fear_greed))
+    from alpha_system.economy_compass.spx_200dma_soft import (
+        build_spx_200dma_soft_board,
+    )
+
+    spx200 = build_spx_200dma_soft_board(ctx.root)
+    st.caption(
+        copy_get(
+            "economy",
+            "spx200_caption",
+            default=(
+                "S&P 200일 Soft · 2027H2~ 이탈 시 축소 Review · "
+                "지금=관측 · 밸류 전량매도·target 불변"
+            ),
+        )
+    )
+    _html(spx_200dma_soft_panel_html(spx200))
     # 2b) 바젤 관찰 (거시 Review · 알파 target 불변)
     from alpha_system.ui.services.basel_observation_widgets import (
         render_basel_observation,
     )
 
     render_basel_observation(ctx, key_prefix="eco_basel_obs")
+    # 2c) 숲(SAA) 자산배분 참고 — 예측 실패해도 버는 논리 (Review-only)
+    try:
+        from alpha_system.ui.services.saa_allocation_reference import (
+            render_saa_allocation_reference,
+        )
+
+        with st.expander(
+            copy_get(
+                "economy",
+                "saa_ref_fold",
+                default="숲(SAA) 참고 · 예측 틀려도 버는 배분 논리",
+            ),
+            expanded=False,
+        ):
+            render_saa_allocation_reference(ctx.root)
+    except Exception:  # noqa: BLE001
+        pass
+    # 2d) 정적·나침반 레그 상관 Review (비중 자동변경 없음)
+    try:
+        from alpha_system.ui.services.corr_review_board import (
+            build_and_render_corr_review,
+        )
+
+        with st.expander(
+            copy_get(
+                "economy",
+                "corr_review_fold",
+                default="상관 Review · 정적·나침반 레그 (표시만)",
+            ),
+            expanded=False,
+        ):
+            st.caption(
+                copy_get(
+                    "economy",
+                    "corr_review_caption",
+                    default=(
+                        "롤링·하락월 상관 · 고상관 경고 · 슬리브 내 제안비중 · "
+                        "yaml/Executable 자동변경 없음 · Soft·target 불변"
+                    ),
+                )
+            )
+            if st.button(
+                copy_get(
+                    "economy",
+                    "corr_review_btn",
+                    default="상관 다시 계산 (가격 보충 가능)",
+                ),
+                key="eco_corr_review_btn",
+                use_container_width=True,
+            ):
+                _board, _html_corr = build_and_render_corr_review(
+                    ctx.root, ensure_fetch=True
+                )
+            else:
+                _board, _html_corr = build_and_render_corr_review(
+                    ctx.root, ensure_fetch=False
+                )
+            st.markdown(_html_corr, unsafe_allow_html=True)
+    except Exception:  # noqa: BLE001
+        pass
+    # 2e) 가계 본체 최종 1개 — Lab×상관 선택 (비중 합성·yaml 불변)
+    try:
+        from alpha_system.ui.services.static_body_pick_board import (
+            build_and_render_static_body_pick,
+        )
+
+        _html(
+            f'<div class="eco-sec eco-sec-2">'
+            f'{_esc(copy_get("economy", "sec_body_pick", default="투자 포트폴리오 · 운영 본체"))}'
+            f"</div>"
+        )
+        st.caption(
+            copy_get(
+                "economy",
+                "body_pick_caption",
+                default=(
+                    "정적 Lab + 나침반 고정비중 + 월말 국면 스위칭 · "
+                    "CAGR·MDD·|ρ|로 최종 1개 · Soft 자세 제외 · "
+                    "비중 합성·yaml 자동변경 없음 · Soft 합산 금지 · target 사람만"
+                ),
+            )
+        )
+        _pick_board, _pick_html = build_and_render_static_body_pick(
+            ctx.root, ensure_fetch=False
+        )
+        _html(_pick_html)
+        _ = _pick_board
+    except Exception:  # noqa: BLE001
+        pass
     # 3) 상품 후보 — 결론과 분리된 짧은 목록
     exec_html = executable_compact_html(posture_compass)
     if exec_html:
@@ -221,12 +341,17 @@ def _render_compass_tab(ctx: DashboardContext) -> None:
             "<span>표 숫자로 알파 전량 공격 · target·점수 자동 변경</span></div>"
             "</div>"
         )
-        tab_pol, tab_met, tab_book = st.tabs(
+        tab_pol, tab_inst, tab_met, tab_book = st.tabs(
             [
                 copy_get(
                     "economy",
                     "sec_more_tab_policy",
                     default="정책 일정 (Basel 등)",
+                ),
+                copy_get(
+                    "economy",
+                    "sec_more_tab_inst",
+                    default="기관 원문",
                 ),
                 copy_get(
                     "economy",
@@ -253,6 +378,14 @@ def _render_compass_tab(ctx: DashboardContext) -> None:
 
             render_macro_policy_timeline(ctx, key_prefix="eco_macro_pol")
             render_basel_theme_board(ctx, key_prefix="eco_basel")
+        with tab_inst:
+            from alpha_system.ui.services.institutional_report_widgets import (
+                ensure_inst_rep_css,
+                render_institutional_report_board,
+            )
+
+            ensure_inst_rep_css()
+            render_institutional_report_board(ctx, key_prefix="eco_inst_rep")
         with tab_met:
             st.caption(
                 copy_get(
@@ -294,17 +427,71 @@ def _render_pension_tab(ctx: DashboardContext) -> None:
             "economy",
             "pension_tab_caption",
             default=(
-                "알파 스크리너 안에서 보는 수급 브리핑 · "
-                "형제 pension.db 읽기 전용(API 불필요) · "
-                "제안·보유 겹침만 · 점수·target 불변 · 갱신은 형제 bat"
+                "알파 안에서 보는 수급 브리핑 · "
+                "일상 갱신은 확인①에 포함 · 여기선 다시 읽기·형제 강제갱신 · "
+                "제안·보유 겹침만 · 점수·target 불변"
             ),
         )
     )
-    refresh = st.button(
-        copy_get("economy", "pension_refresh", default="수급 다시 읽기"),
-        key="eco_pension_refresh",
-        help="형제 DB(우선) 또는 API를 다시 읽습니다. 알파 순위·target은 쓰지 않습니다.",
+    from alpha_system.ui.services.approval_chrome import (
+        refresh_action_button,
+        refresh_rail,
     )
+    from alpha_system.ui.services.pension_briefing_refresh import (
+        refresh_pension_briefing,
+    )
+
+    refresh_rail(
+        title=copy_get("economy", "pension_refresh_rail", default="수급 브리핑 갱신"),
+        hint=copy_get(
+            "economy",
+            "pension_refresh_rail_hint",
+            default="확인①에 포함 · 여기선 재읽기 또는 형제 강제갱신 · 순위·target 불변",
+        ),
+    )
+    col_reread, col_force = st.columns(2)
+    with col_reread:
+        refresh = refresh_action_button(
+            copy_get("economy", "pension_refresh", default="수급 다시 읽기"),
+            key="eco_pension_refresh",
+            help="형제 DB(우선) 또는 API를 다시 읽습니다. 알파 순위·target은 쓰지 않습니다.",
+            primary=True,
+        )
+    with col_force:
+        force = refresh_action_button(
+            copy_get("economy", "pension_force", default="형제 수급 강제갱신"),
+            key="eco_pension_force",
+            help="형제 폴더에서 수급 KRX 갱신을 실행합니다. 확인①과 동일 · 점수·target 불변.",
+            primary=False,
+        )
+    if force:
+        with st.spinner(
+            copy_get(
+                "economy",
+                "pension_force_spin",
+                default="형제 수급 갱신 중…",
+            )
+        ):
+            result = refresh_pension_briefing(Path(ctx.root))
+        st.session_state.pop("eco_pension_briefing_cache", None)
+        status = str(result.get("status") or "")
+        msg = str(result.get("message") or "")
+        from alpha_system.ui.services.data_fetch_alerts import action_for_key
+
+        pension_tip = action_for_key("pension")
+        if status in {"ok", "noop"}:
+            st.success(msg or "수급 갱신 완료")
+        elif status in {"blocked", "missing_sibling", "missing_python"}:
+            st.warning(
+                (msg or status)
+                + f"\n\n→ **조치:** {pension_tip}"
+            )
+        else:
+            st.error(
+                (msg or "수급 갱신 실패")
+                + f"\n\n→ **조치:** {pension_tip}"
+            )
+        refresh = True
     if refresh:
         st.session_state.pop("eco_pension_briefing_cache", None)
     cache_key = "eco_pension_briefing_cache"
@@ -395,39 +582,122 @@ def _render_kr_link(compass) -> None:
 
 
 def _render_refresh(root, signal) -> None:
-    """Compact recalculate under the hero — not a full-width primary wall."""
-    if st.button(
-        copy_get("economy", "refresh", default="다시 계산"),
-        type="secondary",
-        key="economy_signal_refresh",
-    ):
+    """Recalculate under the hero — FRED + market_indicators + 바젤."""
+    from alpha_system.ui.services.approval_chrome import (
+        refresh_action_button,
+        refresh_rail,
+    )
+    from alpha_system.ui.services.compass_inputs_refresh import (
+        market_indicators_as_of,
+        market_indicators_stale_days,
+        refresh_compass_inputs,
+    )
+
+    refresh_rail(
+        title=copy_get("economy", "refresh_rail", default="나침반 다시 계산"),
+        hint=copy_get(
+            "economy",
+            "refresh_rail_hint",
+            default="FRED 국면 + VIX·코스피(market_indicators) + 바젤 · Soft·target 불변",
+        ),
+    )
+    stale = market_indicators_stale_days(Path(root))
+    mi_asof = market_indicators_as_of(Path(root))
+    if stale is not None and stale >= 3:
+        st.warning(
+            copy_get(
+                "economy",
+                "market_stale",
+                default=(
+                    "시장지표(VIX·코스피) as_of {as_of} · {days}일 전 · "
+                    "Fear&Greed Soft·평균회귀가 멈춘 것처럼 보입니다. 「다시 계산」하세요."
+                ),
+                as_of=mi_asof or "—",
+                days=stale,
+            )
+        )
+    col, _ = st.columns((1, 1))
+    with col:
+        clicked = refresh_action_button(
+            copy_get("economy", "refresh", default="다시 계산"),
+            key="economy_signal_refresh",
+            primary=True,
+        )
+    from alpha_system.ui.services.refresh_progress_ui import render_inline_job_progress
+
+    # 확인① 등 백그라운드 작업이 돌면 옆(아래)에 진행도 표시
+    render_inline_job_progress(Path(root))
+    if clicked:
         basel_detail = ""
+        prog = st.progress(0.0, text="나침반 다시 계산…")
         try:
-            signal = refresh_economy_signal(root, api_key="")
-            save_compass_snapshot(root, build_compass(signal))
+            prog.progress(0.25, text="1/3 FRED 국면·스냅샷…")
+            bundle = refresh_compass_inputs(Path(root))
             from alpha_system.ui.services.basel_policy_refresh import (
                 refresh_basel_policy,
             )
 
-            basel_report = refresh_basel_policy(root)
+            prog.progress(0.7, text="2/3 바젤 공식 페이지…")
+            basel_report = refresh_basel_policy(Path(root))
             basel_detail = basel_report.detail
+            prog.progress(1.0, text="3/3 완료")
+            if bundle.errors:
+                from alpha_system.ui.services.data_fetch_alerts import (
+                    action_for_issue,
+                )
+
+                tips = [
+                    f"{e}\n\n→ **조치:** {action_for_issue(str(e))}"
+                    for e in bundle.errors[:5]
+                ]
+                st.error(
+                    "데이터 갱신이 막혔습니다\n\n"
+                    + "\n\n---\n\n".join(tips)
+                )
+            elif any(
+                "비밀번호" in w or "로그인" in w or "KRX" in w
+                for w in (bundle.warnings or [])
+            ):
+                st.warning(
+                    "일부 데이터만 갱신됨 (KRX 등)\n\n"
+                    + "\n\n".join(bundle.warnings[:4])
+                    + "\n\n→ **조치:** 설정 › KRX 로그인 확인 후 다시 계산"
+                )
+            elif bundle.warnings:
+                st.caption(" · ".join(bundle.warnings[:2]))
+            if bundle.detail:
+                st.caption(bundle.detail)
         except Exception as exc:
-            st.error(str(exc)[:240])
+            prog.progress(0.0, text="실패")
+            st.error(
+                "데이터 갱신 실패\n\n"
+                f"{str(exc)[:400]}\n\n"
+                "→ **조치:** 설정 › KRX/API 테스트 후 나침반「다시 계산」"
+            )
         else:
             if basel_detail:
                 st.caption(f"바젤 공식 페이지 · {basel_detail}")
-            st.rerun()
+            # 막힘·경고는 화면에서 읽고 조치할 수 있게 즉시 rerun하지 않음
+            if bundle.errors or any(
+                "비밀번호" in w or "로그인" in w
+                for w in (bundle.warnings or [])
+            ):
+                pass
+            else:
+                st.rerun()
     when = format_fetched_at(signal.fetched_at) if signal is not None else ""
+    mi_bit = f" · 시장지표 {mi_asof}" if mi_asof else ""
     if when:
         st.caption(
             copy_get(
                 "economy",
                 "refresh_as_of",
                 default=(
-                    "마지막 계산 {when} · 금리·신용 단계 + 바젤 공식 페이지 확인 "
-                    "(배당 표는 중기 정량 · Soft·국내확인 불변)"
+                    "마지막 FRED {when}{mi} · 「다시 계산」=국면+VIX/코스피+바젤 "
+                    "(배당 표는 중기 정량 · Soft·target 불변)"
                 ),
                 when=when,
+                mi=mi_bit,
             )
         )
     else:
@@ -436,8 +706,7 @@ def _render_refresh(root, signal) -> None:
                 "economy",
                 "refresh_never",
                 default=(
-                    "아직 계산 없음 · 누르면 금리·신용 단계와 바젤 공식 페이지를 "
-                    "함께 갱신합니다 (배당 표 아님)"
+                    "아직 계산 없음 · 누르면 FRED 국면 + 시장지표 + 바젤을 갱신합니다"
                 ),
             )
         )

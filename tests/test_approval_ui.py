@@ -11,17 +11,27 @@ from alpha_system.ui.services.ui_copy import copy_get, load_ui_copy
 
 def test_approval_copy_tabs_and_lead() -> None:
     load_ui_copy.cache_clear()
-    assert "숫자" in copy_get("approval", "lead")
+    lead = copy_get("approval", "lead")
+    assert (
+        "제안은 포트" in lead
+        or "베타 보완" in lead
+        or "전략 비교" in lead
+        or "포트 Soft" in lead
+        or "중기·단기" in lead
+    )
     assert copy_get("approval", "tab_quant") == "① 숫자"
     assert copy_get("approval", "tab_weekly") == "② 이번 주"
     assert copy_get("approval", "tab_live") == "③ 가동"
     assert copy_get("approval", "tab_monthly") == ""
-    assert "이번 달" not in copy_get("approval", "lead")
-    assert "정량 전체 갱신" in copy_get("approval", "quant_empty")
-    assert "마지막 갱신" in copy_get("approval", "quant_refresh_as_of")
+    assert "이번 달" not in lead
+    assert "중기·단기" in copy_get("approval", "quant_empty")
+    assert "중기·단기" in copy_get("approval", "quant_refresh_as_of")
+    assert "중기·단기" in copy_get("approval", "quant_refresh_title")
+    assert "한 번에" in copy_get("approval", "quant_refresh_btn")
     src = inspect.getsource(events._render_data_refresh)
     assert "quant_refresh_when" in src
     assert "quant_refresh_as_of" in src
+    assert "중기|단기 탭" not in src
 
 
 def test_t3_pbr_surface_removed_from_events() -> None:

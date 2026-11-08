@@ -24,6 +24,16 @@ class RefreshResult:
     detail: dict[str, Any]
 
 
+def _job_phase(root: Path, phase: str, *, progress: float | None = None) -> None:
+    """백그라운드 job일 때만 phase 기록 · UI 인라인 진행도용."""
+    try:
+        from alpha_system.ui.services.background_job import update_phase
+
+        update_phase(Path(root), phase, progress=progress)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def quant_refresh_when(root: Path, *, market: str | None = None) -> str | None:
     """Last quant snapshot wall time in KST, or None if never run."""
     path = Path(root) / provenance_rel(market)
@@ -63,26 +73,12 @@ def _format_refresh_error(exc: BaseException) -> str:
     return str(exc)
 
 
-def _sync_operational_prices_from_alpha_snapshot(
-    root: Path, *, market: str | None = None
+def _sync_prices_csv_from_snapshot(
+    snap_by_ticker: Any,
+    dest_path: Path,
 ) -> int:
-    """Copy close/mcap/tv20 from alpha snapshot into the book prices.csv. No KRX."""
+    """Write/merge one prices.csv from alpha snapshot index. No KRX."""
     import pandas as pd
-
-    from alpha_system.screen_book import alpha_data_dir, operational_data_dir
-
-    snap_path = alpha_data_dir(root, market) / "raw" / "price_snapshot.csv"
-    dest_path = operational_data_dir(root, market) / "prices.csv"
-    if not snap_path.exists():
-        return 0
-    try:
-        snap = pd.read_csv(snap_path, dtype=str, keep_default_na=False)
-    except Exception:
-        return 0
-    if snap.empty or "ticker" not in snap.columns:
-        return 0
-    snap["ticker"] = snap["ticker"].astype(str).str.zfill(6)
-    by_t = snap.drop_duplicates("ticker", keep="last").set_index("ticker")
 
     dest = None
     if dest_path.exists():
@@ -103,9 +99,9 @@ def _sync_operational_prices_from_alpha_snapshot(
     n = 0
     for idx, row in dest.iterrows():
         t = str(row["ticker"])
-        if t not in by_t.index:
+        if t not in snap_by_ticker.index:
             continue
-        src = by_t.loc[t]
+        src = snap_by_ticker.loc[t]
         if "as_of" in src.index and str(src["as_of"]).strip():
             dest.at[idx, "date"] = str(src["as_of"])[:10]
         if "close" in src.index and str(src["close"]).strip():
@@ -119,7 +115,7 @@ def _sync_operational_prices_from_alpha_snapshot(
 
     existing = set(dest["ticker"].astype(str)) if "ticker" in dest.columns else set()
     additions: list[dict[str, str]] = []
-    for t, src in by_t.iterrows():
+    for t, src in snap_by_ticker.iterrows():
         if t in existing:
             continue
         additions.append(
@@ -141,6 +137,40 @@ def _sync_operational_prices_from_alpha_snapshot(
     if n:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         dest.to_csv(dest_path, index=False, encoding="utf-8-sig")
+    return n
+
+
+def _sync_operational_prices_from_alpha_snapshot(
+    root: Path, *, market: str | None = None
+) -> int:
+    """Copy snapshot into mid + short book prices.csv (한 시장 · 중기·단기 일원화)."""
+    import pandas as pd
+
+    from alpha_system.screen_book import (
+        alpha_data_dir,
+        ensure_book_dirs,
+        operational_data_dir,
+    )
+
+    snap_path = alpha_data_dir(root, market) / "raw" / "price_snapshot.csv"
+    if not snap_path.exists():
+        return 0
+    try:
+        snap = pd.read_csv(snap_path, dtype=str, keep_default_na=False)
+    except Exception:
+        return 0
+    if snap.empty or "ticker" not in snap.columns:
+        return 0
+    snap["ticker"] = snap["ticker"].astype(str).str.zfill(6)
+    by_t = snap.drop_duplicates("ticker", keep="last").set_index("ticker")
+
+    ensure_book_dirs(root, market, "mid")
+    ensure_book_dirs(root, market, "short")
+    n = 0
+    for hz in ("mid", "short"):
+        dest = operational_data_dir(root, market, hz) / "prices.csv"
+        n += _sync_prices_csv_from_snapshot(by_t, dest)
+    # 소스(중기) prices.csv 는 source_data_dir = mid 와 동일 경로(코스피 data/)
     return n
 
 
@@ -268,6 +298,7 @@ def run_quant_snapshot_refresh(
         "--market",
         book,
     ]
+    _job_phase(root, f"{book} 정량 수집·채점 (KRX·점수)", progress=0.05)
     try:
         completed = subprocess.run(
             command,
@@ -286,11 +317,18 @@ def run_quant_snapshot_refresh(
             detail={"error": str(exc), "krx_pass": "single"},
         )
 
+    from alpha_system.screen_book import ensure_book_dirs
+
+    _job_phase(root, f"{book} 중기·단기 가격·재무 동기", progress=0.45)
+    ensure_book_dirs(root, book, "mid")
+    ensure_book_dirs(root, book, "short")
     synced = _sync_operational_prices_from_alpha_snapshot(root, market=book)
     _sync_operational_fundamentals_from_alpha(root, market=book)
     detail: dict[str, Any] = {
         "krx_pass": "single",
         "market": book,
+        "horizons": ["mid", "short"],
+        "unified_mid_short": True,
         "operational_synced_rows": synced,
         "command": "run_alpha_quant_snapshot.py --collect --collect-scope "
         + collect_scope
@@ -320,27 +358,364 @@ def run_quant_snapshot_refresh(
             ok=False,
             message=(
                 "정량 채점은 됐지만 게이트 통과가 0종입니다. "
-                "시가총액 미수집이면 전 종목이 low_market_cap으로 탈락합니다."
+                "유동성(ADV)·재무·검증 게이트를 확인하세요. "
+                "시총 하한은 해제되어 있습니다."
             ),
             detail=detail,
         )
+    _job_phase(root, "정성 · RSS·OpenDART·심층·수급", progress=0.55)
+    qual = _refresh_qual_layers_after_quant(root, market=book)
+    detail["qual_layers"] = qual
+
+    # 가계 ETF Lab — 하루 1회·비치명 · Soft/target 불변 (전략 비교 버튼 최소화)
+    _job_phase(root, "가계 ETF Lab (하루 1회)", progress=0.82)
+    try:
+        from alpha_system.ui.services.ops_journey_chrome import (
+            maybe_refresh_household_lab_after_quant,
+        )
+
+        hh = maybe_refresh_household_lab_after_quant(root, force=False)
+        detail["household_alloc_lab"] = hh
+    except Exception as exc:  # noqa: BLE001
+        detail["household_alloc_lab_error"] = str(exc)[:200]
+
+    # 나침반 입력(FRED+VIX/코스피) — 시장지표 하루 이상 정체 시 · Soft/target 불변
+    _job_phase(root, "나침반 입력 (FRED·시장지표)", progress=0.88)
+    try:
+        from alpha_system.ui.services.compass_inputs_refresh import (
+            maybe_refresh_compass_inputs_after_quant,
+        )
+
+        eco = maybe_refresh_compass_inputs_after_quant(root, force=False)
+        detail["compass_inputs"] = eco
+    except Exception as exc:  # noqa: BLE001
+        detail["compass_inputs_error"] = str(exc)[:200]
+
+    # 전략별 투자 후보 스냅샷 (Soft 바스켓 + ETF) · target 불변
+    _job_phase(root, "전략 Soft 후보 스냅샷", progress=0.94)
+    try:
+        from alpha_system.ui.services.strategy_candidates_board import (
+            persist_candidates_after_quant,
+        )
+
+        cand = persist_candidates_after_quant(root, market=book)
+        detail["strategy_candidates"] = cand
+    except Exception as exc:  # noqa: BLE001
+        detail["strategy_candidates_error"] = str(exc)[:200]
+    _job_phase(root, "마무리", progress=0.98)
+
+    hh_bit = ""
+    hh = detail.get("household_alloc_lab") or {}
+    if isinstance(hh, dict):
+        if hh.get("skipped"):
+            hh_bit = " · 가계ETF Lab 유지(신선)"
+        elif hh.get("ok"):
+            hh_bit = f" · 가계ETF Lab {hh.get('n_ok', '')}종"
+        elif hh.get("error"):
+            hh_bit = " · 가계ETF Lab 생략"
+    cand = detail.get("strategy_candidates") or {}
+    if isinstance(cand, dict) and cand.get("ok"):
+        hh_bit += (
+            f" · 후보 Soft중기{cand.get('mid_n', 0)}"
+            f"/단기{cand.get('short_n', 0)}"
+        )
+
+    return RefreshResult(
+        ok=True,
+        message=(
+            f"{book} 중기·단기 정량·정성 통합 갱신 완료 "
+            "(점수 공유 · RSS · OpenDART · 수급 · 가격 mid+short 동기)"
+            f"{hh_bit}"
+        ),
+        detail=detail,
+    )
+
+
+def _watch_pool_tickers(root: Path, *, market: str, top_n: int = 30) -> list[str]:
+    """Scoreboard-ranked tickers for OpenDART watch (market book)."""
+    from alpha_system.proposal_chart import norm_ticker
+    from alpha_system.screen_book import alpha_data_dir, is_kosdaq
+
+    scores_path = alpha_data_dir(root, market) / "output" / "alpha_scores.csv"
+    if not scores_path.is_file():
+        return []
+    try:
+        import pandas as pd
+
+        df = pd.read_csv(scores_path)
+    except (OSError, ValueError):
+        return []
+    if df.empty or "ticker" not in df.columns:
+        return []
+    df = df.copy()
+    df["ticker"] = df["ticker"].map(norm_ticker)
+    if is_kosdaq(market) and "market" in df.columns:
+        m = df["market"].astype(str).str.upper()
+        df = df[m.str.contains("KOSDAQ") | m.str.contains("코스닥")]
+    elif (not is_kosdaq(market)) and "market" in df.columns:
+        m = df["market"].astype(str).str.upper()
+        # Prefer KOSPI rows when column exists; else keep all
+        kospi = m.str.contains("KOSPI") | m.str.contains("코스피")
+        if kospi.any():
+            df = df[kospi]
+    rank_col = None
+    for c in ("total_score", "factor_score_total", "score_q"):
+        if c in df.columns:
+            rank_col = c
+            break
+    if rank_col:
+        df[rank_col] = pd.to_numeric(df[rank_col], errors="coerce")
+        df = df.sort_values(rank_col, ascending=False)
+    out: list[str] = []
+    seen: set[str] = set()
+    for tk in df["ticker"].tolist():
+        if not tk or tk in seen:
+            continue
+        seen.add(tk)
+        out.append(tk)
+        if len(out) >= int(top_n):
+            break
+    return out
+
+
+def watch_pool_tickers(root: Path, *, market: str, top_n: int = 30) -> list[str]:
+    """Public: scoreboard top-N for OpenDART / 정성 Review."""
+    return _watch_pool_tickers(root, market=market, top_n=top_n)
+
+
+def ensure_opendart_incremental_if_stale(
+    root: Path,
+    *,
+    market: str,
+    top_n: int = 30,
+    force: bool = False,
+) -> dict[str, Any]:
+    """증분 갱신 when stale (or force). Review-only · no target/QVM writes.
+
+    Returns status dict: skipped | refreshed | missing_key | error.
+    """
+    from alpha_system.screen_book import source_data_dir
+    from alpha_system.ui.services.cecs_opendart_pack import (
+        load_opendart_watch,
+        refresh_opendart_proposal_watch,
+        watch_needs_refresh,
+    )
+
+    mkt = normalize_market(market) or "KOSPI"
+    data_dir = source_data_dir(root, mkt)
+    tickers = _watch_pool_tickers(root, market=mkt, top_n=top_n)
+    out: dict[str, Any] = {
+        "market": mkt,
+        "pool_n": len(tickers),
+        "mode": "incremental",
+        "writes_target": False,
+    }
+    if not tickers:
+        out["status"] = "skipped"
+        out["reason"] = "no_watch_tickers"
+        return out
+    snap = load_opendart_watch(root, data_dir=data_dir)
+    stale = watch_needs_refresh(snap, tickers)
+    out["stale"] = bool(stale)
+    if snap is not None and getattr(snap, "missing_key", False):
+        out["status"] = "missing_key"
+        out["fetched_at"] = getattr(snap, "fetched_at", "") or ""
+        return out
+    if not force and not stale:
+        out["status"] = "fresh"
+        out["fetched_at"] = getattr(snap, "fetched_at", "") or ""
+        return out
+    try:
+        snap = refresh_opendart_proposal_watch(
+            root,
+            tickers,
+            data_dir=data_dir,
+            mode="incremental",
+            enrich_documents=True,
+        )
+        out["status"] = "refreshed"
+        out["fetched_at"] = getattr(snap, "fetched_at", "") or ""
+        out["ticker_n"] = len(getattr(snap, "tickers", ()) or ())
+        out["missing_key"] = bool(getattr(snap, "missing_key", False))
+        if out["missing_key"]:
+            out["status"] = "missing_key"
+    except Exception as exc:  # noqa: BLE001
+        out["status"] = "error"
+        out["error"] = str(exc)[:240]
+    return out
+
+
+def _refresh_qual_layers_after_quant(
+    root: Path,
+    *,
+    market: str,
+) -> dict[str, Any]:
+    """정성 레이어: 공식 RSS(killswitch) + OpenDART 관찰 풀 증분.
+
+    Never writes target · never changes QVM ranks. Failures are recorded, not fatal.
+    """
+    out: dict[str, Any] = {"market": market}
+    _job_phase(root, "정성 · 공식 RSS(킬스위치)", progress=0.56)
     try:
         from alpha_system.ui.services.killswitch_watch import refresh_killswitch_watch
 
         watch = refresh_killswitch_watch(root)
-        detail["killswitch_watch"] = {
+        out["killswitch_watch"] = {
             "hit_n": len(watch.hits),
             "feeds_ok": sum(1 for f in watch.feeds if f.get("ok")),
             "fetched_at": watch.fetched_at,
         }
-    except Exception as exc:
-        detail["killswitch_watch_error"] = str(exc)[:200]
+    except Exception as exc:  # noqa: BLE001
+        out["killswitch_watch_error"] = str(exc)[:200]
 
-    return RefreshResult(
-        ok=True,
-        message="정량 데이터·alpha_scores 갱신 완료",
-        detail=detail,
+    _job_phase(root, "정성 · OpenDART 증분", progress=0.62)
+    od = ensure_opendart_incremental_if_stale(
+        root, market=market, force=True
     )
+    out["opendart_pool_n"] = int(od.get("pool_n") or 0)
+    if od.get("status") == "skipped":
+        out["opendart_skipped"] = od.get("reason") or "no_watch_tickers"
+    elif od.get("status") == "error":
+        out["opendart_watch_error"] = od.get("error") or "error"
+    else:
+        out["opendart_watch"] = {
+            "fetched_at": od.get("fetched_at") or "",
+            "ticker_n": od.get("ticker_n") or od.get("pool_n") or 0,
+            "missing_key": bool(od.get("missing_key")),
+            "status": od.get("status"),
+        }
+
+    # 심층·PH-CVS 정밀 — 일상 확인①에 묶음 (포트 단독 버튼 대체)
+    _job_phase(root, "정성 · 심층·PH-CVS 정밀", progress=0.70)
+    review = refresh_review_boards_after_quant(root, market=market)
+    out["review_boards"] = review
+
+    # 형제 수급 브리핑 — Review-only · 점수·target 불변 · 실패 비치명
+    _job_phase(root, "정성 · 형제 수급 브리핑", progress=0.78)
+    try:
+        from alpha_system.ui.services.pension_briefing_refresh import (
+            refresh_pension_briefing,
+        )
+
+        pension = refresh_pension_briefing(root)
+        out["pension_briefing"] = {
+            "status": pension.get("status"),
+            "asof": pension.get("asof") or "",
+            "message": (pension.get("message") or "")[:200],
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["pension_briefing_error"] = str(exc)[:200]
+    return out
+
+
+def refresh_review_boards_after_quant(
+    root: Path,
+    *,
+    market: str,
+) -> dict[str, Any]:
+    """심층 verify + PH-CVS stage1/정밀 · DART 추가 호출 없음(캐시 기준).
+
+    Never writes target · never changes QVM ranks. Failures non-fatal.
+    """
+    from alpha_system.screen_book import source_data_dir
+
+    mkt = normalize_market(market) or "KOSPI"
+    data_dir = source_data_dir(root, mkt)
+    tickers = _watch_pool_tickers(root, market=mkt, top_n=30)
+    out: dict[str, Any] = {"market": mkt, "pool_n": len(tickers)}
+
+    try:
+        from alpha_system.review.screen_deep_verify import (
+            build_screen_verify,
+            save_screen_verify,
+        )
+        from alpha_system.ui.services.cecs_opendart_pack import load_opendart_watch
+
+        snap = load_opendart_watch(root, data_dir=data_dir)
+        watch_payload: dict[str, Any] = {}
+        if snap is not None:
+            watch_payload = {
+                "evidence": list(getattr(snap, "evidence", None) or []),
+                "flags": list(getattr(snap, "flags", None) or []),
+                "metrics": list(getattr(snap, "metrics", None) or []),
+            }
+        board = build_screen_verify(
+            root,
+            data_dir=data_dir,
+            tickers=tickers,
+            opendart_watch=watch_payload or None,
+            as_of=str(getattr(snap, "as_of", "") or "") if snap else "",
+        )
+        path = save_screen_verify(data_dir, board)
+        out["screen_deep"] = {
+            "ok": True,
+            "path": str(path),
+            "n": len(board.rows),
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["screen_deep"] = {"ok": False, "error": str(exc)[:240]}
+
+    try:
+        from alpha_system.review.phcvs_auto_eval import run_and_write as run_phcvs_stage1
+        from alpha_system.review.phcvs_precision_eval import (
+            run_and_write as run_phcvs_precision,
+        )
+
+        w, s = run_phcvs_stage1(root)
+        p = run_phcvs_precision(root)
+        out["phcvs"] = {
+            "ok": True,
+            "watch": str(w),
+            "snapshot": str(s),
+            "precision": str(p),
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["phcvs"] = {"ok": False, "error": str(exc)[:240]}
+    return out
+
+
+def persist_l3_review_after_shadow(
+    root: Path,
+    *,
+    market: str,
+) -> dict[str, Any]:
+    """Shadow 재계산 후 L3·Fear Soft 디스크 저장 · Review-only."""
+    mkt = (normalize_market(market) or "KOSPI").upper()
+    local = Path(root) / "data" / "local"
+    out: dict[str, Any] = {"market": mkt, "writes_target": False}
+    try:
+        from alpha_system.shadow.l3_crash_backtest import (
+            run_l3_crash_backtest,
+            save_report,
+        )
+
+        report = run_l3_crash_backtest(
+            root, market=mkt, include_target=True
+        )
+        path = save_report(
+            report, local / f"l3_crash_review_{mkt}.json"
+        )
+        out["l3"] = {
+            "ok": True,
+            "path": str(path),
+            "events": int(report.event_count),
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["l3"] = {"ok": False, "error": str(exc)[:240]}
+    try:
+        from alpha_system.shadow.fear_soft_rebal_backtest import (
+            run_fear_soft_rebal_backtest,
+            save_fear_soft_report,
+        )
+
+        fear = run_fear_soft_rebal_backtest(root)
+        fpath = save_fear_soft_report(
+            fear, local / "fear_soft_review.json"
+        )
+        out["fear_soft"] = {"ok": True, "path": str(fpath)}
+    except Exception as exc:  # noqa: BLE001
+        out["fear_soft"] = {"ok": False, "error": str(exc)[:240]}
+    return out
 
 
 def _tail_lines(text: str, n: int = 40) -> str:
@@ -424,6 +799,7 @@ def run_compass_analysis(
     if no_backtest:
         command.append("--no-backtest")
 
+    _job_phase(root, "나침반·레짐 · 시장지표·Tier-1 분석", progress=0.08)
     try:
         completed = subprocess.run(
             command,

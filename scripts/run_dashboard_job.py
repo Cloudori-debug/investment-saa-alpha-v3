@@ -50,7 +50,11 @@ def main() -> int:
         if args.kind == "quant":
             from alpha_system.ui.services.refresh import run_quant_snapshot_refresh
 
-            update_phase(root, "정량 → 정성(RSS·OpenDART·심층) → 수급")
+            update_phase(
+                root,
+                "정량 → 정성(RSS·OpenDART·심층) → 수급",
+                progress=0.02,
+            )
             result = run_quant_snapshot_refresh(
                 root,
                 collect_scope=str(args.collect_scope or "liquid"),
@@ -60,7 +64,11 @@ def main() -> int:
         else:
             from alpha_system.ui.services.refresh import run_compass_analysis
 
-            update_phase(root, "나침반·레짐 분석 (Tier-1·레짐)")
+            update_phase(
+                root,
+                "나침반·레짐 분석 (Tier-1·레짐)",
+                progress=0.05,
+            )
             result = run_compass_analysis(root, run_mode=str(args.run_mode or "standard"))
             refresh_key = "compass_analysis"
     except Exception as exc:

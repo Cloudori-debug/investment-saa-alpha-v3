@@ -55,9 +55,10 @@ def _render_running_fragment() -> None:
     frac = progress_fraction(job)
     elapsed = elapsed_sec(job)
     typical = int(job.typical_sec or 600)
-    st.markdown(f"**{job.label}**")
+    pct = int(round(min(1.0, max(0.0, frac)) * 100))
+    st.markdown(f"**{job.label}** · {pct}%")
     st.caption(f"진행 중 · {job.phase or '실행'} · {_fmt_elapsed(elapsed)}")
-    st.progress(min(1.0, max(0.0, frac)))
+    st.progress(min(1.0, max(0.0, frac)), text=f"{job.phase or '실행'} · {pct}%")
     st.caption(
         f"예상 {typical // 60}분 안팎 · 다른 메뉴로 옮겨도 계속됩니다. "
         "일시정지·이어서 실행은 없습니다."
@@ -87,4 +88,10 @@ def _render_finished(job: JobStatus) -> None:
     st.error(f"{job.label} 실패 — 데이터 갱신이 막혔습니다")
     if job.message:
         st.error(job.message)
-    st.caption("설정 › KRX/API · 확인① 재실행 · Soft/target 불변")
+    try:
+        from alpha_system.ui.services.data_fetch_alerts import action_for_issue
+
+        tip = action_for_issue(job.message or "")
+    except Exception:  # noqa: BLE001
+        tip = "설정 › KRX/API · 확인① 재실행"
+    st.caption(f"→ 조치: {tip} · Soft/target 불변")

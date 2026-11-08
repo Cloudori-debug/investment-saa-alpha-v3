@@ -23,7 +23,7 @@ KIND_QUANT = "quant"
 KIND_COMPASS = "compass"
 
 _LABELS = {
-    KIND_QUANT: "정량 갱신",
+    KIND_QUANT: "중기·단기 정량·정성 통합 갱신",
     KIND_COMPASS: "나침반·레짐 분석",
 }
 _TYPICAL_SEC = {
@@ -56,6 +56,8 @@ class JobStatus:
     run_mode: str = "standard"
     market: str = "KOSPI"
     detail: dict[str, Any] | None = None
+    # 0~1 단계 진행(워커가 update_phase로 갱신). None이면 경과시간 추정.
+    progress: Optional[float] = None
 
     @property
     def busy(self) -> bool:
@@ -95,6 +97,11 @@ def elapsed_sec(job: JobStatus) -> int:
 def progress_fraction(job: JobStatus) -> float:
     if job.state != STATE_RUNNING:
         return 1.0 if job.ok else 0.0
+    if job.progress is not None:
+        try:
+            return min(0.99, max(0.0, float(job.progress)))
+        except (TypeError, ValueError):
+            pass
     typical = max(30, int(job.typical_sec or 600))
     return min(0.95, elapsed_sec(job) / typical)
 
@@ -253,7 +260,7 @@ def start_dashboard_job(
     book = normalize_market(market)
     label = _LABELS[kind]
     if kind == KIND_QUANT:
-        label = f"{market_label(book)} 정량 갱신"
+        label = f"{market_label(book)} 중기·단기 정량·정성 한 번에"
 
     job = JobStatus(
         kind=kind,
@@ -371,9 +378,19 @@ def apply_worker_result(
     _journal_if_needed(root, job)
 
 
-def update_phase(root: Path, phase: str) -> None:
+def update_phase(
+    root: Path,
+    phase: str,
+    *,
+    progress: float | None = None,
+) -> None:
     job = load_job(root)
     if job is None:
         return
     job.phase = phase
+    if progress is not None:
+        try:
+            job.progress = min(0.99, max(0.0, float(progress)))
+        except (TypeError, ValueError):
+            pass
     save_job(root, job)

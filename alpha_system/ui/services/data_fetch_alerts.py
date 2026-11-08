@@ -16,6 +16,23 @@ ALERTS_REL = Path("data") / "local" / "data_fetch_alerts.json"
 _KST = timezone(timedelta(hours=9))
 
 
+# key → 사용자가 바로 할 조치 (화면 경고에 항상 표시)
+_ACTION_BY_KEY: dict[str, str] = {
+    "krx_login": "설정 › 비밀키/KRX 로그인 확인 → 확인① 다시 실행",
+    "fred": "나침반「다시 계산」또는 확인① · FRED 키·네트워크 확인",
+    "dart": "설정 › OpenDART API 키 확인 → 확인① 재실행",
+    "pension": "형제 fund-screener 기동 후 확인①·수급「다시 읽기」",
+    "korea_10y": "확인① 또는 나침반「다시 계산」· 하루 뒤 재시도",
+    "market_indicators": "나침반「다시 계산」· 확인① (VIX/코스피)",
+    "market_stale": "나침반「다시 계산」또는 확인①으로 시장지표 갱신",
+    "household_lab": "전략 › 정적 Lab 수동 갱신 · Soft/target 불변",
+    "quant_missing": "확인 › ① 「중기·단기 정량·정성 한 번에」실행",
+    "quant_stale": "확인 › ① 통합 갱신 재실행 (시장별)",
+    "job_fail": "사이드바 실패 메시지 확인 → 확인① 재실행 · 설정 KRX 테스트",
+    "fetch_other": "설정 › KRX/API 테스트 후 확인① 또는 나침반「다시 계산」",
+}
+
+
 @dataclass(frozen=True)
 class DataFetchAlert:
     key: str
@@ -24,6 +41,7 @@ class DataFetchAlert:
     detail: str
     where: str = ""  # 확인① · 나침반 · 설정 …
     as_of: str = ""
+    action_ko: str = ""  # 조치 안내
 
 
 @dataclass
@@ -55,6 +73,9 @@ def load_persisted_alerts(root: Path) -> list[DataFetchAlert]:
         key = str(row.get("key") or "").strip()
         if not key:
             continue
+        ak = str(row.get("action_ko") or "").strip()
+        if not ak:
+            ak = _ACTION_BY_KEY.get(key, _ACTION_BY_KEY["fetch_other"])
         out.append(
             DataFetchAlert(
                 key=key,
@@ -63,6 +84,7 @@ def load_persisted_alerts(root: Path) -> list[DataFetchAlert]:
                 detail=str(row.get("detail") or "")[:400],
                 where=str(row.get("where") or ""),
                 as_of=str(row.get("as_of") or ""),
+                action_ko=ak,
             )
         )
     return out
@@ -108,6 +130,7 @@ def record_fetch_issues(
             detail=detail[:400],
             where=where,
             as_of=_now(),
+            action_ko=_ACTION_BY_KEY.get(key, _ACTION_BY_KEY["fetch_other"]),
         )
 
     for err in errors or ():
@@ -120,11 +143,13 @@ def record_fetch_issues(
         text = str(warn or "").strip()
         if not text:
             continue
-        # skip noisy regime metadata
+        # skip noisy / informational (not a real problem)
         if "regime_" in text and "미갱신" in text:
             continue
+        if _is_info_only_warning(text):
+            continue
         key, title = _classify_issue(text)
-        # downgrade pure info
+        # warnings stay yellow unless clearly a hard blocker
         sev = "error" if _is_blocker_text(text) else "warning"
         _add(sev, key, title, text)
 
@@ -133,22 +158,37 @@ def record_fetch_issues(
     return alerts
 
 
+def _is_info_only_warning(text: str) -> bool:
+    """성공·폴백 안내 문구 — 화면 알림에 올리지 않음."""
+    if "history 유효값 사용" in text:
+        return True
+    # as_of 전진 로그 (예: as_of 2026-11-05→2026-11-06)
+    if text.strip().startswith("as_of ") and "→" in text:
+        return True
+    return False
+
+
 def _is_blocker_text(text: str) -> bool:
-    low = text.lower()
+    """warning 목록이어도 빨간 막힘으로 올릴 강한 실패만."""
+    if _is_info_only_warning(text):
+        return False
+    # PyKRX 포함 문구의 'krx' 부분일치·단순 '실패'는 폴백 성공과 혼동됨
     needles = (
         "비밀번호",
         "패스워드",
         "로그인 실패",
+        "로그인에 실패",
         "자격 증명",
-        "krx",
         "api 키",
         "키가 없",
         "timeout",
         "타임아웃",
         "blocked",
-        "실패",
+        "미설정",
+        "수동 갱신 필요",
+        "갱신 필드 없음",
     )
-    return any(n in low or n in text for n in needles)
+    return any(n in text.lower() or n in text for n in needles)
 
 
 def _classify_issue(text: str) -> tuple[str, str]:
@@ -161,11 +201,23 @@ def _classify_issue(text: str) -> tuple[str, str]:
         return "dart", "OpenDART 갱신 문제"
     if "pension" in low or "수급" in text:
         return "pension", "연기금 수급 갱신 문제"
+    if "korea_10y" in low or "국채" in text:
+        return "korea_10y", "국채 10Y 갱신 주의"
     if "market_indicators" in low or "시장지표" in text or "vix" in low:
         return "market_indicators", "시장지표(VIX·코스피) 갱신 문제"
     if "가계" in text or "household" in low:
         return "household_lab", "가계 ETF Lab 문제"
     return "fetch_other", "데이터 갱신 문제"
+
+
+def action_for_issue(text: str) -> str:
+    """오류/경고 문구 → 사용자 조치 한 줄."""
+    key, _ = _classify_issue(str(text or ""))
+    return _ACTION_BY_KEY.get(key, _ACTION_BY_KEY["fetch_other"])
+
+
+def action_for_key(key: str) -> str:
+    return _ACTION_BY_KEY.get(str(key or ""), _ACTION_BY_KEY["fetch_other"])
 
 
 def _quant_age_days(root: Path) -> int | None:
@@ -206,9 +258,10 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                 key="market_stale",
                 severity="warning",
                 title="시장지표가 오래됨",
-                detail=f"as_of {as_of or '—'} · {stale}일 전 · 나침반「다시 계산」또는 확인①",
+                detail=f"as_of {as_of or '—'} · {stale}일 전",
                 where="나침반·확인①",
                 as_of=_now(),
+                action_ko=_ACTION_BY_KEY["market_stale"],
             )
         else:
             by_key.pop("market_stale", None)
@@ -222,9 +275,10 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
             key="quant_missing",
             severity="warning",
             title="정량 스냅샷 없음",
-            detail="확인① 중기·단기 정량·정성 통합 갱신을 실행하세요.",
+            detail="아직 통합 갱신 이력이 없습니다.",
             where="확인①",
             as_of=_now(),
+            action_ko=_ACTION_BY_KEY["quant_missing"],
         )
     else:
         by_key.pop("quant_missing", None)
@@ -233,9 +287,10 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                 key="quant_stale",
                 severity="warning",
                 title="정량이 이틀 이상 전",
-                detail=f"KOSPI 정량 약 {q_age}일 전 · 확인①을 다시 돌리세요.",
+                detail=f"KOSPI 정량 약 {q_age}일 전.",
                 where="확인①",
                 as_of=_now(),
+                action_ko=_ACTION_BY_KEY["quant_stale"],
             )
         else:
             by_key.pop("quant_stale", None)
@@ -256,6 +311,7 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                 detail=msg,
                 where="확인①·나침반 수급",
                 as_of=str(st.get("finished_at") or _now()),
+                action_ko=_ACTION_BY_KEY["pension"],
             )
         elif isinstance(st, dict) and str(st.get("status") or "") in {"ok", "success"}:
             by_key.pop("pension", None)
@@ -286,6 +342,7 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                     detail=str(job.message or "작업 실패")[:400],
                     where="확인①·사이드바 작업",
                     as_of=ended or _now(),
+                    action_ko=_ACTION_BY_KEY["job_fail"],
                 )
             else:
                 by_key.pop("job_fail", None)
@@ -309,9 +366,10 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                 key="krx_secrets",
                 severity="error",
                 title="KRX ID/비밀번호 미설정",
-                detail="설정 › API 키에 KRX를 저장하세요. 정량·코스피·수급이 막힙니다.",
+                detail="정량·코스피·수급이 막힙니다.",
                 where="설정",
                 as_of=_now(),
+                action_ko="설정 › API 키에 KRX ID·비밀번호 저장 후 확인①",
             )
         else:
             by_key.pop("krx_secrets", None)
@@ -320,9 +378,10 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
                 key="fred_secrets",
                 severity="warning",
                 title="FRED API 키 없음",
-                detail="나침반 국면 단계가 비어 있을 수 있습니다 · 설정 › API 키",
+                detail="나침반 국면 단계가 비어 있을 수 있습니다.",
                 where="설정·나침반",
                 as_of=_now(),
+                action_ko="설정 › API 키에 FRED 저장 → 나침반「다시 계산」",
             )
         else:
             by_key.pop("fred_secrets", None)
@@ -337,8 +396,19 @@ def collect_data_fetch_alerts(root: Path) -> list[DataFetchAlert]:
     return alerts
 
 
+def _format_alert_block(a: DataFetchAlert, *, compact: bool = False) -> str:
+    where = f" · {a.where}" if a.where else ""
+    action = (a.action_ko or _ACTION_BY_KEY.get(a.key) or _ACTION_BY_KEY["fetch_other"]).strip()
+    if compact:
+        return f"**{a.title}**{where} — {a.detail}\n\n→ **조치:** {action}"
+    return (
+        f"**{a.title}**{where}\n\n{a.detail}\n\n"
+        f"→ **조치:** {action}"
+    )
+
+
 def render_data_fetch_alerts(root: Path) -> None:
-    """운영 여정 아래 · 막힘만 표시."""
+    """운영 여정 아래 · 막힘 + 조치 안내."""
     import streamlit as st
 
     alerts = collect_data_fetch_alerts(Path(root))
@@ -347,18 +417,12 @@ def render_data_fetch_alerts(root: Path) -> None:
     errors = [a for a in alerts if a.severity == "error"]
     warns = [a for a in alerts if a.severity != "error"]
     if errors:
-        lines = []
-        for a in errors[:5]:
-            where = f" · {a.where}" if a.where else ""
-            lines.append(f"**{a.title}**{where}\n\n{a.detail}")
+        lines = [_format_alert_block(a) for a in errors[:5]]
         st.error("데이터 갱신이 막혔습니다\n\n" + "\n\n---\n\n".join(lines))
-        st.caption("설정 › KRX/API 테스트 · 확인① 또는 나침반「다시 계산」· Soft/target 불변")
+        st.caption("Soft/target 불변 · 조치 후 확인① 또는 나침반「다시 계산」")
     if warns:
-        lines = []
-        for a in warns[:4]:
-            where = f" · {a.where}" if a.where else ""
-            lines.append(f"**{a.title}**{where} — {a.detail}")
-        st.warning("데이터 신선도 주의\n\n" + "\n\n".join(lines))
+        lines = [_format_alert_block(a, compact=True) for a in warns[:4]]
+        st.warning("데이터 신선도 주의\n\n" + "\n\n---\n\n".join(lines))
 
 
 def record_from_compass_bundle(root: Path, bundle: Any) -> None:
@@ -421,6 +485,8 @@ def record_from_quant_detail(root: Path, *, ok: bool, message: str, detail: dict
 __all__ = [
     "DataFetchAlert",
     "DataFetchAlertsBundle",
+    "action_for_issue",
+    "action_for_key",
     "clear_alert_keys",
     "collect_data_fetch_alerts",
     "load_persisted_alerts",

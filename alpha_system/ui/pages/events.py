@@ -55,13 +55,25 @@ def _render_killswitch_watch(
             )
         elif stale:
             st.caption(ap_copy("weekly_watch_never", default="아직 탐색하지 않았습니다."))
+        from alpha_system.ui.services.approval_chrome import (
+            refresh_action_button,
+            refresh_rail,
+        )
+
+        refresh_rail(
+            title=ap_copy("weekly_watch_rail", default="공식 출처 RSS 갱신"),
+            hint=ap_copy(
+                "weekly_watch_rail_hint",
+                default="킬스위치 후보 탐색 · 점수·target 불변",
+            ),
+        )
         col_run, _ = st.columns((1, 2))
         with col_run:
-            if st.button(
+            if refresh_action_button(
                 ap_copy("weekly_watch_run", default="공식 출처 탐색"),
                 key="btn_killswitch_watch",
-                use_container_width=True,
                 disabled=job_is_busy(ctx.root),
+                primary=True,
             ):
                 try:
                     refresh_killswitch_watch(
@@ -92,18 +104,175 @@ def _render_killswitch_watch(
                 st.markdown(f"- [{name}]({url})")
 
 
+def _render_opendart_weekly_hook(ctx: DashboardContext) -> None:
+    """② 이번 주: stale이면 OpenDART 증분 1회 자동 · 실패 시 상단 버튼."""
+    from alpha_system.ui.services.approval_chrome import (
+        ap_subhead,
+        refresh_action_button,
+        refresh_rail,
+    )
+    from alpha_system.ui.services.cecs_opendart_pack import (
+        load_opendart_watch,
+        watch_needs_refresh,
+    )
+    from alpha_system.ui.services.refresh import (
+        ensure_opendart_incremental_if_stale,
+        watch_pool_tickers,
+    )
+    from alpha_system.screen_book import source_data_dir
+
+    market = str(getattr(ctx, "screen_market", None) or "KOSPI")
+    tickers = watch_pool_tickers(ctx.root, market=market, top_n=30)
+    data_dir = source_data_dir(ctx.root, market)
+    snap = load_opendart_watch(ctx.root, data_dir=data_dir)
+    stale = watch_needs_refresh(snap, tickers) if tickers else False
+    sig = f"{market}:{len(tickers)}:{','.join(tickers[:5])}"
+    auto_key = f"_opendart_weekly_auto_{sig}"
+
+    with st.container(border=True):
+        ap_subhead(
+            ap_copy("opendart_weekly_title", default="OpenDART 관찰"),
+            desc=ap_copy(
+                "opendart_weekly_desc",
+                default=(
+                    "정성 Review용 공시 캐시 · 만료·종목변경 시 증분 자동 · "
+                    "점수·target 불변"
+                ),
+            ),
+        )
+        if not tickers:
+            st.caption(
+                ap_copy(
+                    "opendart_weekly_no_pool",
+                    default="관찰 풀 없음 · ① 정량 갱신 후 다시 오세요.",
+                )
+            )
+            return
+        if snap and getattr(snap, "missing_key", False):
+            st.warning(
+                ap_copy(
+                    "opendart_weekly_no_key",
+                    default="Open DART API 키가 없습니다. 설정에 키를 넣으세요.",
+                )
+            )
+            return
+        if not stale:
+            when = (getattr(snap, "fetched_at", None) or "—").replace("T", " ")[:19]
+            st.caption(
+                ap_copy(
+                    "opendart_weekly_fresh",
+                    default="관찰 캐시 최신 · {when} · {n}종",
+                    when=when,
+                    n=len(tickers),
+                )
+            )
+            return
+
+        st.warning(
+            ap_copy(
+                "opendart_weekly_stale",
+                default="캐시 만료 또는 종목 집합 변경 · 증분 갱신 필요",
+            )
+        )
+        refresh_rail(
+            title=ap_copy("opendart_weekly_rail", default="OpenDART 증분"),
+            hint=ap_copy(
+                "opendart_weekly_rail_hint",
+                default="만료·신규만 호출 · 전체 재탐색 아님 · target 불변",
+            ),
+        )
+
+        auto_state = st.session_state.get(auto_key)
+        if auto_state is None:
+            # First visit while stale → auto incremental once
+            try:
+                with st.spinner(
+                    ap_copy(
+                        "opendart_weekly_spin",
+                        default="OpenDART 증분 갱신 중…",
+                    )
+                ):
+                    result = ensure_opendart_incremental_if_stale(
+                        ctx.root, market=market, force=False
+                    )
+                status = str(result.get("status") or "")
+                if status in {"refreshed", "fresh"}:
+                    st.session_state[auto_key] = "ok"
+                    st.success(
+                        ap_copy(
+                            "opendart_weekly_ok",
+                            default="OpenDART 증분 완료 · {when}",
+                            when=str(result.get("fetched_at") or "")[:19],
+                        )
+                    )
+                    st.rerun()
+                elif status == "missing_key":
+                    st.session_state[auto_key] = "missing_key"
+                    st.warning(
+                        ap_copy(
+                            "opendart_weekly_no_key",
+                            default="Open DART API 키가 없습니다. 설정에 키를 넣으세요.",
+                        )
+                    )
+                else:
+                    st.session_state[auto_key] = "fail"
+                    st.error(str(result.get("error") or status or "증분 실패"))
+            except Exception as exc:  # noqa: BLE001
+                st.session_state[auto_key] = "fail"
+                st.error(str(exc))
+
+        if refresh_action_button(
+            ap_copy("opendart_weekly_btn", default="증분 갱신"),
+            key=f"btn_opendart_weekly_incr_{market}",
+            disabled=job_is_busy(ctx.root),
+            primary=True,
+        ):
+            try:
+                with st.spinner(
+                    ap_copy(
+                        "opendart_weekly_spin",
+                        default="OpenDART 증분 갱신 중…",
+                    )
+                ):
+                    result = ensure_opendart_incremental_if_stale(
+                        ctx.root, market=market, force=True
+                    )
+                if result.get("status") in {"refreshed", "fresh"}:
+                    st.session_state[auto_key] = "ok"
+                    st.success(
+                        ap_copy(
+                            "opendart_weekly_ok",
+                            default="OpenDART 증분 완료 · {when}",
+                            when=str(result.get("fetched_at") or "")[:19],
+                        )
+                    )
+                    st.rerun()
+                elif result.get("status") == "missing_key":
+                    st.warning(
+                        ap_copy(
+                            "opendart_weekly_no_key",
+                            default="Open DART API 키가 없습니다. 설정에 키를 넣으세요.",
+                        )
+                    )
+                else:
+                    st.error(str(result.get("error") or "증분 실패"))
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+
+
 def _render_weekly_qual(
     ctx: DashboardContext,
     *,
     focused: bool = False,
 ) -> None:
-    """Official RSS candidates only — no operator draft or approval form."""
+    """Official RSS + OpenDART stale auto-incr — no operator draft form."""
     del focused
     t2_ids = list(ctx.cfg.t2_event_ids())
     as_of = ctx.as_of if isinstance(ctx.as_of, date) else date.today()
     if not t2_ids:
         st.error("제도 이벤트 목록이 비어 있습니다. 설정 `qual_gates.t2_event_ids`를 확인하세요.")
         return
+    _render_opendart_weekly_hook(ctx)
     _render_killswitch_watch(ctx, t2_ids=t2_ids, as_of=as_of)
 
 
@@ -160,19 +329,58 @@ def _render_go_live(ctx: DashboardContext) -> None:
         st.rerun()
 
 
+def _render_pension_confirm_strip(ctx: DashboardContext) -> None:
+    """확인① 아래 수급 한눈 — Review-only · 상세는 나침반."""
+    from alpha_system.ui.services.pension_briefing_board import (
+        PENSION_BRIEFING_CSS,
+        pension_confirm_strip_html,
+    )
+    from alpha_system.ui.services.pension_briefing_bridge import fetch_pension_briefing
+    from alpha_system.ui.services.pension_briefing_refresh import (
+        load_pension_refresh_status,
+    )
+
+    st.markdown(f"<style>{PENSION_BRIEFING_CSS}</style>", unsafe_allow_html=True)
+    view = fetch_pension_briefing(
+        alpha_root=ctx.root,
+        proposal_rows=getattr(ctx, "portfolio_rows", None),
+        holdings_rows=getattr(ctx, "ops_portfolio_rows", None),
+    )
+    status = load_pension_refresh_status(ctx.root)
+    st.markdown(
+        pension_confirm_strip_html(view, refresh_status=status),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_data_refresh(ctx: DashboardContext) -> None:
     ap_subhead(
-        ap_copy("quant_refresh_title"),
-        desc=ap_copy("quant_refresh_desc"),
+        ap_copy("quant_refresh_title", default="중기·단기 정량·정성 통합 갱신"),
+        desc=ap_copy(
+            "quant_refresh_desc",
+            default=(
+                "한 시장당 버튼 한 번=중기+단기 점수·가격·RSS·OpenDART·수급. "
+                "제안은 포트폴리오 · target·순위 자동변경 없음."
+            ),
+        ),
     )
-    ap_freshness_table(ctx.source_status)
+    ap_freshness_table(
+        ctx.source_status,
+        market=str(getattr(ctx, "screen_market", None) or "KOSPI"),
+    )
     from alpha_system.screen_book import market_label
 
-    label = f"{market_label(getattr(ctx, 'screen_market', None))} 정량 갱신"
+    mkt_lab = market_label(getattr(ctx, "screen_market", None))
+    label = ap_copy(
+        "quant_refresh_btn",
+        default="{m} 중기·단기 정량·정성 한 번에",
+        m=mkt_lab,
+    )
+    # 버튼 키는 시장만 — 중기+단기 한 번에
     if st.button(
         label,
         type="primary",
-        key=f"btn_quant_snapshot_refresh_{getattr(ctx, 'screen_market', 'KOSPI')}",
+        key=f"btn_quant_unified_mid_short_{getattr(ctx, 'screen_market', 'KOSPI')}",
         use_container_width=True,
         disabled=job_is_busy(ctx.root),
     ):
@@ -188,15 +396,33 @@ def _render_data_refresh(ctx: DashboardContext) -> None:
             st.warning(err)
         else:
             st.rerun()
+    from alpha_system.ui.services.refresh_progress_ui import render_inline_job_progress
+
+    render_inline_job_progress(ctx.root, kind="quant")
     from alpha_system.ui.services.refresh import quant_refresh_when
 
     when = quant_refresh_when(ctx.root, market=getattr(ctx, "screen_market", None))
     if when:
-        st.caption(ap_copy("quant_refresh_as_of", default="마지막 갱신 {when}", when=when))
+        st.caption(
+            ap_copy(
+                "quant_refresh_as_of",
+                default="마지막 중기·단기 통합 갱신 {when}",
+                when=when,
+            )
+            + " · "
+            + ap_copy(
+                "quant_refresh_foot",
+                default=(
+                    "동일 alpha_scores · 가격 mid+short · RSS · "
+                    "OpenDART 증분 · 심층 · PH-CVS 정밀 · 형제 수급"
+                ),
+            )
+        )
     else:
         st.caption(
             ap_copy(
                 "quant_refresh_never",
-                default="아직 정량 갱신을 실행하지 않았습니다.",
+                default="아직 중기·단기 통합 갱신을 실행하지 않았습니다.",
             )
         )
+    _render_pension_confirm_strip(ctx)

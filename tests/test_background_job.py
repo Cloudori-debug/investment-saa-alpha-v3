@@ -110,6 +110,32 @@ def test_start_records_pid(tmp_path: Path, monkeypatch) -> None:
     assert job.kind == KIND_QUANT
 
 
+def test_update_phase_sets_progress(tmp_path: Path) -> None:
+    from alpha_system.ui.services.background_job import (
+        progress_fraction,
+        update_phase,
+    )
+
+    clear_entries()
+    save_job(
+        tmp_path,
+        JobStatus(
+            kind=KIND_QUANT,
+            label="정량",
+            state=STATE_RUNNING,
+            pid=1,
+            started_at="2026-08-28T12:00:00+00:00",
+            phase="시작",
+        ),
+    )
+    update_phase(tmp_path, "정성 · OpenDART", progress=0.62)
+    job = load_job(tmp_path)
+    assert job is not None
+    assert job.phase == "정성 · OpenDART"
+    assert job.progress == 0.62
+    assert abs(progress_fraction(job) - 0.62) < 1e-6
+
+
 def test_request_cancel_sets_flag(tmp_path: Path, monkeypatch) -> None:
     clear_entries()
     save_job(

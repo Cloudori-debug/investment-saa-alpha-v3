@@ -46,6 +46,6 @@ def test_economy_page_wires_forest() -> None:
         .joinpath("alpha_system", "ui", "pages", "economy.py")
         .read_text(encoding="utf-8")
     )
-    assert "_render_forest_checklist" in page
-    assert "stage_forest_checklist" in page
-    assert "숲 방어" in page or "sec_forest" in page
+    # 나침반 탭은 playbook·숲(SAA) 참고로 통합 · 구 _render_forest_checklist 제거
+    assert "stage_playbook" in page
+    assert "숲" in page or "sec_forest" in page or "forest" in page.lower()

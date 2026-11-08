@@ -61,7 +61,8 @@ def test_liquid_quant_skips_operational_krx(
     assert called["command"][-2:] == ["--market", "KOSPI"]
     assert result.detail["provenance"]["run_id"] == "R1"
     assert result.detail["target_portfolio_written"] is False
-    assert result.detail["killswitch_watch"]["hit_n"] == 0
+    qual = result.detail.get("qual_layers") or {}
+    assert qual.get("killswitch_watch", {}).get("hit_n") == 0
 
 
 def test_one_click_refresh_stops_when_snapshot_fails(
@@ -103,8 +104,9 @@ def test_sync_operational_prices_from_snapshot(tmp_path: Path) -> None:
             "trading_value_20d": ["1"],
         }
     ).to_csv(data / "prices.csv", index=False)
+    # mid + short 장부 각각 동기 → 성공 카운트 2
     n = _sync_operational_prices_from_alpha_snapshot(tmp_path)
-    assert n == 1
+    assert n == 2
     out = pd.read_csv(data / "prices.csv", dtype=str)
     assert out.iloc[0]["date"] == "2026-08-28"
     assert out.iloc[0]["close"] == "72000"
@@ -124,7 +126,7 @@ def test_sync_creates_prices_when_dest_missing(tmp_path: Path) -> None:
     ).to_csv(raw / "price_snapshot.csv", index=False)
     n = _sync_operational_prices_from_alpha_snapshot(tmp_path)
     dest = tmp_path / "data" / "prices.csv"
-    assert n == 1
+    assert n == 2
     assert dest.is_file()
     out = pd.read_csv(dest, dtype=str)
     assert out.iloc[0]["ticker"] == "005930"
@@ -148,7 +150,7 @@ def test_sync_kosdaq_does_not_touch_kospi_prices(tmp_path: Path) -> None:
         {"date": ["2026-08-01"], "ticker": ["005930"], "close": ["70000"]}
     ).to_csv(kospi_data / "prices.csv", index=False)
     n = _sync_operational_prices_from_alpha_snapshot(tmp_path, market="KOSDAQ")
-    assert n == 1
+    assert n == 2
     kq = pd.read_csv(kq_data / "prices.csv", dtype=str)
     assert kq.iloc[0]["ticker"] == "247540"
     assert kq.iloc[0]["close"] == "111000"
