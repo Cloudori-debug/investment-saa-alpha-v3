@@ -77,4 +77,5 @@
 고금리 유리 여부는 전체 Lab만으로 단정하지 않음 · 백테스트「국면 슬라이스 Lab」(실질≥1%·연준≥3%·2022~·stage≥4)로 Review.  
 미국 발행 ETF 교차검증: 백테스트「미국 ETF GEM 국면 Lab」(SPY·EFA/VXUS·BIL·AGG · Yahoo adjclose · 동일 국면 정의).  
 대공황~ 장기: 백테스트「장기 월간 GEM」(Ken French 미국 1926-07~ · Dev ex-US 1990-07~ · 절대모멘텀이 대공황 구간 본체).  
-**종합(2026-11-08):** 고금리 우려→듀얼 **본체 승격 기각** · 선택위성만 · 낙폭완화는 절대모멘텀이 기여(대공황 Lab 부분지지) · 상세 [`static-all-weather.md`](static-all-weather.md) §12.
+**종합(2026-11-08):** 고금리 우려→듀얼 **본체 승격 기각** · 선택위성만 · 낙폭완화는 절대모멘텀이 기여(대공황 Lab 부분지지) · 상세 [`static-all-weather.md`](static-all-weather.md) §12.  
+**공포 vs 금리·물가(2026-11-09):** Fear&Greed·영상 5국면은 **듀얼 시그널에 넣지 않음**(상대→절대 vs 달러단기 불변) · Lab·국면 해석만 · “빠른 반등=주식 재진입” 금지 · 가짜 반등 경계는 **절대모멘텀의 부산물**로만 겹침 · [`youtube-2026-fear-vs-rate-path.md`](youtube-2026-fear-vs-rate-path.md).

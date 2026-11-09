@@ -68,8 +68,8 @@
 - Morningstar Diversification Landscape (주식 스트레스 시 Treasury·금)  
 - 금리·신용 긴축과 위험자산 (HY OAS, 실질금리, 커브)  
 - AI·부채·사모신용 가설은 **점검판 + 자세권고** (자동매도·target·Core 변경 없음 · 시황 피드 아님)  
-- **평균회귀·역발상 Review** (`mean_reversion_review.py`): 실질금리·VIX Soft·고가대비 · 공포 때 비중 복원 Review · QVM·월 리밸·L3와 같은 축 · 바닥 타이밍 없음
-- **Fear&Greed Soft** (`fear_greed_soft.py`): CNN 7항 중 가용만 Soft 합산 · **원본 지수 아님** · 자세·QVM·target 불변 · [`FEAR_GREED_SOFT_SPEC.md`](FEAR_GREED_SOFT_SPEC.md)
+- **평균회귀·역발상 Review** (`mean_reversion_review.py`): 실질금리·VIX Soft·고가대비 · 공포 때 비중 복원 Review · QVM·월 리밸·L3와 같은 축 · 바닥 타이밍 없음 · **빠른 반등≠공격 전환** (금리·물가 경로 Review)
+- **Fear&Greed Soft** (`fear_greed_soft.py`): CNN 7항 중 가용만 Soft 합산 · **원본 지수 아님** · 자세만 · **극단 공포→매수 트리거 금지** · Soft 사이즈는 실질금리·신용과 함께 Review · QVM·target 불변 · [`FEAR_GREED_SOFT_SPEC.md`](FEAR_GREED_SOFT_SPEC.md) · 학습 [`research/strategies/youtube-2026-fear-vs-rate-path.md`](research/strategies/youtube-2026-fear-vs-rate-path.md)
 - **S&P 200일 Soft** (`spx_200dma_soft.py`): 강환국 1723 정합 · **2027H2(7/1)~** 이탈 시 주식 축소 Review · 이전은 관측 · 밸류 전량매도·듀얼 덮어쓰기·target 없음
 - **막스 Continuum Soft** (`marks_continuum.py`): Investing Continuum 관찰 · **운영 한도 C2** · C3~C6는 경고만 · 전량·공매도·target 없음 · [`MARKS_CONTINUUM_SOFT_SPEC.md`](MARKS_CONTINUUM_SOFT_SPEC.md)
 - **코스피 밸류 밴드 Review** (`kospi_valuation_band.py` · `data/kospi_valuation_history.csv`): PBR %ile 75/25 · 국면식 불변 · 싸다 단정·자동매수 없음 · [`KOSPI_VALUATION_BAND_REVIEW_SPEC.md`](KOSPI_VALUATION_BAND_REVIEW_SPEC.md)  
