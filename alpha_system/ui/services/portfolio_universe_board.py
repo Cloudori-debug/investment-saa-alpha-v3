@@ -843,14 +843,18 @@ def render_portfolio_universe_tab(
             "portfolio",
             "universe_caption",
             default=(
-                "기본=추천스택(본체 나침반적합·듀얼선택·Soft·단기) · "
-                "확인① 반영 · 합산 매수 금지 · target 사람만"
+                "기본=추천스택 · 연금·ISA(정적+듀얼) / 일반(Soft+단기) · "
+                "계좌%·가계% · 합산 매수 금지 · target 사람만"
             ),
         )
     )
 
-    # 전략별 투자 후보 (확인①·전략 탭 산출)
+    # 전략별 투자 후보 (확인①·전략 탭 산출) + 계좌별 할 일·역발상 게이트
     try:
+        from alpha_system.ui.services.account_ops_checklist import (
+            account_ops_checklist_html,
+            build_account_ops_checklist,
+        )
         from alpha_system.ui.services.strategy_candidates_board import (
             build_strategy_candidates,
             render_candidates_section,
@@ -862,12 +866,65 @@ def render_portfolio_universe_tab(
             mid_soft_rows=mid_soft,
             short_prop_rows=short_prop,
         )
+        _deep_n = len(observe.deep_pick or [])
+        _precise = False
+        try:
+            _counts = getattr(observe, "counts", None) or {}
+            if isinstance(_counts, dict):
+                _precise = int(_counts.get("정밀관찰") or 0) > 0
+        except Exception:  # noqa: BLE001
+            _precise = False
+        _observe_ok = bool(_deep_n > 0 or _precise) if observe.available else None
+        # 해부 PASS 파일은 별도 · 오늘 픽만으로는 HOLD(조사 보류) 힌트
+        _gieop = "HOLD" if today.picks else None
+        _fear_tone = None
+        _fear_av = None
+        _fear_miss = None
+        try:
+            from alpha_system.economy_compass.fear_greed_soft import (
+                build_fear_greed_soft_board,
+            )
+
+            _fear = build_fear_greed_soft_board(None, root=root_path)
+            _fear_tone = str(getattr(_fear, "tone", "") or "") or None
+            _fear_av = int(getattr(_fear, "available_n", 0) or 0)
+            _fear_miss = int(getattr(_fear, "missing_n", 0) or 0)
+        except Exception:  # noqa: BLE001
+            _fear_tone = None
+        _ops = build_account_ops_checklist(
+            _cands,
+            observe_deep_or_precise=_observe_ok,
+            logic_or_essence_ok=True if mid_soft else None,
+            gieop_gate=_gieop,
+            fear_tone=_fear_tone,
+            fear_as_buy_signal=False,
+            soft_funded_from_pension=False,
+            fear_available_n=_fear_av,
+            fear_missing_n=_fear_miss,
+            pass_value=True if mid_soft else None,
+        )
+        st.caption(
+            copy_get(
+                "portfolio",
+                "account_ops_caption",
+                default=(
+                    "연금·ISA=정적+듀얼(앱 밖) · 일반=Soft+단기 · "
+                    "합산 주문 금지 · 역발상=게이트 Review"
+                ),
+            )
+        )
+        try:
+            st.html(account_ops_checklist_html(_ops))
+        except Exception:  # noqa: BLE001
+            st.markdown(
+                account_ops_checklist_html(_ops), unsafe_allow_html=True
+            )
         render_candidates_section(
             _cands,
             title=copy_get(
                 "portfolio",
                 "sec_strategy_cands",
-                default="전략별 투자 후보 · 추천 스택",
+                default="전략별 투자 후보 · 연금·ISA / 일반",
             ),
         )
     except Exception as exc:  # noqa: BLE001

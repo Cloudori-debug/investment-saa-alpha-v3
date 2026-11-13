@@ -22,6 +22,38 @@ OPS_STACK_IDS: tuple[str, ...] = (
     "short_momentum",  # 단기 위성(얇게)
 )
 
+# 가계 추천스택 합=100 (Review 지도 · 합산 집행·target 자동 없음)
+# 본체 70~85 · 듀얼 0~15 · Soft 10~20 · 단기 0~5 감각의 중앙값
+OPS_STACK_BUDGET_PCT: dict[str, float] = {
+    "static_book": 75.0,
+    "dual_momentum": 10.0,
+    "mid_soft": 12.0,
+    "short_momentum": 3.0,
+}
+
+# 계좌 이분 · 합산 집행 금지 · Review 지도만
+# 연금·ISA = 중장기 정적(+세 효율 듀얼) · 일반 = Soft·단기
+ACCOUNT_PENSION = "pension"
+ACCOUNT_TAXABLE = "taxable"
+ACCOUNT_LABEL_KO: dict[str, str] = {
+    ACCOUNT_PENSION: "연금·ISA",
+    ACCOUNT_TAXABLE: "일반",
+}
+STRATEGY_ACCOUNT: dict[str, str] = {
+    "static_book": ACCOUNT_PENSION,
+    "dual_momentum": ACCOUNT_PENSION,
+    "mid_soft": ACCOUNT_TAXABLE,
+    "short_momentum": ACCOUNT_TAXABLE,
+}
+ACCOUNT_BUDGET_PCT: dict[str, float] = {
+    ACCOUNT_PENSION: float(OPS_STACK_BUDGET_PCT["static_book"])
+    + float(OPS_STACK_BUDGET_PCT["dual_momentum"]),
+    ACCOUNT_TAXABLE: float(OPS_STACK_BUDGET_PCT["mid_soft"])
+    + float(OPS_STACK_BUDGET_PCT["short_momentum"]),
+}
+PARK_TICKER = "214980"
+PARK_NAME = "KODEX 단기채권PLUS"
+
 
 @dataclass
 class StrategyCandidate:
@@ -32,6 +64,11 @@ class StrategyCandidate:
     weight_pct: float | None = None
     role: str = ""
     note: str = ""
+    # 가계 추천스택=100 기준 절대 비중 (ops 지도용 · 합산 집행 아님)
+    portfolio_pct: float | None = None
+    # 계좌 이분 · 계좌内=100 (연금·ISA / 일반)
+    account_id: str = ""
+    account_pct: float | None = None
 
 
 @dataclass
@@ -42,6 +79,8 @@ class StrategyCandidatesBundle:
     writes_target: bool = False
     by_strategy: dict[str, list[StrategyCandidate]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # 계좌별 가계% 합 (합≈100)
+    account_budget_pct: dict[str, float] = field(default_factory=dict)
 
 
 def snapshot_path(root: Path) -> Path:
@@ -317,6 +356,222 @@ def theme_colors(slug: str) -> tuple[str, str]:
     return _THEME_COLORS.get(slug, _THEME_COLORS["other"])
 
 
+def _soft_book_equity_cash_split(root: Path | None = None) -> tuple[float, float]:
+    """Soft 장부 안 E/C 힌트 · 기본 50/50 · stance yaml 우선."""
+    eq, cash = 50.0, 50.0
+    if root is None:
+        return eq, cash
+    try:
+        import yaml
+
+        raw = yaml.safe_load(
+            (Path(root) / "data" / "investment_stance.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        book = ((raw or {}).get("stance") or {}).get("soft_book") or {}
+        eq = float(book.get("equity_pct_hint", eq))
+        cash = float(book.get("cash_pct_hint", cash))
+    except Exception:  # noqa: BLE001
+        pass
+    s = max(eq, 0.0) + max(cash, 0.0)
+    if s <= 0:
+        return 50.0, 50.0
+    return 100.0 * max(eq, 0.0) / s, 100.0 * max(cash, 0.0) / s
+
+
+def _norm_weights(cands: Sequence[StrategyCandidate]) -> list[tuple[StrategyCandidate, float]]:
+    """전략内 정량비중 → 합 1.0. weight 없으면 등분(유니버스-only 행 제외)."""
+    scored: list[tuple[StrategyCandidate, float]] = []
+    for c in cands or []:
+        if c.weight_pct is None:
+            continue
+        try:
+            w = float(c.weight_pct)
+        except (TypeError, ValueError):
+            continue
+        if w < 0:
+            continue
+        scored.append((c, w))
+    if scored:
+        tot = sum(w for _, w in scored) or 1.0
+        return [(c, w / tot) for c, w in scored]
+    return []
+
+
+def attach_ops_stack_portfolio_pct(
+    bundle: StrategyCandidatesBundle,
+    *,
+    root: Path | None = None,
+) -> StrategyCandidatesBundle:
+    """추천스택 후보에 가계=100 절대 포트%를 붙인다 (합≈100 · Review-only)."""
+    if root is None:
+        root = Path(__file__).resolve().parents[3]
+    eq_share, cash_share = _soft_book_equity_cash_split(root)
+    for sid in OPS_STACK_IDS:
+        for c in bundle.by_strategy.get(sid) or []:
+            c.portfolio_pct = None
+
+    allocated = 0.0
+    for sid in OPS_STACK_IDS:
+        budget = float(OPS_STACK_BUDGET_PCT.get(sid, 0.0))
+        if budget <= 0:
+            continue
+        cands = list(bundle.by_strategy.get(sid) or [])
+
+        if sid == "mid_soft":
+            eq_budget = budget * eq_share / 100.0
+            cash_budget = budget * cash_share / 100.0
+            parts = _norm_weights(cands)
+            if parts:
+                for c, frac in parts:
+                    c.portfolio_pct = round(eq_budget * frac, 2)
+                    allocated += float(c.portfolio_pct or 0)
+            else:
+                # Soft 공집합 → 전액 파킹
+                cash_budget = budget
+            if cash_budget > 0:
+                park = next(
+                    (c for c in cands if norm_ticker(c.ticker) == PARK_TICKER),
+                    None,
+                )
+                if park is None:
+                    park = StrategyCandidate(
+                        strategy_id="mid_soft",
+                        strategy_label=(
+                            (cands[0].strategy_label if cands else None)
+                            or "중기 Soft"
+                        ),
+                        ticker=PARK_TICKER,
+                        name=PARK_NAME,
+                        weight_pct=cash_share if parts else 100.0,
+                        role="Soft 파킹 · 미집행",
+                        note="Soft 미집행·C힌트 → 단기채 파킹 · target 불변",
+                        portfolio_pct=round(cash_budget, 2),
+                    )
+                    cands.append(park)
+                    bundle.by_strategy[sid] = cands
+                else:
+                    park.portfolio_pct = round(
+                        float(park.portfolio_pct or 0) + cash_budget, 2
+                    )
+                allocated += round(cash_budget, 2)
+            continue
+
+        if sid == "short_momentum":
+            parts = _norm_weights(cands)
+            if parts:
+                for c, frac in parts:
+                    c.portfolio_pct = round(budget * frac, 2)
+                    allocated += float(c.portfolio_pct or 0)
+            else:
+                park = StrategyCandidate(
+                    strategy_id="short_momentum",
+                    strategy_label="단기 모멘텀",
+                    ticker=PARK_TICKER,
+                    name=PARK_NAME,
+                    weight_pct=100.0,
+                    role="단기 파킹 · 공집합",
+                    note="단기 Soft 없음 → 단기채 파킹 · target 불변",
+                    portfolio_pct=round(budget, 2),
+                )
+                bundle.by_strategy[sid] = [park]
+                allocated += round(budget, 2)
+            continue
+
+        if sid == "dual_momentum":
+            parts = _norm_weights(cands)
+            if parts:
+                # 픽만 weight 있음 → 전량
+                for c, frac in parts:
+                    c.portfolio_pct = round(budget * frac, 2)
+                    allocated += float(c.portfolio_pct or 0)
+            else:
+                # 시그널 없으면 듀얼 예산 파킹
+                park = StrategyCandidate(
+                    strategy_id="dual_momentum",
+                    strategy_label="듀얼모멘텀",
+                    ticker=PARK_TICKER,
+                    name=PARK_NAME,
+                    weight_pct=100.0,
+                    role="듀얼 파킹",
+                    note="듀얼 픽 없음 → 단기채 파킹",
+                    portfolio_pct=round(budget, 2),
+                )
+                bundle.by_strategy[sid] = [park, *cands]
+                allocated += round(budget, 2)
+            continue
+
+        # static_book · 본체 레시피 정량%
+        parts = _norm_weights(cands)
+        for c, frac in parts:
+            c.portfolio_pct = round(budget * frac, 2)
+            allocated += float(c.portfolio_pct or 0)
+
+    # 반올림 잔여 → 본체 최대 레그에 흡수(합 100 맞추기)
+    residual = round(100.0 - allocated, 2)
+    if abs(residual) >= 0.01:
+        body = list(bundle.by_strategy.get("static_book") or [])
+        live = [c for c in body if c.portfolio_pct is not None]
+        if live:
+            top = max(live, key=lambda x: float(x.portfolio_pct or 0))
+            top.portfolio_pct = round(float(top.portfolio_pct or 0) + residual, 2)
+    return attach_account_split_pct(bundle)
+
+
+def attach_account_split_pct(
+    bundle: StrategyCandidatesBundle,
+) -> StrategyCandidatesBundle:
+    """가계 포트%를 연금·ISA / 일반으로 나누고 계좌内=100으로 재계산."""
+    budgets = {
+        ACCOUNT_PENSION: float(ACCOUNT_BUDGET_PCT[ACCOUNT_PENSION]),
+        ACCOUNT_TAXABLE: float(ACCOUNT_BUDGET_PCT[ACCOUNT_TAXABLE]),
+    }
+    bundle.account_budget_pct = dict(budgets)
+    by_acct: dict[str, list[StrategyCandidate]] = {
+        ACCOUNT_PENSION: [],
+        ACCOUNT_TAXABLE: [],
+    }
+    for sid in OPS_STACK_IDS:
+        acct = STRATEGY_ACCOUNT.get(sid) or ACCOUNT_TAXABLE
+        for c in bundle.by_strategy.get(sid) or []:
+            c.account_id = acct
+            c.account_pct = None
+            by_acct.setdefault(acct, []).append(c)
+
+    for acct, cands in by_acct.items():
+        budget = float(budgets.get(acct) or 0.0)
+        live = [c for c in cands if c.portfolio_pct is not None]
+        if budget <= 0 or not live:
+            continue
+        raw_sum = sum(float(c.portfolio_pct or 0) for c in live)
+        if raw_sum <= 0:
+            continue
+        # 계좌内 % = 가계포트% / 계좌예산 × 100
+        allocated = 0.0
+        for c in live:
+            hh = float(c.portfolio_pct or 0)
+            c.account_pct = round(hh / budget * 100.0, 2)
+            allocated += float(c.account_pct or 0)
+        residual = round(100.0 - allocated, 2)
+        if abs(residual) >= 0.01:
+            top = max(live, key=lambda x: float(x.account_pct or 0))
+            top.account_pct = round(float(top.account_pct or 0) + residual, 2)
+    return bundle
+
+
+def account_summary_line(bundle: StrategyCandidatesBundle) -> str:
+    """연금·ISA / 일반 가계% 한 줄."""
+    b = bundle.account_budget_pct or dict(ACCOUNT_BUDGET_PCT)
+    pen = float(b.get(ACCOUNT_PENSION) or ACCOUNT_BUDGET_PCT[ACCOUNT_PENSION])
+    tax = float(b.get(ACCOUNT_TAXABLE) or ACCOUNT_BUDGET_PCT[ACCOUNT_TAXABLE])
+    return (
+        f"계좌 이분 · {ACCOUNT_LABEL_KO[ACCOUNT_PENSION]} {pen:g}% "
+        f"(정적+듀얼) · {ACCOUNT_LABEL_KO[ACCOUNT_TAXABLE]} {tax:g}% "
+        f"(Soft+단기) · 각 계좌内=100 · 합산 집행 금지"
+    )
+
+
 def candidates_table_rows(
     bundle: StrategyCandidatesBundle,
     *,
@@ -324,34 +579,64 @@ def candidates_table_rows(
     skip_static_book_alias: bool = True,
     ops_stack_only: bool = False,
 ) -> list[dict[str, str]]:
-    """포트 유니버스 기본=ops_stack_only · Lab 전체는 False."""
+    """포트 유니버스 기본=ops_stack_only · Lab 전체는 False.
+
+    ops_stack_only: 기존 열 + 선두 **계좌·계좌%·가계%**(구 포트%).
+    """
+    if ops_stack_only and strategy_id is None:
+        attach_ops_stack_portfolio_pct(bundle)
+
     rows: list[dict[str, str]] = []
     if strategy_id:
         items = [(strategy_id, bundle.by_strategy.get(strategy_id or "", []))]
     elif ops_stack_only:
-        items = [
-            (sid, bundle.by_strategy.get(sid, []))
-            for sid in OPS_STACK_IDS
-            if sid in bundle.by_strategy
-        ]
+        # 연금 → 일반 순
+        acct_order = (ACCOUNT_PENSION, ACCOUNT_TAXABLE)
+        items = []
+        for acct in acct_order:
+            for sid in OPS_STACK_IDS:
+                if STRATEGY_ACCOUNT.get(sid) != acct:
+                    continue
+                if sid in bundle.by_strategy:
+                    items.append((sid, bundle.by_strategy.get(sid, [])))
     else:
         items = list(bundle.by_strategy.items())
         if skip_static_book_alias:
             items = [(sid, cs) for sid, cs in items if sid != "static_book"]
+    port_mode = bool(ops_stack_only and strategy_id is None)
     for sid, cands in items:
         for c in cands or []:
             w = "—" if c.weight_pct is None else f"{float(c.weight_pct):g}%"
-            rows.append(
-                {
-                    "전략": c.strategy_label or sid or "",
-                    "역할": c.role,
-                    "종목": c.name,
-                    "티커": c.ticker,
-                    "비중": w,
-                    "비고": (c.note or "")[:48],
-                    "_sid": str(sid or c.strategy_id or ""),
-                }
-            )
+            row: dict[str, str] = {
+                "전략": c.strategy_label or sid or "",
+                "역할": c.role,
+                "종목": c.name,
+                "티커": c.ticker,
+                "비중": w,
+                "비고": (c.note or "")[:48],
+                "_sid": str(sid or c.strategy_id or ""),
+            }
+            if port_mode:
+                acct = c.account_id or STRATEGY_ACCOUNT.get(
+                    sid or c.strategy_id, ACCOUNT_TAXABLE
+                )
+                row["계좌"] = ACCOUNT_LABEL_KO.get(acct, acct)
+                row["_acct"] = acct
+                if c.account_pct is None:
+                    row["계좌%"] = "—"
+                    row["_acct_pct"] = ""
+                else:
+                    row["계좌%"] = f"{float(c.account_pct):g}%"
+                    row["_acct_pct"] = str(float(c.account_pct))
+                if c.portfolio_pct is None:
+                    row["가계%"] = "—"
+                    row["포트%"] = "—"
+                    row["_port"] = ""
+                else:
+                    row["가계%"] = f"{float(c.portfolio_pct):g}%"
+                    row["포트%"] = row["가계%"]  # 하위호환
+                    row["_port"] = str(float(c.portfolio_pct))
+            rows.append(row)
     return rows
 
 
@@ -431,10 +716,11 @@ def candidates_section_html(
         ops_stack_only=ops_stack_only if strategy_id is None else False,
         skip_static_book_alias=not ops_stack_only,
     )
+    port_mode = bool(ops_stack_only and strategy_id is None)
     tip_stack = (
-        "추천 스택: 본체(나침반적합) · 듀얼 선택위성 · Soft · 단기 · "
-        "합산 집행 금지 · target 자동 없음"
-        if ops_stack_only and strategy_id is None
+        account_summary_line(bundle)
+        + " · 가계%=가계합100 · 비중=전략内 · target 자동 없음"
+        if port_mode
         else "합산 집행 금지 · Soft=포트 · ETF=앱 밖 · target 자동 없음"
     )
     if not rows:
@@ -459,16 +745,57 @@ def candidates_section_html(
             f"font-weight:700;border-left:4px solid {fg};"
             f'border-bottom:1px solid {fg}33;padding-left:0.45rem"'
         )
-        body.append(
-            f'<tr class="pf-cand-row pf-cand-theme-{escape(slug)}" '
-            f'style="background:{bg}">'
-            f'<td class="pf-cand-strat" {first}>{escape(r["전략"])}</td>'
-            f"<td {cell}>{escape(r['역할'])}</td>"
-            f"<td {cell}>{escape(r['종목'])}</td>"
-            f"<td {cell}>{escape(r['티커'])}</td>"
-            f"<td {cell}>{escape(r['비중'])}</td>"
-            f'<td class="pf-env-muted" {cell}>{escape(r["비고"])}</td>'
-            f"</tr>"
+        if port_mode:
+            body.append(
+                f'<tr class="pf-cand-row pf-cand-theme-{escape(slug)}" '
+                f'style="background:{bg}">'
+                f'<td class="pf-cand-strat" {first}>{escape(r["계좌"])}</td>'
+                f"<td {cell}>{escape(r['계좌%'])}</td>"
+                f"<td {cell}>{escape(r.get('가계%') or r['포트%'])}</td>"
+                f"<td {cell}>{escape(r['전략'])}</td>"
+                f"<td {cell}>{escape(r['역할'])}</td>"
+                f"<td {cell}>{escape(r['종목'])}</td>"
+                f"<td {cell}>{escape(r['티커'])}</td>"
+                f"<td {cell}>{escape(r['비중'])}</td>"
+                f'<td class="pf-env-muted" {cell}>{escape(r["비고"])}</td>'
+                f"</tr>"
+            )
+        else:
+            body.append(
+                f'<tr class="pf-cand-row pf-cand-theme-{escape(slug)}" '
+                f'style="background:{bg}">'
+                f'<td class="pf-cand-strat" {first}>{escape(r["전략"])}</td>'
+                f"<td {cell}>{escape(r['역할'])}</td>"
+                f"<td {cell}>{escape(r['종목'])}</td>"
+                f"<td {cell}>{escape(r['티커'])}</td>"
+                f"<td {cell}>{escape(r['비중'])}</td>"
+                f'<td class="pf-env-muted" {cell}>{escape(r["비고"])}</td>'
+                f"</tr>"
+            )
+    if port_mode:
+        head = (
+            "<thead><tr>"
+            '<th style="text-align:left;padding:0.35rem">계좌</th>'
+            '<th style="text-align:left;padding:0.35rem">계좌%</th>'
+            '<th style="text-align:left;padding:0.35rem">가계%</th>'
+            '<th style="text-align:left;padding:0.35rem">전략</th>'
+            '<th style="text-align:left;padding:0.35rem">역할</th>'
+            '<th style="text-align:left;padding:0.35rem">종목</th>'
+            '<th style="text-align:left;padding:0.35rem">티커</th>'
+            '<th style="text-align:left;padding:0.35rem">비중</th>'
+            '<th style="text-align:left;padding:0.35rem">비고</th>'
+            "</tr></thead>"
+        )
+    else:
+        head = (
+            "<thead><tr>"
+            '<th style="text-align:left;padding:0.35rem">전략</th>'
+            '<th style="text-align:left;padding:0.35rem">역할</th>'
+            '<th style="text-align:left;padding:0.35rem">종목</th>'
+            '<th style="text-align:left;padding:0.35rem">티커</th>'
+            '<th style="text-align:left;padding:0.35rem">비중</th>'
+            '<th style="text-align:left;padding:0.35rem">비고</th>'
+            "</tr></thead>"
         )
     return (
         '<div class="pf-strat-cands" role="region">'
@@ -479,14 +806,7 @@ def candidates_section_html(
         f"{_legend_html(slugs_used)}"
         '<table class="pf-hh-lab-table pf-cand-table" '
         'style="width:100%;border-collapse:collapse">'
-        "<thead><tr>"
-        '<th style="text-align:left;padding:0.35rem">전략</th>'
-        '<th style="text-align:left;padding:0.35rem">역할</th>'
-        '<th style="text-align:left;padding:0.35rem">종목</th>'
-        '<th style="text-align:left;padding:0.35rem">티커</th>'
-        '<th style="text-align:left;padding:0.35rem">비중</th>'
-        '<th style="text-align:left;padding:0.35rem">비고</th>'
-        "</tr></thead><tbody>"
+        f"{head}<tbody>"
         + "".join(body)
         + "</tbody></table>"
         f'<div class="pf-hh-tip">{escape(tip_stack)}</div>'
@@ -517,9 +837,18 @@ def render_candidates_section(
 
 
 __all__ = [
+    "ACCOUNT_BUDGET_PCT",
+    "ACCOUNT_LABEL_KO",
+    "ACCOUNT_PENSION",
+    "ACCOUNT_TAXABLE",
+    "OPS_STACK_BUDGET_PCT",
     "OPS_STACK_IDS",
+    "STRATEGY_ACCOUNT",
     "StrategyCandidate",
     "StrategyCandidatesBundle",
+    "account_summary_line",
+    "attach_account_split_pct",
+    "attach_ops_stack_portfolio_pct",
     "build_strategy_candidates",
     "candidates_section_html",
     "candidates_table_rows",

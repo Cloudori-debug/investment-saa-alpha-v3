@@ -36,7 +36,10 @@ CLI: `scripts/run_l3_crash_backtest.py --fear-soft`
 
 - 극단 공포 = **관찰·자세** · 매수 트리거 아님  
 - Soft 사이즈·신규는 **실질금리·신용·물가 경로**와 함께 Review (공포 단독 우위 가정 금지)  
-- 학습: [`research/strategies/youtube-2026-fear-vs-rate-path.md`](research/strategies/youtube-2026-fear-vs-rate-path.md)  
+- System 1(패닉·대박 가용성) ≠ Soft 사이즈↑ · 원칙은 Fear Soft·배지 Review  
+- **역발상 Soft:** Fear는 허가증이 아니라 **브레이크** · `Fear ⇏ Buy` · 트리거로 쓰면 게이트 FAIL→대기·파킹  
+  ([`research/strategies/contrarian-soft-gate-theory.md`](research/strategies/contrarian-soft-gate-theory.md) · [`ACCOUNT_SPLIT_OPS_SPEC.md`](ACCOUNT_SPLIT_OPS_SPEC.md))  
+- 학습: [`research/strategies/youtube-2026-fear-vs-rate-path.md`](research/strategies/youtube-2026-fear-vs-rate-path.md) · [`research/strategies/youtube-2026-kahneman-fast-slow.md`](research/strategies/youtube-2026-kahneman-fast-slow.md)  
 - **듀얼 시그널에 미사용** (상대→절대 vs 달러단기만)
 
 ## 금지

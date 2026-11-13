@@ -49,10 +49,39 @@ def test_build_includes_soft_and_etf() -> None:
     assert "static_book" in stack_sids
     assert "mid_soft" in stack_sids
     assert "sixty_forty" not in stack_sids
+    assert "계좌" in stack_rows[0]
+    assert "계좌%" in stack_rows[0]
+    assert "가계%" in stack_rows[0]
+    assert "포트%" in stack_rows[0]  # 하위호환=가계%
+    assert "비중" in stack_rows[0]
+    assert "전략" in stack_rows[0]
+    port_sum = sum(float(r["_port"]) for r in stack_rows if r.get("_port"))
+    assert abs(port_sum - 100.0) < 0.15
+    # Soft 12% · E50 → 개별 합 6 · 삼성전자만이면 가계% 6 · 일반 계좌内 40
+    soft_row = next(r for r in stack_rows if r["티커"] == "005930")
+    assert float(soft_row["_port"]) == 6.0
+    assert soft_row["계좌"] == "일반"
+    assert abs(float(soft_row["_acct_pct"]) - 40.0) < 0.05  # 6/15*100
+    assert soft_row["비중"].endswith("%")
+    # 계좌内 합=100
+    for acct in ("pension", "taxable"):
+        acct_sum = sum(
+            float(r["_acct_pct"])
+            for r in stack_rows
+            if r.get("_acct") == acct and r.get("_acct_pct")
+        )
+        assert abs(acct_sum - 100.0) < 0.2
+    # 연금 행이 일반보다 앞에
+    first_tax = next(i for i, r in enumerate(stack_rows) if r.get("_acct") == "taxable")
+    assert all(r.get("_acct") == "pension" for r in stack_rows[:first_tax])
     html = candidates_section_html(b, title="전략별 투자 후보", ops_stack_only=True)
+    assert "계좌%" in html
+    assert "가계%" in html
+    assert "연금·ISA" in html
+    assert ">비중<" in html
     assert "pf-cand-theme-soft" in html
     assert "pf-cand-theme-static-pick" in html
-    assert "추천 스택" in html
+    assert "계좌 이분" in html
     assert "pf-cand-legend" in html
     assert "본체(나침반적합)" in html
     assert "60/40" not in html  # Lab 후보 미표시
