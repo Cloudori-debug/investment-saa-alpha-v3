@@ -35,6 +35,13 @@ FUNDAMENTALS_COLUMNS = [
     "is_spac",
     "is_managed",
     "is_halted",
+    # OpenDART absolute / meta (filled on watch enrich; empty on stub)
+    "equity",
+    "total_assets",
+    "total_liabilities",
+    "fs_div",
+    "bsns_year",
+    "reprt_code",
 ]
 
 
@@ -106,6 +113,12 @@ def export_fundamentals_template(
                 "is_spac": "false",
                 "is_managed": "false",
                 "is_halted": "false",
+                "equity": "",
+                "total_assets": "",
+                "total_liabilities": "",
+                "fs_div": "",
+                "bsns_year": "",
+                "reprt_code": "",
             }
         )
     return pd.DataFrame(rows, columns=FUNDAMENTALS_COLUMNS)
@@ -189,6 +202,12 @@ def sync_liquid_fundamentals_stubs(
                 "is_spac": "false",
                 "is_managed": "false",
                 "is_halted": "false",
+                "equity": "",
+                "total_assets": "",
+                "total_liabilities": "",
+                "fs_div": "",
+                "bsns_year": "",
+                "reprt_code": "",
             }
         )
 
@@ -250,16 +269,18 @@ def strip_stub_quality_placeholders(df: pd.DataFrame) -> pd.DataFrame:
     if "debt_ratio" in work.columns:
         work.loc[stub, "debt_ratio"] = pd.NA
     if "is_financial" in work.columns:
+        from src.gate import FINANCIAL_MARKERS
+
         blob = pd.Series("", index=work.index)
-        for col in ("sector", "sector_group", "krx_sector", "internal_sector"):
+        for col in ("sector", "sector_group", "krx_sector", "internal_sector", "name"):
             if col in work.columns:
                 blob = blob + " " + work[col].astype(str)
         blob = blob.str.lower()
-        markers = ("은행", "보험", "증권", "금융", "financial", "insurance", "broker")
         fin = False
-        for marker in markers:
+        for marker in FINANCIAL_MARKERS:
             fin = fin | blob.str.contains(marker, regex=False)
-        work.loc[stub & fin, "is_financial"] = True
+        # Stub and DART rows often ship is_financial=false; mark all sector/name hits.
+        work.loc[fin, "is_financial"] = True
     return work
 
 

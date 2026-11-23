@@ -20,6 +20,45 @@ def _bool(val) -> bool:
     return str(val).strip().lower() in {"true", "1", "yes", "y"}
 
 
+# Sector/name markers for leverage-exempt financials (banks, insurers, brokers).
+# Avoid bare "해상" (shipping false positive); "보험"/"화재" cover 현대해상·삼성화재.
+FINANCIAL_MARKERS = (
+    "은행",
+    "보험",
+    "증권",
+    "금융",
+    "화재",
+    "financial",
+    "insurance",
+    "broker",
+    "bank",
+)
+
+
+def infer_is_financial(row: pd.Series | dict) -> bool:
+    """True when flag or sector/name marks a financial issuer."""
+    if _bool(row.get("is_financial")):
+        return True
+    parts: list[str] = []
+    for col in (
+        "sector",
+        "sector_group",
+        "krx_sector",
+        "internal_sector",
+        "name",
+    ):
+        val = row.get(col)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            continue
+        text = str(val).strip()
+        if text and text.lower() not in {"nan", "none"}:
+            parts.append(text.lower())
+    blob = " ".join(parts)
+    if not blob:
+        return False
+    return any(marker in blob for marker in FINANCIAL_MARKERS)
+
+
 def apply_gate(row: pd.Series, gate_cfg: dict) -> GateResult:
     ticker = str(row.get("ticker", ""))
     reasons: list[str] = []
@@ -30,8 +69,10 @@ def apply_gate(row: pd.Series, gate_cfg: dict) -> GateResult:
         reasons.append("managed_halted")
 
     market_cap = row.get("market_cap")
-    cap_min = float(gate_cfg.get("market_cap_min", 0))
-    if market_cap is None or pd.isna(market_cap) or float(market_cap) < cap_min:
+    cap_min = float(gate_cfg.get("market_cap_min", 0) or 0)
+    if cap_min > 0 and (
+        market_cap is None or pd.isna(market_cap) or float(market_cap) < cap_min
+    ):
         reasons.append("low_market_cap")
 
     avg_tv = row.get("avg_trading_value_20d")
@@ -46,7 +87,7 @@ def apply_gate(row: pd.Series, gate_cfg: dict) -> GateResult:
             reasons.append("consecutive_loss")
 
     debt = row.get("debt_ratio")
-    is_fin = _bool(row.get("is_financial"))
+    is_fin = infer_is_financial(row)
     debt_max = float(gate_cfg.get("debt_ratio_max", 200))
     if not is_fin and debt is not None and not pd.isna(debt) and float(debt) > debt_max:
         reasons.append("high_debt")

@@ -156,3 +156,22 @@ def test_strip_stub_quality_placeholders_drops_dummy_3y() -> None:
     dart_out = strip_stub_quality_placeholders(dart)
     assert pd.isna(dart_out.loc[0, "roe_3y_avg"])
     assert dart_out.loc[0, "debt_ratio"] == 191.18
+
+    dart_fin = pd.DataFrame(
+        [
+            {
+                "ticker": "001450",
+                "name": "현대해상",
+                "source": "opendart_watch",
+                "verified": "dart",
+                "roe": 19.77,
+                "roe_3y_avg": 10.0,
+                "debt_ratio": 651.2,
+                "sector": "손해보험",
+                "is_financial": False,
+            }
+        ]
+    )
+    dart_fin_out = strip_stub_quality_placeholders(dart_fin)
+    assert bool(dart_fin_out.loc[0, "is_financial"]) is True
+    assert dart_fin_out.loc[0, "debt_ratio"] == 651.2
