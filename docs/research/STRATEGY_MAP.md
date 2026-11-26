@@ -9,10 +9,11 @@
 | 정적 배분 (달러축) | 가계 본체 · 앱 밖 | [strategies/static-all-weather.md](strategies/static-all-weather.md) · 상관 Review | `household_static_alloc.yaml` · Lab · `corr_review` |
 | 듀얼 모멘텀 (GEM) | 월 전량 1종 · 앱 밖 | [strategies/dual-momentum-gem.md](strategies/dual-momentum-gem.md) | 전략 › 듀얼 |
 | 경제 나침반 국면·자세 | 태도 Review · 순위 불변 | [strategies/economy-compass-regime.md](strategies/economy-compass-regime.md) | `ECONOMY_COMPASS` |
-| 변동성·위기 대응 | 사이즈↓ · 전량 전략교체 금지 · 공포매수≠우위 | [strategies/volatility-and-crash.md](strategies/volatility-and-crash.md) · [strategies/youtube-2026-fear-vs-rate-path.md](strategies/youtube-2026-fear-vs-rate-path.md) · [strategies/youtube-2026-hongchunuk-h2-hard-landing-aa.md](strategies/youtube-2026-hongchunuk-h2-hard-landing-aa.md) | L3 · Fear Soft · short vol · AA 재균형 Soft |
+| 변동성·위기 대응 | 사이즈↓ · 전량 전략교체 금지 · 공포매수≠우위 | [strategies/volatility-and-crash.md](strategies/volatility-and-crash.md) · [strategies/youtube-2026-fear-vs-rate-path.md](strategies/youtube-2026-fear-vs-rate-path.md) · [strategies/youtube-2026-hongchunuk-h2-hard-landing-aa.md](strategies/youtube-2026-hongchunuk-h2-hard-landing-aa.md) · [strategies/youtube-20261124-nvda-jensen-return-bond-diverge.md](strategies/youtube-20261124-nvda-jensen-return-bond-diverge.md) | L3 · Fear Soft · short vol · AA 재균형 Soft · 주채 괴리 |
 | 행동편향·원칙매뉴얼 | 처분효과·과신·가용성 → Soft/배지 Review | [strategies/youtube-2026-kahneman-fast-slow.md](strategies/youtube-2026-kahneman-fast-slow.md) | BUY_SELL_MAP · Fear Soft · target 사람 |
 | 역발상 Soft 게이트 | Fear≠매수 · 가치·해부·분할 AND | [strategies/contrarian-soft-gate-theory.md](strategies/contrarian-soft-gate-theory.md) | ACCOUNT_SPLIT_OPS · Fear Soft · 유니버스 할 일 |
-| 부채전가·마지막매수자 | 현금=시간 · FCF·만기 · Soft 추격금지 | [strategies/parkhonggi-2026-last-buyer-compound-slump.md](strategies/parkhonggi-2026-last-buyer-compound-slump.md) · [strategies/parkhonggi-20261105-high-rate-curse.md](strategies/parkhonggi-20261105-high-rate-curse.md) · [strategies/parkhonggi-20261112-fed-bigstep-cash-dividend.md](strategies/parkhonggi-20261112-fed-bigstep-cash-dividend.md) | stance Soft50/50 · compass · 본질 · 연준 Soft |
+| 부채전가·마지막매수자 | 현금=시간 · FCF·만기 · Soft 추격금지 | [strategies/parkhonggi-2026-last-buyer-compound-slump.md](strategies/parkhonggi-2026-last-buyer-compound-slump.md) · [strategies/parkhonggi-20261105-high-rate-curse.md](strategies/parkhonggi-20261105-high-rate-curse.md) · [strategies/parkhonggi-20261112-fed-bigstep-cash-dividend.md](strategies/parkhonggi-20261112-fed-bigstep-cash-dividend.md) · [strategies/parkhonggi-20261116-semiconductor-shock-dividend-ma.md](strategies/parkhonggi-20261116-semiconductor-shock-dividend-ma.md) · [strategies/youtube-20261122-fed-risk-treasury-theme.md](strategies/youtube-20261122-fed-risk-treasury-theme.md) | stance Soft50/50 · 정적인컴10% · Soft오늘≤2 · 연준 Soft · 테마관찰 |
+| 자사주·행동주의 테마 | Soft 이원 Review 매매 · 승격 picks · Soft 비가산 | [strategies/youtube-20261122-fed-risk-treasury-theme.md](strategies/youtube-20261122-fed-risk-treasury-theme.md) · [strategies/koizumi-kr-hakedaka-scenario.md](strategies/koizumi-kr-hakedaka-scenario.md) | [`TREASURY_ACTIVIST_EXEC_SPEC.md`](../TREASURY_ACTIVIST_EXEC_SPEC.md) · [`TREASURY_ACTIVIST_OBSERVE.md`](../TREASURY_ACTIVIST_OBSERVE.md) · 시나리오 Lab JSON |
 | 한국 CPI·한은 Soft시계 | 이중파동·인상후 동결 · 일정≠신호 | [strategies/parkhonggi-2026-kr-cpi-dual-peak-bok.md](strategies/parkhonggi-2026-kr-cpi-dual-peak-bok.md) | policy_timeline · Fear Soft |
 | 계절성 (참고) | 단독 트리거 금지 | [strategies/seasonality-halloween.md](strategies/seasonality-halloween.md) | — |
 | 기업해부(박홍기) | 오늘 2~3종 Review | (프로세스) `GIEOP_*` · [parkhonggi-20261105…](strategies/parkhonggi-20261105-high-rate-curse.md) | Soft 점수 비가산 · 시총 비정렬 |
@@ -22,6 +23,8 @@
 | 쓴다 (매매·보유) | 안 쓴다 (관찰만) |
 |------------------|------------------|
 | 중기 Soft 편입 · 실보유 · 팔 Review | 후보풀 · 정성게이트만 · Lab CAGR · 전략 비교표 |
+| Soft 보드 묶음(합격선·다른후보·정밀·다음순매수) | **전략›중기 Soft** · 포트는 집행만 |
+| 자사주·행동주의 승격·해부 | **전략›자사주·행동주의 / 박홍기** · 포트는 행동주의 집행 블록 |
 | 할 일 사/유지/팔 · 하루≤33% | Soft+정적+듀얼 합산 주문 |
 | Soft 공백 → 단기채 파킹 | target 자동기입 |
 | 계좌별 할 일·역발상 게이트 Review | 증권·연금 API · 저P Soft 자동편입 |

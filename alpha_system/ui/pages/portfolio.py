@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date as _date
 from pathlib import Path
+from typing import Any
 
 import html
 import pandas as pd
@@ -48,7 +49,7 @@ from alpha_system.ui.services.sector_regime_fit import (
 
 # 레짐 보완 후보 박스는 기회비용(주의·슬롯)만 키워 제거.
 # 국면적합 열은 후보30 안에서만 Review 힌트로 유지.
-from alpha_system.ui.services.approval_chrome import page_head
+from alpha_system.ui.services.approval_chrome import page_head, page_tabs
 from alpha_system.ui.services.ui_copy import copy_get
 from alpha_system.ui.services.screen_market import render_screen_market_nav
 from alpha_system.screen_book import (
@@ -133,6 +134,754 @@ def _pair_mid_short_ctx(
     return mid_ctx, short_ctx
 
 
+def _peer_market_mid_rows(
+    root: Path,
+    market: str,
+    *,
+    current_mid_rows: list[PortfolioRow] | None = None,
+) -> tuple[list[PortfolioRow], list[PortfolioRow]]:
+    """KOSPI/KOSDAQ mid Soft rows for combined budget strip (no ranking merge)."""
+    from alpha_system.ui.services.context import load_context
+
+    m = str(market or "KOSPI").strip().upper()
+    cur = list(current_mid_rows or [])
+    try:
+        if m.startswith("KOSDAQ"):
+            kosdaq = cur
+            kospi = list(
+                load_context(root, market="KOSPI", horizon="mid").portfolio_rows or []
+            )
+        else:
+            kospi = cur
+            kosdaq = list(
+                load_context(root, market="KOSDAQ", horizon="mid").portfolio_rows or []
+            )
+    except Exception:  # noqa: BLE001
+        if m.startswith("KOSDAQ"):
+            return [], cur
+        return cur, []
+    return kospi, kosdaq
+
+
+def _desk_records(
+    ctx: DashboardContext,
+    *,
+    holdings_in_proposal_only: bool = False,
+    sleeve: str = "중기",
+) -> list[dict[str, object]]:
+    """One decision row per name. Scores stay on 확인."""
+    from alpha_system.ui.services.trade_desk import (
+        ACTION_BUY,
+        ACTION_CLEAR,
+        ACTION_HOLD,
+        ACTION_SELL,
+        ACTION_TRIM,
+        build_trade_desk,
+        load_close_series,
+        load_snapshot_prices,
+    )
+
+    proposal: list[tuple[str, str, float | None]] = []
+    live: dict[str, float] = {}
+    target_ok: dict[str, bool] = {}
+    for row in list(ctx.portfolio_rows or []):
+        tk = str(getattr(row, "ticker", "") or "").strip()
+        if not tk:
+            continue
+        px = getattr(row, "current_price", None)
+        try:
+            price = float(px) if px is not None else None
+        except (TypeError, ValueError):
+            price = None
+        proposal.append((tk, str(getattr(row, "name", "") or tk), price))
+        nk = tk.zfill(6) if tk.isdigit() else tk
+        if price is not None and price > 0:
+            live[nk] = price
+        tp = getattr(row, "target_price", None)
+        try:
+            tp_ok = float(tp) > 0 if tp is not None else False
+        except (TypeError, ValueError):
+            tp_ok = False
+        target_ok[nk] = bool(getattr(row, "has_target", False)) and tp_ok
+    holdings: list[tuple[str, str, float]] = []
+    proposal_ids = {
+        (t.zfill(6) if t.isdigit() else t) for t, _, _ in proposal
+    }
+    for row in _saved_kr_alpha_rows(ctx):
+        tk = str(row["ticker"])
+        if holdings_in_proposal_only and tk not in proposal_ids:
+            continue
+        holdings.append((tk, str(row["name"]), float(row["quantity"])))
+    tickers = {
+        (t.zfill(6) if t.isdigit() else t)
+        for t, _, _ in proposal + holdings
+    }
+    closes = load_close_series(Path(ctx.root), tickers)
+    live.update(load_snapshot_prices(Path(ctx.root), tickers))
+    desk = build_trade_desk(
+        proposal=proposal,
+        holdings=holdings,
+        closes_by_ticker=closes,
+        live_price=live,
+    )
+    weights = _proposal_weight_by_ticker(ctx)
+    mid_soft = str(sleeve).startswith("중기")
+    soft_hints: dict[str, Any] = {}
+    if mid_soft:
+        try:
+            from alpha_system.proposal_chart import norm_ticker
+            from alpha_system.ui.services.alpha_book_ops import (
+                load_alpha_book_ops,
+                today_buy_names_max,
+            )
+            from alpha_system.ui.services.soft_trade_priority import (
+                hints_by_ticker,
+                rank_soft_trade_hints,
+            )
+
+            held_set = {
+                tk
+                for t, _, _ in holdings
+                if (tk := norm_ticker(t))
+            }
+            today_n = int(
+                today_buy_names_max(policy=load_alpha_book_ops(Path(ctx.root)))
+            )
+            soft_hints = hints_by_ticker(
+                rank_soft_trade_hints(
+                    list(ctx.portfolio_rows or []),
+                    held=held_set,
+                    today_buy_max=today_n,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            soft_hints = {}
+
+    action_ord = {
+        ACTION_SELL: 0,
+        ACTION_TRIM: 1,
+        ACTION_CLEAR: 2,
+        ACTION_HOLD: 3,
+        ACTION_BUY: 4,
+        "보류": 5,
+    }
+    out: list[dict[str, object]] = []
+    for row in desk:
+        weight = weights.get(row.ticker)
+        action = row.action
+        signal = row.signal
+        human = ""
+        pri: int | None = None
+        if mid_soft and action == ACTION_BUY:
+            from alpha_system.proposal_chart import norm_ticker as _nt
+
+            hint = soft_hints.get(_nt(row.ticker) or row.ticker)
+            if hint is None:
+                hint = soft_hints.get(row.ticker)
+            if hint is not None:
+                pri = int(hint.rank)
+                human = hint.human_ko
+                signal = hint.human_ko
+                if hint.stance in ("보류", "패스") or not hint.today_slot:
+                    action = "보류"
+                else:
+                    action = ACTION_BUY
+            elif not target_ok.get(row.ticker, False):
+                action = "보류"
+                signal = "목표가 없음 · 사기 금지"
+                human = signal
+            else:
+                human = "미정 · 살지/보류/패스"
+        elif mid_soft and action == ACTION_HOLD:
+            human = "보유 · 배지·월 Review"
+        elif mid_soft and action in (ACTION_SELL, ACTION_TRIM, ACTION_CLEAR):
+            human = "배지만 집행 · Soft 순위 추종 금지"
+        elif not mid_soft:
+            human = "단기 · Soft와 섞지 않음"
+        out.append(
+            {
+                "우선": pri,
+                "할 일": action,
+                "구분": sleeve,
+                "종목": row.name,
+                "코드": row.ticker,
+                "보유": row.held,
+                "제안": row.proposal,
+                "비중": round(weight, 1) if weight is not None else None,
+                "현재가": row.price,
+                "신호": signal,
+                "사람": human or "—",
+            }
+        )
+    out.sort(
+        key=lambda r: (
+            action_ord.get(str(r.get("할 일") or ""), 50),
+            int(r["우선"]) if isinstance(r.get("우선"), int) else 999,
+            str(r.get("종목") or ""),
+        )
+    )
+    return out
+
+
+def _render_trade_desk(
+    ctx: DashboardContext, *, holdings_in_proposal_only: bool = False
+) -> None:
+    """Single-sleeve desk. The page uses _render_today_book so a name appears once."""
+    rows = _desk_records(
+        ctx,
+        holdings_in_proposal_only=holdings_in_proposal_only,
+    )
+    if not rows:
+        st.info("이 장부에 제안·보유가 없습니다.")
+        return
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def _activist_desk_records(ctx: DashboardContext) -> list[dict[str, object]]:
+    """행동주의 Review 제안·보유 → 오늘 매매 행 (Soft와 이원)."""
+    if is_short(getattr(ctx, "screen_horizon", None)):
+        return []
+    root = Path(getattr(ctx, "root", ".") or ".")
+    mkt = str(getattr(ctx, "screen_market", None) or "KOSPI")
+    try:
+        from alpha_system.review.treasury_activist_proposal import (
+            build_activist_proposal,
+            load_activist_held_tickers,
+        )
+        from alpha_system.ui.services.alpha_book_ops import (
+            activist_today_buy_names_max,
+            load_alpha_book_ops,
+        )
+        from alpha_system.ui.services.trade_desk import (
+            ACTION_BUY,
+            ACTION_HOLD,
+            ACTION_SELL,
+            load_snapshot_prices,
+        )
+
+        from alpha_system.proposal_chart import norm_ticker as _norm_tk
+
+        soft_tks = [
+            tk
+            for r in (ctx.portfolio_rows or [])
+            if (tk := _norm_tk(getattr(r, "ticker", None)))
+        ]
+        pol = load_alpha_book_ops(root)
+        board = build_activist_proposal(
+            root,
+            market=mkt,
+            soft_tickers=soft_tks,
+            today_buy_names_max=int(activist_today_buy_names_max(policy=pol)),
+        )
+        held = {
+            tk
+            for raw in load_activist_held_tickers(
+                root, positions_path=Path(ctx.data_dir) / "positions.csv"
+            )
+            if (tk := _norm_tk(raw))
+        }
+    except Exception:  # noqa: BLE001
+        return []
+
+    from alpha_system.proposal_chart import norm_ticker as _norm_tk
+    from alpha_system.ui.services.soft_trade_priority import (
+        activist_human_default,
+    )
+
+    prop_by = {_norm_tk(r.ticker) or r.ticker: r for r in board.rows}
+    # 승격·제안 순서 우선 · 보유만 있는 종목은 뒤
+    ordered: list[str] = []
+    seen_tk: set[str] = set()
+    for r in board.rows:
+        tk = _norm_tk(r.ticker) or r.ticker
+        if tk and tk not in seen_tk:
+            ordered.append(tk)
+            seen_tk.add(tk)
+    for tk in sorted(held):
+        if tk not in seen_tk:
+            ordered.append(tk)
+            seen_tk.add(tk)
+    if not ordered:
+        return []
+    live = load_snapshot_prices(root, set(ordered))
+    today_a = int(activist_today_buy_names_max(policy=pol))
+    buy_new = [tk for tk in ordered if tk in prop_by and tk not in held]
+    buy_rank = {tk: i for i, tk in enumerate(buy_new, start=1)}
+    out: list[dict[str, object]] = []
+    for tk in ordered:
+        row = prop_by.get(tk)
+        name = str(getattr(row, "name", None) or tk) if row else tk
+        in_prop = tk in prop_by
+        in_held = tk in held
+        if in_prop and in_held:
+            action = ACTION_HOLD
+            human = "보유 · Soft와 합산 금지"
+            pri: int | None = None
+        elif in_prop:
+            rank = buy_rank.get(tk)
+            if rank is not None and rank <= today_a:
+                action = ACTION_BUY
+                human = activist_human_default(
+                    today_rank=rank, today_max=today_a
+                )
+                pri = rank
+            else:
+                action = "보류"
+                human = activist_human_default(today_rank=None, today_max=today_a)
+                pri = rank
+        else:
+            action = ACTION_SELL
+            human = "촉매 종료 Review · Soft와 합산 금지"
+            pri = None
+        w = float(getattr(row, "of_mid_soft_pct", 0) or 0) if row else None
+        out.append(
+            {
+                "우선": pri,
+                "할 일": action,
+                "구분": "행동주의",
+                "종목": name,
+                "코드": tk,
+                "보유": "Y" if in_held else "",
+                "제안": "Y" if in_prop else "",
+                "비중": round(w, 2) if w is not None else None,
+                "현재가": live.get(tk),
+                "신호": (
+                    f"Soft대비 {w:g}%"
+                    if w is not None
+                    else "보유만 · 촉매 Review"
+                ),
+                "사람": human,
+            }
+        )
+    return out
+
+
+def _render_dual_sleeve_caption(ctx: DashboardContext) -> None:
+    """Soft 75 · 행동주의 25 한 줄 (포트 집행 안내)."""
+    root = Path(getattr(ctx, "root", ".") or ".")
+    theme_pct = 25.0
+    soft_n = len(ctx.portfolio_rows or [])
+    act_n = 0
+    try:
+        from alpha_system.review.treasury_activist_proposal import (
+            build_activist_proposal,
+        )
+        from alpha_system.review.treasury_activist_sizing import load_sizing_raw
+
+        raw = load_sizing_raw(root)
+        theme_pct = float(raw.get("theme_of_mid_soft_pct") or 50)
+        soft_tks = [
+            str(getattr(r, "ticker", "") or "").zfill(6)
+            for r in (ctx.portfolio_rows or [])
+            if str(getattr(r, "ticker", "") or "").strip("0")
+        ]
+        act_n = len(
+            build_activist_proposal(
+                root,
+                market=str(getattr(ctx, "screen_market", None) or "KOSPI"),
+                soft_tickers=soft_tks,
+            ).rows
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    soft_pct = max(0.0, 100.0 - theme_pct)
+    st.markdown(
+        f'<div class="pf-hh-tip" role="note">'
+        f"<b>중기 반반</b> · 팩터 Soft ≈{soft_pct:g}% ({soft_n}종) · "
+        f"하케다카 ≈{theme_pct:g}% ({act_n}종) · "
+        f"겹치면 Soft 우선 · 합산 주문 금지 · HTS Review"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _desk_rows_tsv(rows: list[dict[str, object]]) -> str:
+    """오늘 매매 행 → 탭 구분 텍스트 (표 칸 복사가 막힐 때 HTS 메모용)."""
+    if not rows:
+        return ""
+    cols = list(rows[0].keys())
+    lines = ["\t".join(cols)]
+    for row in rows:
+        lines.append(
+            "\t".join(
+                "" if row.get(c) is None else str(row.get(c)) for c in cols
+            )
+        )
+    return "\n".join(lines)
+
+
+def _desk_rows_csv_bytes(rows: list[dict[str, object]]) -> bytes:
+    """오늘 매매 행 → UTF-8 BOM CSV (엑셀·메모장)."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    if not rows:
+        return buf.getvalue().encode("utf-8-sig")
+    cols = list(rows[0].keys())
+    writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(
+            {c: ("" if row.get(c) is None else row.get(c)) for c in cols}
+        )
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _render_today_book_copy(rows: list[dict[str, object]]) -> None:
+    """st.dataframe은 칸 드래그 복사가 잘 안 됨 → TSV·CSV 병행."""
+    with st.expander("표 복사 · HTS 메모용", expanded=False):
+        st.caption(
+            "위 표는 Streamlit 표라 칸을 드래그해 복사하기 어렵습니다. "
+            "아래 텍스트를 드래그하거나 CSV를 받으세요."
+        )
+        st.code(_desk_rows_tsv(rows), language=None)
+        st.download_button(
+            "오늘 매매 CSV",
+            data=_desk_rows_csv_bytes(rows),
+            file_name="today_trades.csv",
+            mime="text/csv",
+            key="pf_today_book_csv",
+        )
+
+
+def _render_today_book(
+    mid_ctx: DashboardContext, short_ctx: DashboardContext
+) -> None:
+    """중기 Soft·행동주의·단기 할 일을 종목당 한 줄로 합친다."""
+    rows = _desk_records(mid_ctx, sleeve="중기 Soft")
+    seen = {str(row["코드"]) for row in rows}
+    for row in _activist_desk_records(mid_ctx):
+        code = str(row["코드"])
+        if code in seen:
+            # Soft 우선: 행동주의 행은 Soft에 있으면 스킵
+            continue
+        rows.append(row)
+        seen.add(code)
+    for row in _desk_records(
+        short_ctx, holdings_in_proposal_only=True, sleeve="단기"
+    ):
+        code = str(row["코드"])
+        if code in seen:
+            for kept in rows:
+                if str(kept["코드"]) == code and str(kept["구분"]).startswith(
+                    "중기"
+                ):
+                    kept["구분"] = f"{kept['구분']}·단기"
+            continue
+        rows.append(row)
+        seen.add(code)
+    st.markdown("**오늘 매매**")
+    _render_dual_sleeve_caption(mid_ctx)
+    st.caption(
+        "주문은 HTS. 우선·사람=객관 기본안(Review). "
+        "구분=중기 Soft / 행동주의 / 단기. "
+        "Soft 오늘 신규≤2 · 행동주의≤1 · Soft와 합산 금지 · "
+        "팔기=전량 · 줄이기=25% 또는 절반 · "
+        "비중=Soft는 제안% · 행동주의는 Soft대비%."
+    )
+    if not rows:
+        st.info(
+            "Soft·행동주의 제안·보유가 없습니다. "
+            "전략›승격 또는 아래에서 보유를 고르세요."
+        )
+        return
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+    _render_today_book_copy(rows)
+    act_html = _activist_ops_block_html(mid_ctx)
+    if act_html:
+        st.markdown(act_html, unsafe_allow_html=True)
+
+
+def _candidate_edit_order(
+    ctx: DashboardContext,
+) -> list[tuple[str, str, float | None]]:
+    """Scored candidates, then any held name the scoreboard does not list."""
+    ranked: list[tuple[float, str, str]] = []
+    seen: set[str] = set()
+    for row in list(ctx.scoreboard_rows or []):
+        tk = str(getattr(row, "ticker", "") or "").strip()
+        if tk.isdigit():
+            tk = tk.zfill(6)
+        if not tk or tk in seen:
+            continue
+        seen.add(tk)
+        name = str(getattr(row, "name", "") or tk)
+        score = getattr(row, "total_score", None)
+        try:
+            score_n = float(score) if score is not None else None
+        except (TypeError, ValueError):
+            score_n = None
+        ranked.append((score_n if score_n is not None else -1.0, name, tk))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    out: list[tuple[str, str, float | None]] = [
+        (tk, name, None if sort_score < 0 else sort_score)
+        for sort_score, name, tk in ranked
+    ]
+    for row in _saved_kr_alpha_rows(ctx):
+        tk = str(row["ticker"])
+        if tk not in seen:
+            out.append((tk, str(row["name"]), None))
+    return out
+
+
+_SPARK_BARS = 60
+
+
+def _extend_closes_with_snapshot(
+    closes: dict[str, list[tuple[str, float]]],
+    as_of: dict[str, str],
+    live: dict[str, float],
+) -> dict[str, list[tuple[str, float]]]:
+    """Append the snapshot close when it is newer than the replay path."""
+    if not as_of:
+        return closes
+    out = {tk: list(rows) for tk, rows in closes.items()}
+    for tk, px in live.items():
+        stamp = as_of.get(tk) or ""
+        rows = out.get(tk)
+        if not stamp or not rows or px <= 0:
+            continue
+        if rows[-1][0] < stamp:
+            rows.append((stamp, float(px)))
+        elif rows[-1][0] == stamp:
+            rows[-1] = (stamp, float(px))
+    return out
+
+
+def _sparkline(series: list[tuple[str, float]] | None) -> list[float] | None:
+    """Last closes for the in-table line. None when there is no path to draw."""
+    if not series or len(series) < 2:
+        return None
+    return [round(float(px), 2) for _, px in series[-_SPARK_BARS:]]
+
+
+def _candidate_edit_records(
+    ctx: DashboardContext,
+    qty_by: dict[str, float],
+    closes: dict[str, list[tuple[str, float]]] | None = None,
+) -> list[dict[str, object]]:
+    """Candidate rows with the fields used to judge a hold."""
+    from alpha_system.ui.services.rank_watchboard import (
+        load_sector_labels,
+        load_watch_metrics,
+    )
+
+    metrics = load_watch_metrics(ctx.root, data_dir=_source_dir(ctx))
+    sectors = load_sector_labels(Path(ctx.root))
+    weights = _proposal_weight_by_ticker(ctx)
+    by_score: dict[str, object] = {}
+    for row in list(ctx.scoreboard_rows or []):
+        tk = str(getattr(row, "ticker", "") or "").strip()
+        if tk.isdigit():
+            tk = tk.zfill(6)
+        if tk:
+            by_score[tk] = row
+    records: list[dict[str, object]] = []
+    for tk, name, score in _candidate_edit_order(ctx):
+        row = by_score.get(tk)
+        slot = metrics.get(tk) or {}
+        price = slot.get("price")
+        target = slot.get("target")
+        upside = None
+        if price and target and float(price) > 0:
+            upside = (float(target) - float(price)) / float(price) * 100
+        eligible = getattr(row, "eligibility", None) if row is not None else None
+        if eligible is True:
+            elig = "예"
+        elif eligible is False:
+            elig = "아니오"
+        else:
+            elig = "—"
+        weight = weights.get(tk)
+        records.append(
+            {
+                "보유": tk in qty_by,
+                "종목": name,
+                "코드": tk,
+                "일봉": _sparkline((closes or {}).get(tk)),
+                "차트": naver_fchart_url(tk),
+                "제안": "예" if weight is not None else "—",
+                "비중": round(weight, 1) if weight is not None else None,
+                "합계": score,
+                "품질": getattr(row, "score_q", None) if row is not None else None,
+                "가치": getattr(row, "score_v", None) if row is not None else None,
+                "환원": getattr(row, "score_sr", None) if row is not None else None,
+                "적격": elig,
+                "섹터": sectors.get(tk) or (getattr(row, "sector", "") if row is not None else "") or "—",
+                "PER": slot.get("per"),
+                "PBR": slot.get("pbr"),
+                "ROE": slot.get("roe"),
+                "배당%": slot.get("dividend_yield"),
+                "현재가": price,
+                "목표가": target,
+                "여유%": round(upside, 1) if upside is not None else None,
+                "수량": qty_by.get(tk, 0.0),
+            }
+        )
+    return records
+
+
+def _render_editor_chart(
+    order_rows: list[tuple[str, str, float | None]],
+    qty_by: dict[str, float],
+    closes: dict[str, list[tuple[str, float]]],
+    *,
+    pick_key: str,
+) -> None:
+    """One daily chart for the name chosen under the editor."""
+    if not order_rows:
+        return
+    order = [tk for tk, _name, _score in order_rows]
+    names = {tk: name for tk, name, _score in order_rows}
+    if st.session_state.get(pick_key) not in order:
+        st.session_state.pop(pick_key, None)
+    held = [tk for tk in order if tk in qty_by]
+    default_tk = held[0] if held else order[0]
+    picked = st.selectbox(
+        "일봉",
+        order,
+        index=order.index(default_tk),
+        format_func=lambda tk: f"{names.get(tk, tk)} {tk}",
+        key=pick_key,
+    )
+    series = closes.get(str(picked)) or []
+    label = names.get(str(picked), str(picked))
+    if len(series) < 2:
+        st.caption(f"{label} 로컬 일봉이 없습니다. 표의 차트에서 네이버 일봉을 여세요.")
+        return
+    frame = pd.DataFrame(series, columns=["날짜", "종가"])
+    close = frame["종가"]
+    frame["20일"] = close.rolling(20).mean()
+    frame["60일"] = close.rolling(60).mean()
+    frame["120일"] = close.rolling(120).mean()
+    last = float(close.iloc[-1])
+    note = f"{label} 종가 {last:,.0f}"
+    sma60 = frame["60일"].iloc[-1]
+    sma120 = frame["120일"].iloc[-1]
+    if pd.notna(sma60):
+        side = "위" if last >= float(sma60) else "아래"
+        note += f" · 60일선 {side}"
+    if pd.notna(sma120):
+        side = "위" if last >= float(sma120) else "아래"
+        note += f" · 120일선 {side}"
+    st.caption(note + ". 60일선 아래는 신규를 보류하고, 120일선 아래는 보유를 줄이는 쪽을 봅니다.")
+    long = frame.melt(id_vars="날짜", var_name="선", value_name="가격").dropna()
+    import altair as alt
+
+    chart = (
+        alt.Chart(long)
+        .mark_line()
+        .encode(
+            x=alt.X("날짜:T", title=None),
+            y=alt.Y("가격:Q", title=None, scale=alt.Scale(zero=False)),
+            color=alt.Color(
+                "선:N",
+                sort=["종가", "20일", "60일", "120일"],
+                legend=alt.Legend(title=None, orient="bottom"),
+            ),
+        )
+        .properties(height=260)
+    )
+    st.altair_chart(chart, width="stretch")
+
+
+def _render_book_editor(ctx: DashboardContext) -> None:
+    """Pick holdings from the scored candidate list, not only today's trade rows."""
+    from alpha_system.ui.services.trade_desk import (
+        load_dated_closes,
+        load_snapshot_closes,
+    )
+
+    saved = _saved_kr_alpha_rows(ctx)
+    qty_by = {str(row["ticker"]): float(row["quantity"]) for row in saved}
+    order_rows = _candidate_edit_order(ctx)
+    order = [tk for tk, _name, _score in order_rows]
+    root = Path(ctx.root)
+    as_of, live = load_snapshot_closes(root, set(order))
+    closes = _extend_closes_with_snapshot(
+        load_dated_closes(root, set(order)), as_of, live
+    )
+    st.markdown("**보유 편집**")
+    st.caption(
+        f"후보 {len(order)}종. 일봉은 최근 {_SPARK_BARS}거래일, 차트는 네이버 일봉. "
+        "합계·품질·가치·환원, PER·목표가 여유와 같이 보유를 고릅니다. 주문은 하지 않습니다."
+    )
+    if order:
+        _render_editor_chart(
+            order_rows,
+            qty_by,
+            closes,
+            pick_key=f"book_edit_chart_pick_{_book_keys(ctx)}",
+        )
+        frame = pd.DataFrame(_candidate_edit_records(ctx, qty_by, closes))
+        key = f"book_edit_px_{_book_keys(ctx)}"
+        last = f"{key}_last"
+        sig_key = f"{key}_sig"
+        sig = tuple(order)
+        if st.session_state.get(sig_key) != sig:
+            st.session_state.pop(key, None)
+            st.session_state[sig_key] = sig
+            st.session_state[last] = tuple(sorted(qty_by))
+        locked = [c for c in frame.columns if c != "보유"]
+        edited = st.data_editor(
+            frame,
+            hide_index=True,
+            width="stretch",
+            height=480,
+            row_height=36,
+            disabled=locked,
+            column_config={
+                "보유": st.column_config.CheckboxColumn(
+                    "보유",
+                    help="체크하면 보유 장부에 넣고, 끄면 뺍니다.",
+                    default=False,
+                ),
+                "일봉": st.column_config.LineChartColumn(
+                    "일봉",
+                    width="medium",
+                    help=f"로컬 일봉 최근 {_SPARK_BARS}거래일. 칸마다 세로축이 따로입니다.",
+                ),
+                "차트": st.column_config.LinkColumn(
+                    "차트",
+                    help="네이버 일봉",
+                    display_text="차트",
+                    width="small",
+                ),
+                "비중": st.column_config.NumberColumn("비중", format="%.1f"),
+                "합계": st.column_config.NumberColumn("합계", format="%.1f"),
+                "품질": st.column_config.NumberColumn("품질", format="%.1f"),
+                "가치": st.column_config.NumberColumn("가치", format="%.1f"),
+                "환원": st.column_config.NumberColumn("환원", format="%.1f"),
+                "PER": st.column_config.NumberColumn("PER", format="%.1f"),
+                "PBR": st.column_config.NumberColumn("PBR", format="%.2f"),
+                "ROE": st.column_config.NumberColumn("ROE", format="%.1f"),
+                "배당%": st.column_config.NumberColumn("배당%", format="%.2f"),
+                "현재가": st.column_config.NumberColumn("현재가", format="%.0f"),
+                "목표가": st.column_config.NumberColumn("목표가", format="%.0f"),
+                "여유%": st.column_config.NumberColumn(
+                    "여유%",
+                    format="%.1f",
+                    help="목표가 대비 현재가 여유. 음수면 현재가가 목표가 위입니다.",
+                ),
+                "수량": st.column_config.NumberColumn("수량", format="%.0f"),
+            },
+            key=key,
+        )
+        flags = _watch_hold_flags(edited, n=len(order))
+        chosen = [tk for tk, on in zip(order, flags) if on]
+        current = tuple(sorted(chosen))
+        prev = st.session_state.get(last)
+        if prev is None:
+            st.session_state[last] = tuple(sorted(qty_by))
+        elif current != prev:
+            _persist_watch_holdings(ctx, list(current))
+            st.session_state[last] = current
+            st.session_state.pop(key, None)
+            st.rerun()
+    _render_holdings_paste(ctx)
+
+
 def render_portfolio(
     ctx: DashboardContext,
     *,
@@ -142,7 +891,7 @@ def render_portfolio(
     | None = None,
     proposal_final_sort_label: str | None = None,
 ) -> None:
-    consume_focus()  # confirmation CTAs land here; no sub-tabs
+    consume_focus()  # confirmation CTAs land here; portfolio section tabs below
     if "holdings_input_open" not in st.session_state:
         st.session_state["holdings_input_open"] = True
 
@@ -155,12 +904,22 @@ def render_portfolio(
             "portfolio",
             "page_lead",
             default=(
-                "①오늘 순서(팔→유지→사) → ②목표 구성바 → ③집합·카드 · "
-                "나침반은 거시 참고 · 주문은 사람·HTS."
+                "오늘 매매=중기 Soft + 행동주의 이원 집행 · "
+                "후보·승격·해부는 왼쪽「전략 운용」· 주문은 사람·HTS."
             ),
         ),
     )
     render_screen_market_nav(ctx.root)
+    st.caption(
+        copy_get(
+            "portfolio",
+            "exec_only_caption",
+            default=(
+                "여기=집행만 · Soft 슬롯·대기·비율·순환=전략›중기 Soft 운영 데스크 · "
+                "승격·시드%=전략›자사주·행동주의 · 해부=박홍기"
+            ),
+        )
+    )
 
     mid_ctx, short_ctx = _pair_mid_short_ctx(ctx)
     if not (mid_ctx.scoreboard_rows or []) and not (short_ctx.scoreboard_rows or []):
@@ -169,17 +928,103 @@ def render_portfolio(
             tone="warn",
         )
 
-    # 0) 오늘 매매·운영 — 무엇을 할지 먼저
-    st.markdown(
-        _ops_playbook_html(mid_ctx, short_ctx, root=Path(ctx.root)),
-        unsafe_allow_html=True,
+    tab_ops = copy_get("portfolio", "tab_ops", default="오늘 매매")
+    tab_universe = copy_get("portfolio", "tab_universe", default="유니버스")
+    # 테마·해부는 전략 운용 탭으로 이전 · 포트는 집행·유니버스만
+    _pf_tabs = {tab_ops, tab_universe}
+    if st.session_state.get("portfolio_section") not in _pf_tabs:
+        # 예전「자사주·행동주의」탭 세션값 → 오늘 매매로
+        st.session_state["portfolio_section"] = tab_ops
+    if st.session_state.get("_pf_land_trade") != 1:
+        st.session_state["portfolio_section"] = tab_ops
+        st.session_state["_pf_land_trade"] = 1
+    section = page_tabs(
+        copy_get("portfolio", "tab_label", default="포트 보기"),
+        (tab_ops, tab_universe),
+        key="portfolio_section",
     )
+    if section == tab_universe:
+        from alpha_system.ui.services.portfolio_universe_board import (
+            render_portfolio_universe_tab,
+        )
 
-    # 1) 목표 구성 바
+        st.caption(
+            copy_get(
+                "portfolio",
+                "universe_hub_caption",
+                default=(
+                    "한눈 참고 · Soft 운영 데스크=전략›중기 Soft · "
+                    "테마=자사주·행동주의 · 해부=박홍기"
+                ),
+            )
+        )
+        render_portfolio_universe_tab(
+            mid_ctx, short_ctx, root=Path(ctx.root)
+        )
+        return
+
+    _render_today_book(mid_ctx, short_ctx)
+    _render_book_editor(mid_ctx)
+    if proposal_eligible_sorter is not None:
+        _render_proposal_book(
+            mid_ctx,
+            proposal_eligible_sorter=proposal_eligible_sorter,
+            proposal_final_sort_label=proposal_final_sort_label,
+            section_kicker="중기",
+        )
+    st.markdown("**참고**")
+    st.caption(
+        "점수·제안 카드·보유 카드는 위 표에 합쳤습니다. "
+        "여기는 태도와 예산만 보여 줍니다."
+    )
+    try:
+        from alpha_system.ui.services.investment_stance import (
+            investment_stance_html,
+            load_investment_stance,
+        )
+
+        _stance = load_investment_stance(Path(ctx.root))
+        _stance_html = investment_stance_html(_stance)
+        if _stance_html:
+            st.markdown(_stance_html, unsafe_allow_html=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 가계 본체 vs 알파 위성 (목표바 위 · Review-only)
+    try:
+        from alpha_system.ui.services.alpha_envelope_board import (
+            household_satellite_html,
+            resolve_unified_sleeves,
+        )
+
+        _hh_sleeves = resolve_unified_sleeves(Path(ctx.root))
+        st.markdown(
+            household_satellite_html(
+                mid_of_equity=float(getattr(_hh_sleeves, "mid_of_equity", 0.9)),
+                short_of_equity=float(getattr(_hh_sleeves, "short_of_equity", 0.1)),
+            ),
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            copy_get(
+                "portfolio",
+                "household_satellite_caption",
+                default=(
+                    "가계 대부분=본체(앱 밖) · 여기 Soft+행동주의 위성 · "
+                    "합산 집행·전량 알파 금지 · target 사람만"
+                ),
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ② 목표 구성 바 (시장 70/30 통합 바는 접기 — 중복 완화)
     try:
         from alpha_system.ui.services.alpha_envelope_board import (
             book_slide_bar_html,
             build_book_slide_segments,
+            combined_soft_budget_html,
+            market_budget_frac_pct,
         )
 
         _segs, _sleeves = build_book_slide_segments(
@@ -192,113 +1037,63 @@ def render_portfolio(
             book_slide_bar_html(_segs, sleeves=_sleeves),
             unsafe_allow_html=True,
         )
-    except Exception:  # noqa: BLE001
-        pass
-    st.markdown(_ux_read_guide_html(), unsafe_allow_html=True)
-
-    # 2) 중기 — 집합 → 제안 할 일 → 보유 상세
-    st.markdown('<div class="pf-tier-1">', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="pf-sleeve-h">'
-        f'{_esc(copy_get("portfolio", "sleeve_mid", default="중기 · 할 일"))}'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(_membership_set_board_html(mid_ctx), unsafe_allow_html=True)
-    _render_proposal_book(
-        mid_ctx,
-        proposal_eligible_sorter=proposal_eligible_sorter,
-        proposal_final_sort_label=proposal_final_sort_label,
-        section_kicker="중기",
-    )
-    _render_holdings_book(mid_ctx, section_kicker="중기", show_set_board=False)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # 3) 단기 — 기본 접기 (위성 보조)
-    short_n = len(short_ctx.portfolio_rows or []) + len(
-        getattr(short_ctx, "ops_portfolio_rows", None) or []
-    )
-    short_prop_n = len(short_ctx.portfolio_rows or [])
-    with st.expander(
-        copy_get(
-            "portfolio",
-            "sleeve_short_fold",
-            default="단기 위성 · 중기 안 볼 때만 · 제안 {n}",
-        ).replace("{n}", str(short_prop_n)),
-        expanded=False,
-    ):
-        st.markdown(
-            _fold_lead_html(
-                purpose=(
-                    "중기와 다른 장부입니다. 모멘텀·수급으로 짧게 도는 "
-                    "위성만 봅니다. 중기 전량·Core 점수는 여기서 바꾸지 않습니다."
-                ),
-                do_now=(
-                    "비어 있으면 접은 채 두세요. 있으면 집합(둘다·제안만·보유만) "
-                    "→ 카드 배지만 보고, 예산 카드 %는 ‘단기 풀 전체’ 축소 힌트입니다."
-                    if short_n
-                    else "단기 제안·보유 없음 · 접어 두고 중기·파킹만 보세요."
-                ),
-                ignore="중기 목표가 환금·score_m·계좌 % 맞춤 · 단기→중기 전량",
-            ),
-            unsafe_allow_html=True,
-        )
-        try:
-            _render_short_vol_budget_banner(short_ctx)
-        except Exception:  # noqa: BLE001
-            pass
-        st.markdown(_membership_set_board_html(short_ctx), unsafe_allow_html=True)
-        _render_proposal_book(
-            short_ctx,
-            proposal_eligible_sorter=None,
-            proposal_final_sort_label=None,
-            section_kicker="단기",
-        )
-        _render_holdings_book(
-            short_ctx, section_kicker="단기", show_set_board=False
-        )
-
-    # 4) 입력 — 접힌 후보·컷
-    with st.expander(
-        copy_get(
-            "portfolio",
-            "sec_input_fold",
-            default="후보·합격선 · 제안 다시 고를 때만",
-        ),
-        expanded=False,
-    ):
-        st.markdown(
-            _fold_lead_html(
-                purpose=(
-                    "오늘 매매용이 아닙니다. 후보 30·합격선·보유 티커 등록처럼 "
-                    "‘무엇을 제안 풀에 넣을지’를 고칠 때만 엽니다."
-                ),
-                do_now=(
-                    "① 보유 티커 체크/업로드 → 집합 대조에 반영 "
-                    "② 합격선·편입 수는 토글 켠 뒤 확정(YAML은 확정 전 그대로) "
-                    "③ PH-CVS는 관심 종목만"
-                ),
-                ignore="여기 표로 바로 주문 · 평단·계좌% 필수 입력",
-            ),
-            unsafe_allow_html=True,
-        )
-        show_cutoff = st.toggle(
+        _mkt = str(getattr(mid_ctx, "screen_market", None) or "KOSPI")
+        _pct = market_budget_frac_pct(Path(ctx.root), _mkt, "mid")
+        st.caption(
             copy_get(
                 "portfolio",
-                "input_fold_label",
-                default="합격선·편입 수 바꾸기",
-            ),
-            value=False,
-            key=f"pf_show_input_{_book_keys(mid_ctx)}",
-            help="중기 합격선·편입 수. 확정 전까지 YAML 그대로.",
+                "market_budget_caption",
+                default=(
+                    "중기 예산 중 이 시장 {pct}% (코스피70/코스닥30) · "
+                    "Soft등분 · 순위는 시장별 · target 불변"
+                ),
+                pct=f"{_pct:g}",
+            )
         )
-        if show_cutoff:
-            preview_cutoff, preview_n = _render_cutoff_bar(mid_ctx)
-        else:
-            preview_cutoff = mid_ctx.cfg.scoring.score_cutoff
-            preview_n = int(mid_ctx.cfg.sizing.target_names)
-        _render_watch_pool(mid_ctx, preview_cutoff, preview_n)
-        _render_phcvs_watch(mid_ctx)
+        with st.expander(
+            copy_get(
+                "portfolio",
+                "combined_soft_fold",
+                default="코스피·코스닥 Soft 비중 합산 (참고)",
+            ),
+            expanded=True,
+        ):
+            _k_rows, _q_rows = _peer_market_mid_rows(
+                Path(ctx.root),
+                _mkt,
+                current_mid_rows=list(mid_ctx.portfolio_rows or []),
+            )
+            st.markdown(
+                combined_soft_budget_html(
+                    Path(ctx.root),
+                    kospi_rows=_k_rows,
+                    kosdaq_rows=_q_rows,
+                    horizon="mid",
+                ),
+                unsafe_allow_html=True,
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+    st.caption(
+        copy_get(
+            "portfolio",
+            "soft_boards_moved",
+            default=(
+                "Soft 슬롯·대기·매매비율·순환매 = 전략 › 중기 Soft 운영 데스크 · "
+                "여기는 오늘 매매만"
+            ),
+        )
+    )
+    if st.button(
+        "중기 Soft 운영 데스크",
+        key="pf_goto_mid_soft_boards",
+        use_container_width=True,
+    ):
+        from alpha_system.ui.services.strategy_ops_catalog import strategy_page_key
+        from alpha_system.ui.services.nav import navigate
+
+        navigate(strategy_page_key("mid_soft"))
 
 
 def _verdict_counts(ctx: DashboardContext) -> tuple[int, int, int, int]:
@@ -343,6 +1138,100 @@ def _membership_sets(
     return both, prop_only, held_only, {**prop, **held}
 
 
+def _above_target_set(ctx: DashboardContext) -> set[str]:
+    raw = getattr(ctx, "above_target_tickers", None) or set()
+    out: set[str] = set()
+    for t in raw:
+        tk = str(t or "").zfill(6)
+        if tk.strip("0"):
+            out.add(tk)
+    return out
+
+
+def _held_only_todo(
+    tk: str,
+    row: object,
+    *,
+    above: set[str],
+) -> str:
+    """Held-only action — Soft drop ≠ auto Exit."""
+    kind = str(getattr(row, "ops_signal", "") or "")
+    label = str(getattr(row, "ops_signal_label", "") or "")
+    trim = getattr(row, "ops_trim_pct", None)
+    if (
+        tk in above
+        or kind == "cash_half"
+        or label.startswith(("Cash", "환금"))
+    ):
+        pct = int(trim) if trim is not None else 50
+        return f"Cash Review · {pct}% (at target · not Exit)"
+    if (
+        kind == "invalid"
+        or label in {"No data", "No target", "데이터없음", "목표없음"}
+        or kind == "missing"
+    ):
+        return "Hold judgment · check data/target (do not force Sell)"
+    if kind == "trim" or label.startswith(("Trim", "줄이기")):
+        pct = int(trim) if trim is not None else 25
+        return f"Trim Review · {pct}%"
+    if kind == "exit_full" or label.startswith(("Exit", "전량")):
+        return "Exit Review · check badge/reason"
+    return "Check badge · by drop reason (Exit/Cash/Hold)"
+
+
+def _blocked_soft_bucket(reason: str) -> str:
+    """대기 사유 → data | soft | other."""
+    r = str(reason or "")
+    if any(
+        k in r
+        for k in (
+            "일봉",
+            "데이터 부족",
+            "데이터 채운",
+            "판정 보류",
+            "120일선 부족",
+            "60일선 데이터",
+        )
+    ):
+        return "data"
+    if any(
+        k in r
+        for k in (
+            "Soft",
+            "이평",
+            "score_m",
+            "60일선 아래",
+            "120",
+            "미달",
+            "게이트",
+            "하케다카",
+            "목표가",
+        )
+    ):
+        return "soft"
+    return "other"
+
+
+def _blocked_bucket_counts(ctx: DashboardContext) -> tuple[int, int, int]:
+    """(data_n, soft_n, other_n) from proposal_blocked_rows."""
+    data_n = soft_n = other_n = 0
+    for r in list(getattr(ctx, "proposal_blocked_rows", None) or []):
+        reason = ""
+        extra = getattr(r, "extra", None) or {}
+        if isinstance(extra, dict):
+            reason = str(extra.get("ineligible_reason") or "")
+        if not reason:
+            reason = str(getattr(r, "target_detail", "") or "")
+        b = _blocked_soft_bucket(reason)
+        if b == "data":
+            data_n += 1
+        elif b == "soft":
+            soft_n += 1
+        else:
+            other_n += 1
+    return data_n, soft_n, other_n
+
+
 def _names_join(keys: list[str], src: dict[str, object], *, limit: int = 3) -> str:
     if not keys:
         return "없음"
@@ -364,19 +1253,19 @@ def _verdict_todos(ctx: DashboardContext) -> list[str]:
     sell_n = len(_holdings_sell_actions(ctx)) if held else 0
     todos: list[str] = []
     if act_n["exit_full"]:
-        todos.append(f"전량 Review {act_n['exit_full']}")
+        todos.append(f"Exit Review {act_n['exit_full']}")
     if act_n["cash_half"]:
-        todos.append(f"환금 Review {act_n['cash_half']}")
+        todos.append(f"Cash Review {act_n['cash_half']}")
     if act_n["trim"]:
-        todos.append(f"줄이기 Review {act_n['trim']}")
+        todos.append(f"Trim Review {act_n['trim']}")
     if sell_n and sell_n > (
         act_n["exit_full"] + act_n["cash_half"] + act_n["trim"]
     ):
-        todos.append(f"오늘 비중 매도 {sell_n}")
+        todos.append(f"Sell size today {sell_n}")
     if act_n["missing"]:
-        todos.append(f"목표가 없음 {act_n['missing']}")
+        todos.append(f"No target {act_n['missing']}")
     if not eligible:
-        todos.append("제안 비어 있음 · Soft/추세·후보 확인")
+        todos.append("Proposal empty · check Soft/trend/candidates")
     return todos
 
 
@@ -413,108 +1302,203 @@ def _ops_playbook_html(
     *,
     root: Path | None = None,
 ) -> str:
-    """오늘 매매 순서 + 구성·나침반 역할 — 포트 최상단."""
+    """Trade-today order + sleeve/compass role — portfolio top."""
     base = Path(root or getattr(mid_ctx, "root", ".") or ".")
     mkt = str(getattr(mid_ctx, "screen_market", None) or "KOSPI")
     both, prop_only, held_only, src = _membership_sets(mid_ctx)
     sell_todos = _verdict_todos(mid_ctx)
     short_todos = [
-        f"단기·{t}" if not str(t).startswith("단기") else str(t)
+        f"Short·{t}" if not str(t).startswith(("Short", "단기")) else str(t)
         for t in _verdict_todos(short_ctx)
     ]
     stance_title, stance_body = _economy_stance_line(base)
 
+    above = _above_target_set(mid_ctx)
+    held_cash = [tk for tk in held_only if tk in above]
+    held_exit = [tk for tk in held_only if tk not in above]
     sell_n = len(held_only) + sum(
         1
         for t in sell_todos
-        if any(k in t for k in ("전량", "환금", "줄이기", "매도"))
+        if any(
+            k in t
+            for k in ("Exit", "Cash", "Trim", "Sell", "전량", "환금", "줄이기", "매도")
+        )
     )
-    # de-dupe rough count for display
-    sell_label = (
-        f"보유만 {_names_join(held_only, src)}"
-        if held_only
-        else ("신호 " + " · ".join(sell_todos[:2]) if sell_todos else "긴급 매도 없음")
-    )
+    if held_only:
+        bits: list[str] = []
+        if held_exit:
+            bits.append(f"Exit review {_names_join(held_exit, src)}")
+        if held_cash:
+            bits.append(f"Cash (target) {_names_join(held_cash, src)}")
+        sell_label = (
+            " · ".join(bits) if bits else f"Held-only {_names_join(held_only, src)}"
+        )
+    else:
+        sell_label = (
+            "Signal " + " · ".join(sell_todos[:2]) if sell_todos else "No urgent sell"
+        )
     hold_label = (
-        f"{_names_join(both, src)} · 배지 확인"
+        f"{_names_join(both, src)} · check badge"
         if both
-        else "둘 다 없음 · 보유 티커 등록부터"
+        else "None in both · register holdings first"
     )
-    buy_label = (
-        f"{_names_join(prop_only, src)} · Soft 통과 · 하루≤33%"
-        if prop_only
-        else "신규 자리 없음 · 파킹(단기채) 유지"
-    )
+    today_n = 2
+    hold_lo, hold_hi = 4, 6
+    try:
+        from alpha_system.ui.services.alpha_book_ops import (
+            load_alpha_book_ops,
+            today_buy_names_max,
+        )
+
+        _pol = load_alpha_book_ops(base)
+        today_n = int(today_buy_names_max(policy=_pol))
+        hold_lo = int(_pol.funnel.hold_soft_min)
+        hold_hi = int(_pol.funnel.hold_soft_max)
+    except Exception:  # noqa: BLE001
+        pass
+
+    if prop_only:
+        buy_label = (
+            f"{_names_join(prop_only, src)} · 집행슬롯 오늘≤{today_n}종 "
+            f"(제안 {len(prop_only)}≠전량매수) · 적합도% · 하루≤33%"
+        )
+    else:
+        buy_label = "신규 슬롯 없음 · 미집행=단기채 파킹 (전량 단기채 아님)"
 
     steps = (
+        f'<div class="pf-ops-step pf-ops-hold">'
+        f'<div class="pf-ops-num">0</div>'
+        f'<div class="pf-ops-body">'
+        f'<div class="pf-ops-h">Ready to judge?</div>'
+        f'<div class="pf-ops-d">Data as-of · open orders · same-day fills</div>'
+        f'<div class="pf-ops-hint">'
+        "보유체크=HTS 동기화 · Missing data ≠ Soft fail · Confirm 후 재조회"
+        "</div>"
+        f"</div></div>"
         f'<div class="pf-ops-step pf-ops-sell">'
         f'<div class="pf-ops-num">1</div>'
         f'<div class="pf-ops-body">'
-        f'<div class="pf-ops-h">팔기 먼저</div>'
+        f'<div class="pf-ops-h">Sell first</div>'
         f'<div class="pf-ops-d">{_esc(sell_label)}</div>'
-        f'<div class="pf-ops-hint">전량 → 환금(50%) → 줄이기(25%) · 트레일·목표가 배지</div>'
+        f'<div class="pf-ops-hint">'
+        "Badge final size only · strongest of Exit&gt;Cash&gt;Trim (no sum) · "
+        "held-only at target = Cash · 보유만≠무조건 전량"
+        "</div>"
         f"</div></div>"
         f'<div class="pf-ops-step pf-ops-hold">'
         f'<div class="pf-ops-num">2</div>'
         f'<div class="pf-ops-body">'
-        f'<div class="pf-ops-h">유지 · 둘 다</div>'
+        f'<div class="pf-ops-h">Hold · both</div>'
         f'<div class="pf-ops-d">{_esc(hold_label)}</div>'
-        f'<div class="pf-ops-hint">제안∩보유 · 추매는 Soft·이평 PASS일 때만</div>'
+        f'<div class="pf-ops-hint">'
+        f"Proposal∩held · 추매 적합도≥50% · Soft 보유 목표 {hold_lo}–{hold_hi}종 수렴"
+        "</div>"
         f"</div></div>"
         f'<div class="pf-ops-step pf-ops-buy">'
         f'<div class="pf-ops-num">3</div>'
         f'<div class="pf-ops-body">'
-        f'<div class="pf-ops-h">사기 · 제안만</div>'
+        f'<div class="pf-ops-h">Buy · proposal only</div>'
         f'<div class="pf-ops-d">{_esc(buy_label)}</div>'
-        f'<div class="pf-ops-hint">목표 자리 채우기 · 계좌 % 맞춤 아님 · HTS 회차</div>'
+        f'<div class="pf-ops-hint">'
+        f"오늘 신규 ≤{today_n}종 · 적합도%+하루≤33% · 관찰풀 매수 금지 · "
+        "미집행=단기채 · HTS"
+        "</div>"
         f"</div></div>"
     )
 
     detail_bits = sell_todos[:3] + short_todos[:2]
     if not detail_bits:
-        detail_bits = ["긴급 액션 없음 · 아래 집합·카드만 Review"]
+        detail_bits = ["No urgent action · review sets/cards below"]
+    try:
+        from alpha_system.ui.services.investment_stance import (
+            load_investment_stance,
+            stance_todos,
+        )
+
+        detail_bits = stance_todos(
+            load_investment_stance(base), limit=3
+        ) + detail_bits
+    except Exception:  # noqa: BLE001
+        pass
+    gieop_line = _gieop_bridge_summary_line(mid_ctx)
+    if gieop_line:
+        detail_bits = [gieop_line] + detail_bits
     detail_html = "".join(
         f'<div class="pf-verdict-todo">{_esc(t)}</div>' for t in detail_bits
     )
 
     m_el, m_bl, m_he, m_ov = _verdict_counts(mid_ctx)
     s_el, _, s_he, _ = _verdict_counts(short_ctx)
+    activist_html = _activist_ops_block_html(mid_ctx, root=base)
 
     return (
         '<div class="pf-verdict pf-ops-playbook" role="region" '
-        'aria-label="오늘 매매 운영">'
-        '<div class="pf-verdict-kicker">오늘 매매 · 운영 순서</div>'
-        f'<div class="pf-verdict-title">{_esc(mkt)} · 팔기 → 유지 → 사기</div>'
+        'aria-label="Trade today ops">'
+        '<div class="pf-verdict-kicker">Trade today · ops order</div>'
+        f'<div class="pf-verdict-title">{_esc(mkt)} · Check → Sell → Hold → Buy</div>'
         '<div class="pf-verdict-scope">'
-        "구성=아래 목표바(공격·방어·파킹) · 할 일=집합·카드 · "
-        "나침반=거시 참고만 · 자동주문·target 없음"
+        f"깔때기: Soft 관찰→제안→오늘 신규≤{today_n}종→보유 Soft {hold_lo}–{hold_hi} 수렴 · "
+        "행동주의=이원 블록 · Mix=target bar · Compass=거시만 · "
+        "자동주문·target 없음 · 부분체결 후 재조회"
         "</div>"
         f'<div class="pf-ops-stance">'
-        f'<span class="pf-ops-stance-k">나침반 태도</span>'
+        f'<span class="pf-ops-stance-k">Compass posture</span>'
         f'<span class="pf-ops-stance-t">{_esc(stance_title)}</span>'
         f'<span class="pf-ops-stance-b">{_esc(stance_body)}</span>'
         f"</div>"
         f'<div class="pf-ops-steps">{steps}</div>'
+        f"{activist_html}"
         f'<div class="pf-verdict-grid">'
         f'<div class="pf-verdict-cell pf-verdict-ok">'
-        f'<div class="pf-verdict-k">중기 제안</div>'
+        f'<div class="pf-verdict-k">Mid proposal</div>'
         f'<div class="pf-verdict-n">{m_el}</div>'
-        f'<div class="pf-verdict-s">대기 {m_bl} · 보유 {m_he} · 둘다 {m_ov}</div></div>'
+        f'<div class="pf-verdict-s">Wait {m_bl} · Held {m_he} · Both {m_ov}</div></div>'
         f'<div class="pf-verdict-cell">'
-        f'<div class="pf-verdict-k">팔 Review</div>'
+        f'<div class="pf-verdict-k">Sell Review</div>'
         f'<div class="pf-verdict-n">{len(held_only)}</div>'
-        f'<div class="pf-verdict-s">보유만 · 신호 {sell_n}</div></div>'
+        f'<div class="pf-verdict-s">Held-only · signals {sell_n}</div></div>'
         f'<div class="pf-verdict-cell pf-verdict-ok">'
-        f'<div class="pf-verdict-k">사 Review</div>'
+        f'<div class="pf-verdict-k">Buy Review</div>'
         f'<div class="pf-verdict-n">{len(prop_only)}</div>'
-        f'<div class="pf-verdict-s">단기 제안 {s_el} · 단보유 {s_he}</div></div>'
+        f'<div class="pf-verdict-s">Short prop {s_el} · short held {s_he}</div></div>'
         f"</div>"
         f'<div class="pf-verdict-do">'
-        f'<div class="pf-verdict-do-h">신호 메모</div>'
+        f'<div class="pf-verdict-do-h">Signal notes</div>'
         f"{detail_html}"
         f"</div>"
         "</div>"
     )
+
+
+def _gieop_bridge_summary_line(ctx: DashboardContext) -> str:
+    """기업해부 심층 × Soft×보유 한 줄 · 보드 없으면 빈 문자열."""
+    try:
+        from alpha_system.proposal_chart import norm_ticker
+        from alpha_system.ui.services.gieop_observe_board import (
+            build_portfolio_bridge,
+            load_observe_ui_board,
+        )
+
+        market = str(getattr(ctx, "screen_market", None) or "KOSPI")
+        board = load_observe_ui_board(Path(ctx.root), market=market)
+        if not board.available or not board.deep_pick:
+            return ""
+        soft = [
+            norm_ticker(getattr(r, "ticker", None))
+            for r in (ctx.portfolio_rows or [])
+            if norm_ticker(getattr(r, "ticker", None))
+        ]
+        held = [
+            norm_ticker(getattr(r, "ticker", None))
+            for r in (getattr(ctx, "ops_portfolio_rows", None) or [])
+            if norm_ticker(getattr(r, "ticker", None))
+        ]
+        bridge = build_portfolio_bridge(
+            board.deep_pick, soft_tickers=soft, held_tickers=held
+        )
+        return bridge.summary_line_ko()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _portfolio_verdict_html(ctx: DashboardContext) -> str:
@@ -582,23 +1566,431 @@ def _fmt_num(val, *, integers: bool = False) -> str:
     return f"{n:.2f}"
 
 
+def _alpha_causal_strip_html(*, soft_n: int, held_n: int) -> str:
+    """층별 인과 한눈 · Soft/target 불변 안내."""
+    from html import escape as _e
+
+    steps = (
+        (
+            "ctrl",
+            "제어",
+            copy_get(
+                "portfolio",
+                "causal_ctrl",
+                default="확인① 정량 · 아래 관찰 파이프",
+            ),
+        ),
+        (
+            "exec",
+            "L2 집행",
+            copy_get(
+                "portfolio",
+                "causal_exec",
+                default="Soft {n} → 오늘 매매·제안",
+                n=int(soft_n),
+            ),
+        ),
+        (
+            "obs",
+            "L3 관찰",
+            copy_get(
+                "portfolio",
+                "causal_obs",
+                default="가치·심층·해부 → 매수 아님·파킹",
+            ),
+        ),
+        (
+            "human",
+            "L4 사람",
+            copy_get(
+                "portfolio",
+                "causal_human",
+                default="보유 {n} · target·HTS",
+                n=int(held_n),
+            ),
+        ),
+    )
+    cards = "".join(
+        f'<div class="pf-causal-card pf-causal-{_e(key)}">'
+        f'<div class="pf-causal-k">{_e(title)}</div>'
+        f'<div class="pf-causal-body">{_e(body)}</div>'
+        f"</div>"
+        for key, title, body in steps
+    )
+    return f'<div class="pf-causal" role="note">{cards}</div>'
+
+
+def _run_observe_pipe(
+    ctx: DashboardContext,
+    *,
+    market: str,
+    soft_rows: list,
+    soft_tks: list[str],
+    held_tks: list[str],
+) -> dict:
+    """저PBR 갱신 → 알파 시드 → 정량커버 · Soft·target 불변."""
+    from alpha_system.ui.services.gieop_observe_board import run_observe_pipe
+
+    return run_observe_pipe(
+        Path(ctx.root),
+        market=market,
+        soft_rows=soft_rows,
+        soft_tickers=soft_tks,
+        held_tickers=held_tks,
+    )
+
+
+def render_gieop_observe_desk(ctx: DashboardContext) -> None:
+    """기업해부(박홍기) · 저PBR + 알파 후보 능동 평가 · Soft 불변."""
+    from alpha_system.proposal_chart import norm_ticker
+    from alpha_system.ui.services.gieop_alpha_seed import (
+        alpha_seed_queue_html,
+        collect_alpha_gieop_candidates,
+        seed_alpha_to_gieop,
+    )
+    from alpha_system.ui.services.gieop_fusion_desk import (
+        build_fusion_desk,
+        fusion_status_html,
+        refresh_quant_on_drafts,
+    )
+    from alpha_system.ui.services.gieop_observe_board import (
+        build_portfolio_bridge,
+        load_observe_ui_board,
+        observe_board_html,
+        open_path,
+        portfolio_bridge_html,
+        refresh_observe_board,
+        resolve_gieop_paths,
+    )
+    from alpha_system.ui.services.gieop_today_loop import (
+        build_today_gieop_loop,
+        today_gieop_loop_html,
+    )
+    from alpha_system.review.essence_recommend import (
+        build_essence_recommend,
+        essence_recommend_html,
+    )
+
+    market = str(getattr(ctx, "screen_market", None) or "KOSPI")
+    paths = resolve_gieop_paths(ctx.root)
+    board = load_observe_ui_board(ctx.root, market=market)
+    soft_rows = list(ctx.portfolio_rows or [])
+    soft_tks = [
+        norm_ticker(getattr(r, "ticker", None))
+        for r in soft_rows
+        if norm_ticker(getattr(r, "ticker", None))
+    ]
+    held_tks = [
+        norm_ticker(getattr(r, "ticker", None))
+        for r in (getattr(ctx, "ops_portfolio_rows", None) or [])
+        if norm_ticker(getattr(r, "ticker", None))
+    ]
+    bridge = build_portfolio_bridge(
+        board.deep_pick, soft_tickers=soft_tks, held_tickers=held_tks
+    )
+    alpha_board = collect_alpha_gieop_candidates(
+        Path(ctx.root),
+        market=market,
+        soft_rows=soft_rows,
+        held_tickers=held_tks,
+        include_value_only=True,
+        value_only_max=5,
+    )
+    fusion = build_fusion_desk(
+        Path(ctx.root),
+        market=market,
+        candidates=alpha_board.candidates,
+    )
+    today = build_today_gieop_loop(
+        market=market,
+        fusion_rows=fusion.rows,
+        bridge_rows=bridge.rows,
+        deep_pick=board.deep_pick,
+        candidates=alpha_board.candidates,
+        max_picks=3,
+    )
+    deep_n = len(board.deep_pick)
+    alpha_n = len(alpha_board.candidates)
+    title = copy_get(
+        "portfolio",
+        "sec_gieop",
+        default="오늘 해부 · 박홍기",
+    )
+    fold_bits = [title]
+    if today.picks:
+        fold_bits.append(
+            " · ".join(f"{p.name}" for p in today.picks[:3])
+        )
+    elif deep_n or alpha_n:
+        fold_bits.append("파이프 후 2~3종")
+    else:
+        fold_bits.append("파이프 먼저")
+    with st.expander(" · ".join(fold_bits), expanded=True):
+        st.markdown(
+            _fold_lead_html(
+                purpose=copy_get(
+                    "portfolio",
+                    "gieop_purpose",
+                    default=(
+                        "시총이 아니라 논리·퀄·Soft로 오늘 해부 2~3종을 고른다. "
+                        "깊은 조사는 박홍기 · Soft·target 불변."
+                    ),
+                ),
+                do_now=copy_get(
+                    "portfolio",
+                    "gieop_do_now",
+                    default=(
+                        "① 파이프 ② 본질 추천·오늘 카드 확인 ③ 박홍기 해부 "
+                        "④ 할 일(사/유지/팔/대기) ⑤ Soft·HTS"
+                    ),
+                ),
+                ignore="시총 컷 · 전 종목 해부 · Soft 자동편입 · target 자동 · 저P=매수",
+            ),
+            unsafe_allow_html=True,
+        )
+        chips: list[tuple[str, str]] = [("Review-only", "muted")]
+        if today.picks:
+            chips.append((f"오늘 {len(today.picks)}종", "warn"))
+        if bridge.rows:
+            chips.append((bridge.summary_line_ko().split(": ", 1)[-1], "muted"))
+        if fusion.rows:
+            chips.append(
+                (
+                    f"정량↑{fusion.n_quant_hi}",
+                    "muted",
+                )
+            )
+        _render_section_head(
+            title,
+            summary=copy_get(
+                "portfolio",
+                "gieop_caption",
+                default="본질(논리·퀄·Soft) 2~3종 → 박홍기 → 할 일 · 시총 하한 없음",
+            ),
+            chips=chips,
+            tier="review",
+        )
+        try:
+            essence = build_essence_recommend(
+                Path(ctx.root),
+                market=market,
+                soft_rows=soft_rows,
+                pick_n=5,
+            )
+            st.markdown(essence_recommend_html(essence), unsafe_allow_html=True)
+        except Exception:  # noqa: BLE001
+            pass
+        st.markdown(today_gieop_loop_html(today), unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            if st.button(
+                copy_get(
+                    "portfolio",
+                    "gieop_btn_pipe",
+                    default="① 관찰 파이프",
+                ),
+                key=f"gieop_pipe_{_book_keys(ctx)}",
+                use_container_width=True,
+                type="primary",
+                help="저PBR→시드→정량커버 · Soft·target 불변",
+            ):
+                pipe = _run_observe_pipe(
+                    ctx,
+                    market=market,
+                    soft_rows=soft_rows,
+                    soft_tks=soft_tks,
+                    held_tks=held_tks,
+                )
+                st.success(
+                    copy_get(
+                        "portfolio",
+                        "gieop_pipe_ok",
+                        default=(
+                            "파이프 완료 · 시드 {n}/{s} · 정량 {q} "
+                            "(↑{h}/中{m}/↓{l}) · 아래 카드 확인"
+                        ),
+                        n=pipe["seed_new"],
+                        s=pipe["seed_skip"],
+                        q=pipe["quant_n"],
+                        h=pipe["quant_hi"],
+                        m=pipe["quant_mid"],
+                        l=pipe["quant_lo"],
+                    )
+                )
+                st.rerun()
+        with c2:
+            if st.button(
+                copy_get(
+                    "portfolio",
+                    "gieop_btn_open",
+                    default="② 박홍기 열기",
+                ),
+                key=f"gieop_open_{_book_keys(ctx)}",
+                use_container_width=True,
+                disabled=not paths.start_ok,
+                help="시작하기.html · 위 종목 JSON만 해부",
+            ):
+                err = open_path(paths.start_html)
+                if err:
+                    st.warning(err)
+                else:
+                    st.caption(str(paths.start_html))
+        with c3:
+            if st.button(
+                copy_get(
+                    "portfolio", "gieop_btn_drafts", default="내조사 폴더"
+                ),
+                key=f"gieop_drafts_{_book_keys(ctx)}",
+                use_container_width=True,
+                disabled=not paths.drafts_ok,
+            ):
+                err = open_path(paths.drafts_dir)
+                if err:
+                    st.warning(err)
+        _render_holdings_one_click(
+            ctx,
+            soft_tickers=soft_tks,
+            deep_tickers=[
+                norm_ticker(getattr(r, "ticker", None))
+                for r in (board.deep_pick or [])
+                if norm_ticker(getattr(r, "ticker", None))
+            ],
+            held_tickers=held_tks,
+        )
+        if not paths.start_ok:
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "gieop_missing",
+                    default=(
+                        f"시작하기.html 없음 · {paths.start_html} · "
+                        "data/local/gieop_paths.json 에 gieop_root 지정"
+                    ),
+                )
+            )
+        with st.expander(
+            copy_get(
+                "portfolio",
+                "gieop_detail_fold",
+                default="상세 표 · 정량·큐·저P·포트연결 (평소 접기)",
+            ),
+            expanded=False,
+        ):
+            st.markdown(fusion_status_html(fusion), unsafe_allow_html=True)
+            st.markdown(alpha_seed_queue_html(alpha_board), unsafe_allow_html=True)
+            st.markdown(observe_board_html(board), unsafe_allow_html=True)
+            st.markdown(portfolio_bridge_html(bridge), unsafe_allow_html=True)
+        with st.expander(
+            copy_get(
+                "portfolio",
+                "gieop_advanced_fold",
+                default="고급 · 단계별 갱신 (평소 파이프만)",
+            ),
+            expanded=False,
+        ):
+            a1, a2, a3 = st.columns(3)
+            with a1:
+                if st.button(
+                    copy_get(
+                        "portfolio",
+                        "gieop_btn_refresh",
+                        default="저PBR만",
+                    ),
+                    key=f"gieop_refresh_{_book_keys(ctx)}",
+                    use_container_width=True,
+                ):
+                    refresh_observe_board(
+                        ctx.root,
+                        market=market,
+                        soft_tickers=soft_tks,
+                        write_drafts=True,
+                    )
+                    st.success(
+                        copy_get(
+                            "portfolio",
+                            "gieop_refresh_ok",
+                            default="관찰 보드·기업해부 초안을 갱신했습니다.",
+                        )
+                    )
+                    st.rerun()
+            with a2:
+                if st.button(
+                    copy_get(
+                        "portfolio",
+                        "gieop_btn_alpha_seed",
+                        default="시드만",
+                    ),
+                    key=f"gieop_alpha_seed_{_book_keys(ctx)}",
+                    use_container_width=True,
+                ):
+                    seeded = seed_alpha_to_gieop(
+                        Path(ctx.root),
+                        market=market,
+                        soft_rows=soft_rows,
+                        held_tickers=held_tks,
+                        include_value_only=True,
+                        value_only_max=5,
+                    )
+                    st.success(
+                        copy_get(
+                            "portfolio",
+                            "gieop_alpha_seed_ok",
+                            default="알파 후보 초안 신규 {n} · skip {s}",
+                            n=len(seeded.written),
+                            s=len(seeded.skipped),
+                        )
+                    )
+                    st.rerun()
+            with a3:
+                if st.button(
+                    copy_get(
+                        "portfolio",
+                        "gieop_btn_quant",
+                        default="정량커버만",
+                    ),
+                    key=f"gieop_quant_{_book_keys(ctx)}",
+                    use_container_width=True,
+                ):
+                    qres = refresh_quant_on_drafts(
+                        Path(ctx.root),
+                        market=market,
+                        candidates=alpha_board.candidates,
+                    )
+                    st.success(
+                        copy_get(
+                            "portfolio",
+                            "gieop_quant_ok",
+                            default=(
+                                "정량커버 갱신 {n} · 높음 {h}/중간 {m}/낮음 {l} · "
+                                "초안없음 {miss}"
+                            ),
+                            n=len(qres.get("updated") or []),
+                            h=qres.get("n_hi", 0),
+                            m=qres.get("n_mid", 0),
+                            l=qres.get("n_lo", 0),
+                            miss=len(qres.get("missing_draft") or []),
+                        )
+                    )
+                    st.rerun()
+
+
 def _render_phcvs_watch(ctx: DashboardContext) -> None:
-    """PH-CVS detail below ③④ — glance strip already lives in ③ (anti-leak)."""
-    from alpha_system.review.phcvs_auto_eval import run_and_write
-    from alpha_system.ui.services.phcvs_watch_board import (
-        _is_attention,
-        load_phcvs_watch,
-        phcvs_watch_html,
+    """PH-CVS 정밀 Review — 확인① 때 갱신된 보드만 표시."""
+    from alpha_system.ui.services.phcvs_precision_board import (
+        is_attention_row,
+        load_precision_board,
+        precision_board_html,
     )
 
     held = list(getattr(ctx, "ops_portfolio_rows", None) or [])
-    board = load_phcvs_watch(
+    prop = list(getattr(ctx, "portfolio_rows", None) or [])
+    board = load_precision_board(
         ctx.root,
-        proposal_rows=getattr(ctx, "portfolio_rows", None),
+        proposal_rows=prop,
         holdings_rows=held,
     )
-    title = copy_get("portfolio", "sec_phcvs", default="관심 종목 추적")
-    attn_n = sum(1 for r in board.rows if _is_attention(r))
+    title = copy_get("portfolio", "sec_phcvs", default="정밀 Review")
+    attn_n = board.attention_n or sum(1 for r in board.rows if is_attention_row(r))
     fold_bits = [title]
     if attn_n:
         fold_bits.append(f"지금 볼 것 {attn_n}")
@@ -608,15 +2000,19 @@ def _render_phcvs_watch(ctx: DashboardContext) -> None:
         st.markdown(
             _fold_lead_html(
                 purpose=(
-                    "후보·제안에 올린 관심 종목의 추가 점검입니다. "
-                    "오늘 팔→유지→사 순서를 바꾸지 않습니다."
+                    "PH-CVS 시드 종목 체크리스트 Review입니다. Soft·QVM과 합치지 않습니다."
                 ),
                 do_now=(
-                    f"빨간 ‘지금 볼 것’ {attn_n}건만 보면 됨"
-                    if attn_n
-                    else "즉시 볼 것 없음 · 접어 두세요."
+                    copy_get(
+                        "portfolio",
+                        "phcvs_do_now",
+                        default=(
+                            "확인 ① 정량·정성 한 번에로 갱신 · "
+                            f"{'FAIL/U ' + str(attn_n) + '건만 보면 됨' if attn_n else '즉시 볼 것 없음'}"
+                        ),
+                    )
                 ),
-                ignore="여기 표로 자동 매수·편입 · 현금=시드 혼동",
+                ignore="학술 P/F 단정 · 자동 매수·편입 · Soft 순위 가산",
             ),
             unsafe_allow_html=True,
         )
@@ -633,40 +2029,23 @@ def _render_phcvs_watch(ctx: DashboardContext) -> None:
             summary=copy_get(
                 "portfolio",
                 "phcvs_caption",
-                default="상세·재평가만 · 매수·자동편입 없음",
+                default=(
+                    "확인 ① 때 자동 채점 · 최종 결론은 사람 · Soft·target 불변"
+                ),
             ),
             chips=chips,
             tier="input",
         )
-        rerun = st.button(
-            copy_get("portfolio", "phcvs_reeval", default="다시 평가"),
-            key="phcvs_auto_reeval",
-            help=copy_get(
-                "portfolio",
-                "phcvs_reeval_help",
-                default=(
-                    "prices.csv 기준 S00/S03·유동성 재계산. "
-                    "target_portfolio·QVM 순위는 변경하지 않습니다."
-                ),
-            ),
-        )
-        if rerun:
-            try:
-                watch_path, snap_path = run_and_write(Path(ctx.root))
-                st.success(
-                    copy_get(
-                        "portfolio",
-                        "phcvs_reeval_ok",
-                        default="PH-CVS 자동평가 완료 (watch·snapshot만 갱신).",
-                    )
-                    + f" · {watch_path.name} · {snap_path.name}"
+        if not board.available:
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "phcvs_idle",
+                    default="아직 채점 없음 · 확인 ① 정량·정성 한 번에를 실행하세요.",
                 )
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001 — surface to operator
-                st.error(f"PH-CVS 자동평가 실패: {exc}")
-        # Attention already on ③ glance — detail cards only here.
+            )
         st.markdown(
-            phcvs_watch_html(board, include_attention=False),
+            precision_board_html(board, attention_only=False),
             unsafe_allow_html=True,
         )
 
@@ -737,14 +2116,14 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     # First-ever: rebuild from disk caches only (0 calls). Network only on button.
     if snap is None:
         try:
-            snap = refresh_opendart_proposal_watch(
-                ctx.root,
-                tickers,
-                as_of=as_of,
-                journal_path=journal,
+                snap = refresh_opendart_proposal_watch(
+                    ctx.root,
+                    tickers,
+                    as_of=as_of,
+                    journal_path=journal,
                 data_dir=data_dir,
                 mode="cache_only",
-            )
+                )
         except Exception as exc:
             st.warning(f"OpenDART 캐시 로드 실패: {exc}")
 
@@ -758,49 +2137,63 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
         ),
         unsafe_allow_html=True,
     )
-    # 중기·단기 한 페이지 → 위젯 key에 장부 접미사 필수
+    # 일상 갱신=확인 ① · 여기선 위험 전체 재탐색만 접기
     bk = _book_keys(ctx)
-    r1c1, r1c2 = st.columns(2)
-    r2c1, r2c2 = st.columns(2)
-    with r1c1:
-        do_incr = st.button(
-            copy_get("portfolio", "opendart_btn_incremental", default="증분 갱신"),
-            key=f"pf_od_incr_{bk}",
-            help=f"예상 상한 ≈{estimate_watch_calls(len(tickers))}회(실제는 만료분만)",
-            use_container_width=True,
+    from alpha_system.ui.services.approval_chrome import refresh_action_button
+
+    st.caption(
+        copy_get(
+            "portfolio",
+            "opendart_daily_hint",
+            default=(
+                "일상 갱신=확인 ① 정량·정성 한 번에(증분·심층·정밀) · "
+                "점수·target 불변"
+            ),
         )
-    with r1c2:
-        do_force = st.button(
+    )
+    if need:
+        st.caption(
+            copy_get(
+                "portfolio",
+                "opendart_stale_hint",
+                default="캐시 만료 · 확인 ①을 실행하세요.",
+            )
+        )
+    do_force = False
+    with st.expander(
+        copy_get(
+            "portfolio",
+            "opendart_force_fold",
+            default="드묾 · OpenDART 전체 재탐색(위험)",
+        ),
+        expanded=False,
+    ):
+        st.caption(
+            copy_get(
+                "portfolio",
+                "opendart_force_hint",
+                default=(
+                    f"전 종목 재호출 · 예상 상한 ≈{estimate_watch_calls(len(tickers))}회 · "
+                    "일상 증분은 확인 ①"
+                ),
+            )
+        )
+        do_force = refresh_action_button(
             copy_get("portfolio", "opendart_btn_force", default="전체 재탐색(위험)"),
             key=f"pf_od_force_{bk}",
-            use_container_width=True,
+            primary=False,
         )
-    with r2c1:
-        do_cache = st.button(
-            copy_get("portfolio", "opendart_btn_cache", default="캐시만 다시 그리기"),
-            key=f"pf_od_cache_{bk}",
-            use_container_width=True,
-        )
-    with r2c2:
-        do_deep = st.button(
-            copy_get("portfolio", "screen_deep_btn", default="심층 다시 그리기"),
-            key=f"pf_screen_deep_{bk}",
-            help="관찰·제안 풀 심층 재평가 (DART 0회 · 점수 불변)",
-            use_container_width=True,
-        )
-    if do_incr or do_force or do_cache:
-        mode = "incremental" if do_incr else ("force" if do_force else "cache_only")
+    if do_force:
         try:
-            with st.spinner("OpenDART 갱신 중…"):
+            with st.spinner("OpenDART 전체 재탐색 중…"):
                 snap = refresh_opendart_proposal_watch(
                     ctx.root,
                     tickers,
                     as_of=as_of,
                     journal_path=journal,
                     data_dir=data_dir,
-                    mode=mode,
-                    enrich_documents=(mode == "incremental"),
-                    max_document_fetches=12,
+                    mode="force",
+                    enrich_documents=False,
                 )
             st.rerun()
         except Exception as exc:
@@ -809,7 +2202,7 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
     if snap is None:
         return
     if snap.missing_key:
-        st.warning("Open DART API 키가 없습니다. 설정에 키를 넣은 뒤 증분 갱신하세요.")
+        st.warning("Open DART API 키가 없습니다. 설정에 키를 넣은 뒤 확인 ①을 실행하세요.")
 
     flags = list(snap.flag_models())
     path = overlay_path(_source_dir(ctx))
@@ -863,9 +2256,9 @@ def _render_proposal_opendart_gates(ctx: DashboardContext) -> None:
             + [str(r.ticker).zfill(6) for r in blocked_rows]
         )
     )
+    # 심층은 확인 ①에서 persist · 여기선 캐시 없거나 집합 불일치 때만 로컬 재구성
     if (
-        do_deep
-        or not sv_board.available
+        not sv_board.available
         or sv_board.model_version != SCREEN_DEEP_MODEL
         or {r.ticker for r in sv_board.rows} != set(want_tks)
     ):
@@ -965,11 +2358,24 @@ def _render_proposal_target_board(ctx: DashboardContext) -> None:
 
     as_of = ctx.as_of if isinstance(ctx.as_of, _date) else _date.today()
     journal = ctx.root / "data" / "alpha_system_journal.jsonl"
+    exit_yaml_path = Path(ctx.root) / "data" / "kr_alpha_exit_targets.yaml"
+    try:
+        from alpha_system.screen_book import operational_data_dir
+
+        mkt = str(getattr(ctx, "screen_market", None) or "KOSPI")
+        hz = str(getattr(ctx, "screen_horizon", None) or "mid")
+        exit_yaml_path = (
+            operational_data_dir(Path(ctx.root), mkt, hz)
+            / "kr_alpha_exit_targets.yaml"
+        )
+    except Exception:  # noqa: BLE001
+        pass
     result = auto_apply_proposal_quant_targets(
         root=ctx.root,
         rows=rows,
         as_of=as_of,
         journal_path=journal,
+        exit_targets_path=exit_yaml_path,
     )
     if result.get("applied"):
         st.rerun()
@@ -1090,8 +2496,34 @@ def _proposal_empty_message(
     *,
     short: bool,
     n_blocked: int,
+    n_data: int = 0,
+    n_soft: int = 0,
 ) -> str:
     if short and n_blocked > 0:
+        if n_data > 0 and n_soft == 0 and n_data >= n_blocked:
+            return copy_get(
+            "portfolio",
+                "proposal_final_empty_short_data",
+            default=(
+                    "단기 편입 0 · 대기 {n}은 일봉·데이터 부족으로 판정 보류입니다. "
+                    "확인에서 일봉 채운 뒤 재판정 · Soft 미달(전략 탈락)과 다릅니다. "
+                    "합격선 고장이 아닙니다."
+                ),
+                n=n_blocked,
+            )
+        if n_data > 0:
+            return copy_get(
+                "portfolio",
+                "proposal_final_empty_short_mixed",
+                default=(
+                    "단기 편입 0 · 대기 {n} (데이터 보류 {d} · Soft/게이트 미달 {s}). "
+                    "보류는 갱신 후 재판정 · 미달은 지금은 안 삼 · 중기·파킹 유지. "
+                    "합격선 고장이 아닙니다."
+                ),
+                n=n_blocked,
+                d=n_data,
+                s=n_soft,
+            )
         return copy_get(
             "portfolio",
             "proposal_final_empty_short_blocked",
@@ -1380,9 +2812,19 @@ def _render_proposal_book(
             from alpha_system.ui.services.proposal_chart_board import render_proposal_chart_refresh
 
             render_proposal_chart_refresh(ctx, eligible)
+        if not short:
+            from alpha_system.ui.services.mid_cross_verify import render_mid_cross_verify
+
+            render_mid_cross_verify(ctx)
+        data_n, soft_n, _other_n = _blocked_bucket_counts(ctx)
         if not eligible:
             st.info(
-                _proposal_empty_message(short=short, n_blocked=len(blocked))
+                _proposal_empty_message(
+                    short=short,
+                    n_blocked=len(blocked),
+                    n_data=data_n,
+                    n_soft=soft_n,
+                )
             )
         else:
             render_portfolio_bullets(
@@ -1408,8 +2850,19 @@ def _render_proposal_book(
                 f"</div>",
                 unsafe_allow_html=True,
             )
-            st.caption(
-                copy_get(
+            if short and (data_n or soft_n):
+                blocked_cap = copy_get(
+                    "portfolio",
+                    "proposal_blocked_caption_short_split",
+                    default=(
+                        "판정 보류(일봉·데이터) {d} · Soft/게이트 미달 {s} · "
+                        "비중 없음 · 보류≠탈락 · 추격 매수 금지"
+                    ),
+                    d=data_n,
+                    s=soft_n,
+                )
+            else:
+                blocked_cap = copy_get(
                     "portfolio",
                     "proposal_blocked_caption_short" if short else "proposal_blocked_caption",
                     default=(
@@ -1418,27 +2871,13 @@ def _render_proposal_book(
                         else "점수 상위이나 지금은 편입 안 함 · 비중 없음"
                     ),
                 )
-            )
+            st.caption(blocked_cap)
             render_portfolio_bullets(
                 ctx,
                 mode="full",
                 key_prefix=f"pf_blocked_{_book_keys(ctx)}",
                 rows=blocked,
             )
-
-
-def _ux_read_guide_html() -> str:
-    """구성·운영 읽는 법."""
-    return (
-        '<div class="pf-ux-guide" role="note">'
-        '<span class="pf-ux-g"><b>구성</b> 목표바=공격·방어·파킹 · 계좌% 아님</span>'
-        '<span class="pf-ux-g"><b>운영</b> 위 1→2→3 순서 · 배지대로 수량</span>'
-        '<span class="pf-ux-g"><b>집합</b> 둘다=유지 · 제안만=사 · 보유만=팔</span>'
-        '<span class="pf-ux-g"><b>나침반</b> 거시 태도만 · 종목 주문은 여기</span>'
-        '<span class="pf-ux-g"><b>주문</b> HTS 회차 · 사람만 · target 불변</span>'
-        '<span class="pf-ux-g"><b>접기</b> 평소 안 펴도 됨 · 펼치면 맨 위「이 칸」안내부터</span>'
-        "</div>"
-    )
 
 
 def _fold_lead_html(
@@ -1478,11 +2917,114 @@ def _fold_block_html(title: str, blurb: str) -> str:
     )
 
 
+def _activist_ops_block_html(
+    ctx: DashboardContext,
+    *,
+    root: Path | None = None,
+) -> str:
+    """행동주의 Review 사/유지/팔 — Soft와 분리 블록."""
+    if is_short(getattr(ctx, "screen_horizon", None)):
+        return ""
+    base = Path(root or getattr(ctx, "root", ".") or ".")
+    mkt = str(getattr(ctx, "screen_market", None) or "KOSPI")
+    try:
+        from alpha_system.review.treasury_activist_proposal import (
+            activist_membership_sets,
+            build_activist_proposal,
+            load_activist_held_tickers,
+        )
+        from alpha_system.ui.services.alpha_book_ops import (
+            activist_today_buy_names_max,
+            load_alpha_book_ops,
+        )
+
+        soft_tks = [
+            str(getattr(r, "ticker", "") or "").zfill(6)
+            for r in (ctx.portfolio_rows or [])
+            if str(getattr(r, "ticker", "") or "").strip("0")
+        ]
+        pol = load_alpha_book_ops(base)
+        today_a = int(activist_today_buy_names_max(policy=pol))
+        board = build_activist_proposal(
+            base,
+            market=mkt,
+            soft_tickers=soft_tks,
+            today_buy_names_max=today_a,
+        )
+        held = load_activist_held_tickers(
+            base, positions_path=Path(ctx.data_dir) / "positions.csv"
+        )
+        both, prop_only, held_only = activist_membership_sets(
+            proposal_tickers=board.tickers,
+            held_activist_tickers=held,
+        )
+    except Exception:  # noqa: BLE001
+        return ""
+
+    name_by = {r.ticker: r.name for r in board.rows}
+    pct_by = {r.ticker: r.of_mid_soft_pct for r in board.rows}
+
+    def _chip(tk: str) -> str:
+        nm = name_by.get(tk, tk)
+        short = nm if len(nm) <= 8 else nm[:7] + "…"
+        pct = pct_by.get(tk)
+        tip = f"{nm} ({tk})" + (f" · Soft대비 {pct}%" if pct is not None else "")
+        return (
+            f'<span class="pf-set-chip" title="{_esc(tip)}">{_esc(short)}</span>'
+        )
+
+    def _col(title: str, todo: str, keys: list[str], tone: str) -> str:
+        chips = "".join(_chip(k) for k in keys) or (
+            '<span class="pf-set-empty">없음</span>'
+        )
+        return (
+            f'<div class="pf-set-col pf-set-{_esc(tone)}">'
+            f'<div class="pf-set-h">{_esc(title)} · {len(keys)}</div>'
+            f'<div class="pf-set-todo">{_esc(todo)}</div>'
+            f'<div class="pf-set-chips">{chips}</div>'
+            f"</div>"
+        )
+
+    skip_n = len(board.skipped_soft or [])
+    skip_note = (
+        f" · Soft겹침 제외 {skip_n}종" if skip_n else ""
+    )
+    buy_todo = (
+        f"신규 Review · 오늘≤{board.today_buy_names_max}종 · "
+        f"단계 {board.active_stage} · 자리 {board.active_seat_pct:g}% · "
+        f"합≈{board.of_mid_sum():g}% Soft대비 · HTS"
+    )
+    return (
+        '<div class="pf-set-board pf-activist-set" role="group" '
+        'aria-label="행동주의 Soft 이원 매매">'
+        '<div class="pf-set-kicker">'
+        f"행동주의 Review · Soft 이원 · 테마 {board.theme_of_mid_soft_pct:g}% "
+        f"of Soft{skip_note} · style=treasury_activist · target 불변"
+        "</div>"
+        '<div class="pf-set-grid">'
+        + _col("둘 다", "유지 · 해부·공시 후 자리% 상향 Review", both, "ok")
+        + _col("제안만", buy_todo, prop_only, "buy")
+        + _col(
+            "보유만",
+            "배지·촉매 소멸 Review · Soft와 합산 주문 금지",
+            held_only,
+            "sell",
+        )
+        + "</div>"
+        '<div class="pf-set-tip">'
+        "승격 picks → 여기 집합 · Soft 블록과 한 줄로 합치지 않음 · "
+        "미집행=단기채 · 자동주문 없음"
+        "</div>"
+        "</div>"
+    )
+
+
 def _membership_set_board_html(
     ctx: DashboardContext,
 ) -> str:
     """제안∩보유 / 제안만 / 보유만 — 티커 집합 대조 (평단·% 불필요)."""
     both, prop_only, held_only, src = _membership_sets(ctx)
+    above = _above_target_set(ctx)
     prop = {
         k: src[k]
         for k in list(prop_only) + list(both)
@@ -1497,8 +3039,9 @@ def _membership_set_board_html(
     def _cell(tk: str, row: object) -> str:
         name = str(getattr(row, "name", "") or tk).strip() or tk
         short = name if len(name) <= 8 else name[:7] + "…"
+        tip = _held_only_todo(tk, row, above=above) if tk in held_only else name
         return (
-            f'<span class="pf-set-chip" title="{_esc(name)} ({_esc(tk)})">'
+            f'<span class="pf-set-chip" title="{_esc(tip)} ({_esc(tk)})">'
             f"{_esc(short)}</span>"
         )
 
@@ -1520,38 +3063,48 @@ def _membership_set_board_html(
             f"</div>"
         )
 
+    held_todo = "배지별 Review · 목표가 도달=환금 · 탈락=전량 · 데이터=보류"
+    if held_only:
+        samples = [
+            _held_only_todo(tk, src[tk], above=above)
+            for tk in held_only[:2]
+            if tk in src
+        ]
+        if samples:
+            held_todo = " · ".join(samples[:2])
+
     return (
         '<div class="pf-set-board" role="group" '
         'aria-label="제안과 보유 집합 대조">'
         '<div class="pf-set-kicker">'
-        "종목 할 일 · 집합 대조 · 평단·보유% 없이 운영"
+        "종목 할 일 · 집합+배지 · 보유만≠무조건 전량"
         "</div>"
         '<div class="pf-set-grid">'
         + _col(
             "둘 다",
-            "유지 · Soft PASS면 추매 Review",
+            "유지 · 적합도≥50%면 추매 Review",
             both,
             src,
             "ok",
         )
         + _col(
             "제안만",
-            "신규 매수 Review · 하루≤33% · HTS",
+            "신규 중 오늘 집행 0–2종 · 적합도% · 하루≤33% · 제안 N≠전량매수 · 미집행=단기채",
             prop_only,
             prop,
             "buy",
         )
         + _col(
             "보유만",
-            "정리·축소·환금 Review · 먼저 처리",
+            held_todo,
             held_only,
             held,
             "sell",
         )
         + "</div>"
         '<div class="pf-set-tip">'
-        "운영=집합 열 따라 · 금액은 HTS · 목표바 %로 계좌 맞추지 않음 · "
-        "자동주문·target 불변"
+        "운영=집합+배지 최종수량(강한 쪽·합산 아님) · 금액·부분체결은 HTS · "
+        "목표바 %로 계좌 맞추지 않음 · 자동주문·target 불변"
         "</div>"
         "</div>"
     )
@@ -1598,6 +3151,7 @@ def _render_holdings_book(
         )
         if show_set_board:
             st.markdown(_membership_set_board_html(ctx), unsafe_allow_html=True)
+        _render_rank_hysteresis_board(ctx)
         _render_weight_action_board(ctx)
         with st.expander(
             copy_get(
@@ -1666,19 +3220,178 @@ def _render_holdings_book(
                 ),
                 unsafe_allow_html=True,
             )
-            render_portfolio_bullets(
-                ctx,
-                mode="full",
+        render_portfolio_bullets(
+            ctx,
+            mode="full",
                 key_prefix=f"pf_ops_{_book_keys(ctx)}",
-                rows=list(ctx.ops_portfolio_rows or []),
+            rows=list(ctx.ops_portfolio_rows or []),
                 empty_hint=(
                     "실보유 티커 없음 · 후보「보유」체크 또는 티커 업로드"
                 ),
-            )
+        )
 
 
 def _esc(value: object) -> str:
     return html.escape(str(value), quote=True)
+
+
+def _exec_fitness_maps(ctx: DashboardContext) -> dict:
+    """Soft·논리·해부 맵 · 실패 시 빈 dict (보드만 약화, 페이지 유지)."""
+    from alpha_system.proposal_chart import norm_ticker
+
+    soft_tickers: set[str] = set()
+    soft_scores: dict[str, float | None] = {}
+    for r in list(getattr(ctx, "portfolio_rows", None) or []):
+        tk = norm_ticker(getattr(r, "ticker", None))
+        if not tk:
+            continue
+        soft_tickers.add(tk)
+        try:
+            sc = getattr(r, "total_score", None)
+            soft_scores[tk] = float(sc) if sc is not None and sc != "" else None
+        except (TypeError, ValueError):
+            soft_scores[tk] = None
+    value_pass: dict[str, bool] = {}
+    quality_pass: dict[str, bool] = {}
+    gieop_gates: dict[str, str] = {}
+    try:
+        from alpha_system.ui.services.gieop_observe_board import (
+            load_observe_ui_board,
+            resolve_gieop_paths,
+        )
+        from alpha_system.ui.services.gieop_verdict import load_verdicts
+
+        market = str(getattr(ctx, "screen_market", None) or "KOSPI")
+        board = load_observe_ui_board(Path(ctx.root), market=market)
+        for row in list(getattr(board, "deep_pick", None) or []) + list(
+            getattr(board, "watch_top", None) or []
+        ):
+            tk = norm_ticker(getattr(row, "ticker", None))
+            if not tk:
+                continue
+            if getattr(row, "pass_value", None) is not None:
+                value_pass[tk] = bool(row.pass_value)
+        paths = resolve_gieop_paths(Path(ctx.root))
+        for tk, v in load_verdicts(paths.drafts_dir).items():
+            gieop_gates[norm_ticker(tk)] = str(v.effective_gate or "")
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "soft_tickers": soft_tickers,
+        "soft_scores": soft_scores,
+        "value_pass": value_pass,
+        "quality_pass": quality_pass,
+        "gieop_gates": gieop_gates,
+    }
+
+
+def _render_exec_fitness_board(ctx: DashboardContext) -> None:
+    """오늘 매매 상단 · 적합도%·오늘% (O/X 대체)."""
+    try:
+        from alpha_system.ui.services.exec_fitness import (
+            build_fitness_board_rows,
+            exec_fitness_board_html,
+        )
+        from alpha_system.ui.services.proposal_chart_board import reads_by_ticker
+        from alpha_system.ui.services.weight_action import (
+            board_items,
+            build_weight_actions_for_rows,
+        )
+
+        held = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+        prop = list(getattr(ctx, "portfolio_rows", None) or [])
+        # 보유 액션 + 제안만(미보유) 추가 후보
+        held_tk = {
+            str(getattr(r, "ticker", "") or "").zfill(6) for r in held
+        }
+        buy_candidates = [
+            r
+            for r in prop
+            if str(getattr(r, "ticker", "") or "").zfill(6) not in held_tk
+        ]
+        rows = held + buy_candidates
+        if not rows:
+            st.markdown(exec_fitness_board_html([]), unsafe_allow_html=True)
+            st.caption(
+                copy_get(
+                    "portfolio",
+                    "exec_fitness_caption",
+                    default=(
+                        "적합도%=Soft·논리·해부·타이밍 가중합 · "
+                        "≥80 강권고 · 50–79 조건부 · <50 보류 · "
+                        "오늘%=슬라이드 · Soft점수 비가산 · target 불변"
+                    ),
+                )
+            )
+        return
+        flow_data_dir = Path(
+            getattr(ctx, "source_data_dir", None) or (Path(ctx.root) / "data")
+        )
+        try:
+            chart_map = reads_by_ticker(ctx)
+        except Exception:  # noqa: BLE001
+            chart_map = {}
+        pairs = build_weight_actions_for_rows(
+            rows, chart_map=chart_map, flow_data_dir=flow_data_dir
+        )
+        board_acts = set(board_items(pairs))
+        actionable = [
+            (r, a)
+            for r, a in pairs
+            if a in board_acts or a.stance == "매수"
+        ]
+        if not actionable:
+            actionable = [(r, a) for r, a in pairs if a.priority < 100]
+        maps = _exec_fitness_maps(ctx)
+        fit_rows = build_fitness_board_rows(actionable, **maps)
+        st.markdown(exec_fitness_board_html(fit_rows), unsafe_allow_html=True)
+        st.caption(
+            copy_get(
+                "portfolio",
+                "exec_fitness_caption",
+                default=(
+                    "적합도%=Soft·논리·해부·타이밍 가중합 · "
+                    "≥80 강권고 · 50–79 조건부 · <50 보류 · "
+                    "오늘%=슬라이드 · Soft점수 비가산 · target 불변"
+                ),
+            )
+        )
+    except Exception:  # noqa: BLE001
+        st.caption("집행 적합도 보드를 건너뜀 · 배지·집합으로 Review")
+
+
+def _render_rank_hysteresis_board(ctx: DashboardContext) -> None:
+    """미세 순위 변화 vs 교체 Review — Soft 제안 대비 점수 갭 시각화."""
+    if is_short(getattr(ctx, "screen_horizon", None)):
+        return
+    try:
+        from alpha_system.ui.services.rank_hysteresis import (
+            build_rank_hysteresis_board,
+            rank_hysteresis_board_html,
+        )
+
+        held = list(getattr(ctx, "ops_portfolio_rows", None) or [])
+        prop = list(getattr(ctx, "portfolio_rows", None) or [])
+        if not held:
+            return
+        board = build_rank_hysteresis_board(
+            held,
+            prop,
+            root=Path(ctx.root),
+        )
+        st.markdown(rank_hysteresis_board_html(board), unsafe_allow_html=True)
+        st.caption(
+            copy_get(
+                "portfolio",
+                "rank_hysteresis_caption",
+                default=(
+                    "순위 안정: 갭≥20%·연속2회 전엔 유지 · "
+                    "축소 스텝(줄이기/환금/전량)과 별축 · 전량교체 아님 · Review-only"
+                ),
+            )
+        )
+    except Exception:  # noqa: BLE001
+        st.caption("순위 안정 보드를 건너뜀 · 보유·제안 대조로 Review")
 
 
 def _render_weight_action_board(ctx: DashboardContext) -> None:
@@ -1745,7 +3458,8 @@ def _render_weight_action_board(ctx: DashboardContext) -> None:
                         "계좌 전체 %를 맞추는 화면이 아닙니다."
                     ),
                     do_now=(
-                        "매도 줄=25/50/100 · 매수 줄≤33 · HTS에서 회차 금액만 옮기세요."
+                        "축소 스텝=줄이기25·환금50·전량100(합산 아님·≠교체) · "
+                        "매수≤33 · 재조회 전 당일 체결·미체결 차감 · HTS만."
                     ),
                     ignore="평단 필수 · target 자동 기입 · 포트 캡과 혼동",
                 ),
@@ -1794,73 +3508,60 @@ def _render_stance_decision(ctx: DashboardContext) -> None:
 
 
 def _render_l3_history_review(ctx: DashboardContext) -> None:
-    """L3 crash history + Fear Soft A/B — button-run, never writes target."""
+    """L3·Fear Soft — 디스크 읽기 전용 · Shadow 재계산 때 갱신."""
     if is_short(getattr(ctx, "screen_horizon", None)):
         return
+    import json
+
+    market = str(getattr(ctx, "screen_market", None) or "KOSPI").upper()
+    l3_path = Path(ctx.root) / "data" / "local" / f"l3_crash_review_{market}.json"
+    fear_path = Path(ctx.root) / "data" / "local" / "fear_soft_review.json"
     with st.expander(
         copy_get(
             "portfolio",
             "l3_history_expand",
-            default="급락 이력 다시 보기 · 버튼 필요",
+            default="급락 이력 · Shadow 때 갱신",
         ),
         expanded=False,
     ):
         st.markdown(
             _fold_lead_html(
                 purpose="과거 급락·재진입 패턴 참고용입니다. 오늘 매매 순서를 바꾸지 않습니다.",
-                do_now="궁금할 때만「다시 계산」· 전량 강제·자동주문 없음.",
+                do_now=(
+                    copy_get(
+                        "portfolio",
+                        "l3_history_do_now",
+                        default="백테스트「Shadow 다시 계산」으로 갱신 · 전량 강제·자동주문 없음.",
+                    )
+                ),
                 ignore="결과로 target 기입 · Core 점수 변경",
             ),
             unsafe_allow_html=True,
         )
-        market = str(getattr(ctx, "screen_market", None) or "KOSPI").upper()
-        run = st.button(
-            copy_get(
-                "portfolio",
-                "l3_history_run",
-                default="L3 이력 다시 계산",
-            ),
-            key=f"l3_hist_run_{market}",
-        )
-        cache_key = f"l3_hist_report_{market}"
-        if run:
-            try:
-                from alpha_system.shadow.l3_crash_backtest import (
-                    run_l3_crash_backtest,
-                )
-                from alpha_system.shadow.fear_soft_rebal_backtest import (
-                    run_fear_soft_rebal_backtest,
-                )
-
-                report = run_l3_crash_backtest(
-                    Path(ctx.root),
-                    market=market,
-                    include_target=True,
-                )
-                fg = run_fear_soft_rebal_backtest(Path(ctx.root))
-                st.session_state[cache_key] = (report, fg)
-            except Exception:  # noqa: BLE001
-                st.caption("L3 이력 Review를 건너뜀")
-                return
-        packed = st.session_state.get(cache_key)
-        if not packed:
+        if not l3_path.is_file() and not fear_path.is_file():
             st.caption(
                 copy_get(
                     "portfolio",
                     "l3_history_idle",
-                    default="버튼을 누르면 보유(+target) 종목으로 이력을 돌립니다.",
+                    default=(
+                        "아직 이력 없음 · 백테스트에서 Shadow 다시 계산하면 "
+                        "보유(+target) 기준으로 저장됩니다."
+                    ),
                 )
             )
             return
-        report, fg = packed
         try:
             from alpha_system.shadow.l3_crash_backtest import report_card_html
             from alpha_system.shadow.fear_soft_rebal_backtest import (
                 fear_soft_card_html,
             )
 
-            st.markdown(report_card_html(report), unsafe_allow_html=True)
-            st.markdown(fear_soft_card_html(fg), unsafe_allow_html=True)
+            if l3_path.is_file():
+                report = json.loads(l3_path.read_text(encoding="utf-8"))
+                st.markdown(report_card_html(report), unsafe_allow_html=True)
+            if fear_path.is_file():
+                fg = json.loads(fear_path.read_text(encoding="utf-8"))
+                st.markdown(fear_soft_card_html(fg), unsafe_allow_html=True)
         except Exception:  # noqa: BLE001
             st.caption("L3 이력 카드 렌더 실패")
 
@@ -2160,7 +3861,88 @@ def _persist_watch_holdings(ctx: DashboardContext, tickers: list[str]) -> None:
         keep_existing_meta=True,
     )
     st.session_state["holdings_input_open"] = True
-    st.session_state["holdings_paste_pending"] = _current_alpha_paste(ctx)
+    st.session_state[f"holdings_paste_pending_{_book_keys(ctx)}"] = (
+        _current_alpha_paste(ctx)
+    )
+
+
+def _render_holdings_one_click(
+    ctx: DashboardContext,
+    *,
+    soft_tickers: list[str],
+    deep_tickers: list[str],
+    held_tickers: list[str],
+) -> None:
+    """Soft∪심층 미보유 → positions kr_alpha 합치기 · Soft·target 불변."""
+    from alpha_system.proposal_chart import norm_ticker
+    from alpha_system.ui.services.holdings_input import merge_kr_alpha_tickers
+
+    held = {
+        norm_ticker(t)
+        for t in (held_tickers or [])
+        if norm_ticker(t) and norm_ticker(t) != "000000"
+    }
+    pool: list[str] = []
+    seen: set[str] = set()
+    for raw in list(soft_tickers or []) + list(deep_tickers or []):
+        tk = norm_ticker(raw)
+        if not tk or tk == "000000" or tk in seen:
+            continue
+        seen.add(tk)
+        pool.append(tk)
+    missing = [t for t in pool if t not in held]
+    n_soft_miss = sum(
+        1
+        for t in soft_tickers or []
+        if norm_ticker(t) and norm_ticker(t) not in held
+    )
+    n_deep_miss = sum(
+        1
+        for t in deep_tickers or []
+        if norm_ticker(t) and norm_ticker(t) not in held
+    )
+    label = copy_get(
+        "portfolio",
+        "holdings_one_click",
+        default="미보유 Soft·심층 → 보유 등록 ({n})",
+        n=len(missing),
+    )
+    st.caption(
+        copy_get(
+            "portfolio",
+            "holdings_one_click_cap",
+            default=(
+                "원버튼 · Soft미보유 {s} · 심층미보유 {d} · "
+                "기존 수량·평단 유지 · Soft·target·자동매수 없음"
+            ),
+            s=n_soft_miss,
+            d=n_deep_miss,
+        )
+    )
+    if st.button(
+        label,
+        key=f"holdings_one_click_{_book_keys(ctx)}",
+        use_container_width=True,
+        disabled=not missing,
+        help="L4 · Soft∪심층 미보유만 positions 합침 · Soft·target·자동매수 없음",
+    ):
+        res = merge_kr_alpha_tickers(
+            Path(ctx.data_dir) / "positions.csv",
+            missing,
+            root=Path(ctx.root),
+        )
+        added = list(res.get("added") or [])
+        st.success(
+            copy_get(
+                "portfolio",
+                "holdings_one_click_ok",
+                default="보유 등록 {n}종 · 이미 있음 {s} · 자동매수 없음",
+                n=len(added),
+                s=len(res.get("skipped_existing") or []),
+            )
+        )
+        st.session_state["holdings_input_open"] = True
+        st.rerun()
 
 
 def _extra_by_ticker(ctx: DashboardContext) -> dict[str, dict]:
@@ -2369,6 +4151,16 @@ def _render_watch_pool(
         if board.warnings:
             for w in board.warnings:
                 st.caption(w)
+        if getattr(board, "proposal_outside", ()):
+            po = " · ".join(
+                f"{r.name} ({r.ticker}) {r.rank}위" for r in board.proposal_outside
+            )
+            st.info(
+                f"최종 Soft 제안이 점수순 관찰 "
+                f"{watch_max(getattr(ctx, 'screen_market', None), getattr(ctx, 'screen_horizon', None))} "
+                f"밖이라 표에 강제 포함: {po}. "
+                "관찰=전 종목 점수순 · Soft=적격+Lab Soft만 (집합이 다를 수 있음)."
+            )
         if board.held_outside:
             outside = " · ".join(
                 f"{r.name} ({r.ticker}) {r.rank}위" for r in board.held_outside
@@ -2704,7 +4496,7 @@ def _render_candidate_ai_export(
         data_dir=_source_dir(ctx),
         hakedaka_min_hits=int(getattr(ctx.cfg.sizing, "hakedaka_min_hits", 2) or 2),
     )
-    mkt = str(getattr(ctx, "screen_market", "KOSPI") or "KOSPI")
+    bk = _book_keys(ctx)
     with st.expander(
         copy_get("portfolio", "watch_ai_export_expand", default="다른 AI에 붙여넣기"),
         expanded=False,
@@ -2727,7 +4519,7 @@ def _render_candidate_ai_export(
                 file_name=f"{pack.file_stem}.md",
                 mime="text/markdown; charset=utf-8",
                 use_container_width=True,
-                key=f"pf_ai_export_md_{mkt}",
+                key=f"pf_ai_export_md_{bk}",
             )
         with c2:
             st.download_button(
@@ -2736,7 +4528,7 @@ def _render_candidate_ai_export(
                 file_name=f"{pack.file_stem}.json",
                 mime="application/json; charset=utf-8",
                 use_container_width=True,
-                key=f"pf_ai_export_json_{mkt}",
+                key=f"pf_ai_export_json_{bk}",
             )
         st.code(pack.markdown, language="markdown")
 
@@ -2747,11 +4539,20 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
         upsert_kr_alpha_positions,
     )
 
-    pending = st.session_state.pop("holdings_paste_pending", None)
+    bk = _book_keys(ctx)
+    paste_key = f"holdings_paste_text_{bk}"
+    pending_key = f"holdings_paste_pending_{bk}"
+    pending = st.session_state.pop(pending_key, None)
+    if pending is None:
+        # legacy single-key bridge (중기만 있던 시절)
+        pending = st.session_state.pop("holdings_paste_pending", None)
     if pending is not None:
-        st.session_state["holdings_paste_text"] = pending
-    elif "holdings_paste_text" not in st.session_state:
-        st.session_state["holdings_paste_text"] = _current_alpha_paste(ctx)
+        st.session_state[paste_key] = pending
+    elif paste_key not in st.session_state:
+        if "holdings_paste_text" in st.session_state and "mid" in bk:
+            st.session_state[paste_key] = st.session_state.get("holdings_paste_text")
+        else:
+            st.session_state[paste_key] = _current_alpha_paste(ctx)
 
     with st.expander(
         copy_get(
@@ -2774,7 +4575,7 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
         )
         text = st.text_area(
             "보유 목록",
-            key="holdings_paste_text",
+            key=paste_key,
             height=140,
             placeholder="005930\n000660\n035420\n# 또는 005930 100 45000",
             label_visibility="collapsed",
@@ -2784,7 +4585,7 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
             if st.button(
                 "티커 저장",
                 type="primary",
-                key="holdings_save",
+                key=f"holdings_save_{bk}",
                 use_container_width=True,
             ):
                 parsed = parse_holdings_paste(text)
@@ -2806,7 +4607,7 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
                     saved_tks = [d.ticker for d in parsed.drafts]
                     _reset_watch_picker(ctx, saved_tks)
                     st.session_state["holdings_input_open"] = True
-                    st.session_state["holdings_paste_pending"] = format_drafts_helper(
+                    st.session_state[pending_key] = format_drafts_helper(
                         parsed.drafts
                     )
                     st.success(
@@ -2817,7 +4618,7 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
         with c2:
             if st.button(
                 "알파 비우기",
-                key="holdings_clear_alpha",
+                key=f"holdings_clear_alpha_{bk}",
                 use_container_width=True,
             ):
                 path = ctx.data_dir / "positions.csv"
@@ -2825,11 +4626,11 @@ def _render_holdings_paste(ctx: DashboardContext) -> None:
                     path, [], root=ctx.root, replace_alpha=True
                 )
                 _reset_watch_picker(ctx, [])
-                st.session_state["holdings_paste_pending"] = ""
+                st.session_state[pending_key] = ""
                 st.session_state["holdings_input_open"] = True
                 st.rerun()
         preview = parse_holdings_paste(
-            st.session_state.get("holdings_paste_text") or ""
+            st.session_state.get(paste_key) or ""
         )
         if preview.drafts:
             st.caption(

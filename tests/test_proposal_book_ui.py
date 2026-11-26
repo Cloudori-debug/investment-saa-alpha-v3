@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 from alpha_system.ui.pages import portfolio
 from alpha_system.ui.services.portfolio_widgets import _proposal_expand_html
@@ -74,9 +75,78 @@ def test_watch_table_blocked_is_not_proposal_tone() -> None:
     assert "column_order" in watch
     assert "watch_tone_label" in watch
     page = inspect.getsource(portfolio.render_portfolio)
-    assert "_render_watch_pool(ctx, preview_cutoff, preview_n)" in page
+    assert "_render_today_book(mid_ctx, short_ctx)" in page
+    assert "_render_book_editor(mid_ctx)" in page
+    today = inspect.getsource(portfolio._render_today_book)
+    assert "_render_today_book_copy(rows)" in today
     prop = inspect.getsource(portfolio._render_proposal_book)
-    assert "누구인지는 ②" in prop or "색 구분 = ②" in prop
+    assert "screen_book_caption" in prop
+
+
+def test_today_book_copy_tsv_and_csv() -> None:
+    rows = [
+        {
+            "우선": 1,
+            "할 일": "사기",
+            "구분": "중기 Soft",
+            "종목": "가",
+            "코드": "000001",
+            "보유": "",
+            "제안": "Y",
+            "비중": 12.5,
+            "현재가": None,
+            "신호": "신규",
+            "사람": "사기 1순위",
+        }
+    ]
+    tsv = portfolio._desk_rows_tsv(rows)
+    assert tsv.startswith("우선\t할 일\t구분\t종목\t코드")
+    assert "사기\t중기 Soft\t가\t000001" in tsv
+    assert "사기 1순위" in tsv
+    raw = portfolio._desk_rows_csv_bytes(rows)
+    text = raw.decode("utf-8-sig")
+    assert "우선,할 일,구분,종목,코드" in text
+    assert "000001" in text
+
+
+def test_hold_editor_uses_the_scored_candidates() -> None:
+    class Row:
+        def __init__(self, ticker: str, name: str, total_score: float) -> None:
+            self.ticker = ticker
+            self.name = name
+            self.total_score = total_score
+
+    class Ctx:
+        scoreboard_rows = [
+            Row("000002", "비", 10.0),
+            Row("000001", "가", 90.0),
+        ]
+        data_dir = Path("missing-positions")
+
+    rows = portfolio._candidate_edit_order(Ctx())
+    assert [tk for tk, _name, _score in rows] == ["000001", "000002"]
+    Ctx.root = Path("missing-positions")
+    Ctx.portfolio_rows = []
+    recs = portfolio._candidate_edit_records(Ctx(), {})
+    assert recs[0]["종목"] == "가"
+    assert "품질" in recs[0] and "PER" in recs[0] and "여유%" in recs[0]
+    assert recs[0]["일봉"] is None
+    assert "fchart.naver" in str(recs[0]["차트"])
+    sparked = portfolio._candidate_edit_records(
+        Ctx(),
+        {},
+        {"000001": [("2026-01-01", 10.0), ("2026-01-02", 12.0), ("2026-01-03", 11.0)]},
+    )
+    assert sparked[0]["일봉"] == [10.0, 12.0, 11.0]
+    assert sparked[1]["일봉"] is None
+    extended = portfolio._extend_closes_with_snapshot(
+        {"000001": [("2026-11-04", 62700.0)]},
+        {"000001": "2026-11-13"},
+        {"000001": 59000.0, "000009": 1000.0},
+    )
+    assert extended["000001"][-1] == ("2026-11-13", 59000.0)
+    assert "000009" not in extended
+    assert len(rows) > 1
 
 
 def test_proposal_expand_skips_cecs_dump() -> None:
